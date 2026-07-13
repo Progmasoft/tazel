@@ -3,5 +3,5 @@
 
 fn main() -> Long
 {
-  return 0;
+  return add(3, 4);
 }
