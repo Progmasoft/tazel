@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
-package org.xsslang.project
+package org.progmasoft.visual_xsharp.project
 
 import java.io.Serializable
 
@@ -60,6 +60,22 @@ enum class Architecture { X86_64, AARCH64, ARMV7H, RISCV64, UNKNOWN }
 
 enum class WarningLevel { ALL, MEDIUM, LOW, NONE }
 
+enum class Stability { STABLE, UNSTABLE, BETA, NIGHTLY, ALPHA, DEV }
+
+enum class Backend { LLVM }
+
+enum class BuildMode { DEBUG, RELEASE }
+
+enum class Emit { BINARY, OBJECT, CORE, XPP, XMM, ASSEMBLY, LLVM_LL, LLVM_BC }
+
+enum class Warnings { ALL, MEDIUM, LOW, NONE }
+
+enum class LlvmOptLevel { O0, O1, O2, O3, OG }
+
+enum class LlvmCompiler { AOT, ORC }
+
+enum class LlvmLto { FAT, THIN, NONE }
+
 data class Host(
   val os: OperatingSystem,
   val family: OperatingSystemFamily,
@@ -80,90 +96,64 @@ data class Author(
 data class CompilerSettings(
   var warningLevel: WarningLevel = WarningLevel.MEDIUM,
   var warningsAsErrors: Boolean = false,
-  var verbose: Boolean = true,
+  var version: String = "latest",
+  var standard: String = "latest",
+  var backend: Backend = Backend.LLVM,
+  var buildMode: BuildMode = BuildMode.DEBUG,
+  var emit: Emit = Emit.BINARY,
+  var experimentalWarnings: Boolean = false,
+  var shadowWarnings: Boolean = false,
+  var undefinedWarnings: Boolean = true,
+  var typeSafeFormat: Boolean = true,
+  var xppOptimizationPasses: Boolean = true,
+  var xmmOptimizationPasses: Boolean = true,
+  var llvmOptLevel: LlvmOptLevel? = null,
+  var llvmCompiler: LlvmCompiler = LlvmCompiler.AOT,
+  var llvmLto: LlvmLto = LlvmLto.NONE,
 ) : Serializable
 
-data class ModuleSource(
-  val moduleName: String,
-  val path: String,
-) : Serializable
-
-data class ModuleDependency(
+data class PackageDependency(
   val name: String,
   val stability: String,
   val version: String,
 ) : Serializable
 
-data class OptionalModuleDependency(
+data class OptionalPackageDependency(
   val feature: String,
-  val module: ModuleDependency,
+  val dependency: PackageDependency,
 ) : Serializable
 
-data class ModuleFeatureSelection(
-  val moduleName: String,
+data class PackageFeatureSelection(
+  val packageName: String,
   val feature: String,
   val enabled: Boolean,
 ) : Serializable
 
 data class DependencyResolution(
-  val required: List<ModuleDependency>,
-  val optional: List<OptionalModuleDependency>,
-  val features: List<ModuleFeatureSelection>,
+  val required: List<PackageDependency>,
+  val optional: List<OptionalPackageDependency>,
+  val features: List<PackageFeatureSelection>,
 ) : Serializable {
-  val activeModules: List<ModuleDependency>
+  val activePackages: List<PackageDependency>
     get() {
-      val enabled = features.filter(ModuleFeatureSelection::enabled).mapTo(mutableSetOf()) { it.moduleName to it.feature }
-      return (required + optional.filter { (it.module.name to it.feature) in enabled }.map(OptionalModuleDependency::module))
-        .distinctBy(ModuleDependency::name)
-        .sortedWith(moduleDependencyOrder)
+      val enabled = features.filter(PackageFeatureSelection::enabled).mapTo(mutableSetOf()) { it.packageName to it.feature }
+      return (required + optional.filter { (it.dependency.name to it.feature) in enabled }.map(OptionalPackageDependency::dependency))
+        .distinctBy(PackageDependency::name)
+        .sortedWith(packageDependencyOrder)
     }
 }
 
-data class ArtifactTarget(
-  val name: String,
-  val path: String,
-) : Serializable
-
-data class ProjectState(
+data class ProjectPlan(
   val identity: ProjectIdentity?,
   val variables: Map<String, List<String>>,
-  val binaries: List<ArtifactTarget>,
-  val libraries: List<ArtifactTarget>,
   val authors: List<Author>,
-  val modules: List<ModuleDependency>,
-  val optionalModules: List<OptionalModuleDependency>,
-  val dependencyFeatures: List<ModuleFeatureSelection>,
+  val requiredDependencies: List<PackageDependency>,
+  val activeDependencies: List<PackageDependency>,
+  val optionalDependencies: List<OptionalPackageDependency>,
+  val dependencyFeatures: List<PackageFeatureSelection>,
   val sourceIncludes: List<String>,
   val sourceExcludes: List<String>,
   val sourceFilters: List<String>?,
-  val moduleIncludes: List<String>,
-  val moduleExcludes: List<String>,
-  val moduleFilters: List<String>?,
-  val moduleSources: List<ModuleSource>,
-  val testIncludes: List<String>,
-  val testExcludes: List<String>,
-  val testFilters: List<String>?,
-  val testFramework: String?,
-  val compiler: CompilerSettings,
-) : Serializable
-
-data class ProjectPlan(
-  val identity: ProjectIdentity,
-  val variables: Map<String, List<String>>,
-  val binaries: List<ArtifactTarget>,
-  val libraries: List<ArtifactTarget>,
-  val authors: List<Author>,
-  val requiredModules: List<ModuleDependency>,
-  val modules: List<ModuleDependency>,
-  val optionalModules: List<OptionalModuleDependency>,
-  val dependencyFeatures: List<ModuleFeatureSelection>,
-  val sourceIncludes: List<String>,
-  val sourceExcludes: List<String>,
-  val sourceFilters: List<String>?,
-  val moduleIncludes: List<String>,
-  val moduleExcludes: List<String>,
-  val moduleFilters: List<String>?,
-  val moduleSources: List<ModuleSource>,
   val testIncludes: List<String>,
   val testExcludes: List<String>,
   val testFilters: List<String>?,
@@ -171,8 +161,8 @@ data class ProjectPlan(
   val compiler: CompilerSettings,
 )
 
-internal val moduleDependencyOrder =
-  compareBy(ModuleDependency::name, ModuleDependency::stability, ModuleDependency::version)
+internal val packageDependencyOrder =
+  compareBy(PackageDependency::name, PackageDependency::stability, PackageDependency::version)
 
 class ProjectConfigurationException(
   message: String,

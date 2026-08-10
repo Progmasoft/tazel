@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
-package org.xsslang.project
+package org.progmasoft.visual_xsharp.project
 
 import java.io.File
 import java.nio.file.Files
@@ -61,30 +61,20 @@ private fun runKotlin(
   script: File,
   root: File,
   output: String,
-  state: Path?,
   sourcesOutput: Path?,
 ): Int {
   val directory = Files.createTempDirectory("xs-project-kts-")
   return try {
     val wrapped = directory.resolve(script.name)
-    val suffix =
-      if (output == "state") {
-        "\nProjectStateFile.writeConfigured(ProjectRuntime.snapshot())\n"
-      } else {
-        "\nProjectOutput.emit(ProjectRuntime.build())\n"
-      }
-    wrapped.writeText("import org.xsslang.project.*\n" + script.readText() + suffix)
+    val suffix = "\nemitProject()\n"
+    wrapped.writeText("import org.progmasoft.visual_xsharp.project.*\n" + script.readText() + suffix)
     val kotlin = System.getenv("XS_KOTLIN")?.takeIf(String::isNotBlank) ?: "kotlin"
     val properties =
       mutableListOf(
         "-Dxs.project.root=${root.absolutePath}",
         "-Dxs.project.output=$output",
       )
-    if (state != null) properties += "-Dxs.project.state=$state"
     if (sourcesOutput != null) properties += "-Dxs.project.sources=$sourcesOutput"
-    System.getProperty("xs.project.moduleRoot")?.takeIf(String::isNotBlank)?.let { rootPath ->
-      properties += "-Dxs.project.moduleRoot=$rootPath"
-    }
     val arguments = mutableListOf<String>()
     if (System.getProperty("os.name").startsWith("Windows") && kotlin.endsWith(".bat", ignoreCase = true)) {
       val kotlinHome = File(kotlin).canonicalFile.parentFile.parentFile
@@ -128,7 +118,7 @@ internal fun evaluateWithKotlin(
 ): Int {
   requireSupportedJava()
   val files = discover(input)
-  return runKotlin(files.project!!, files.root, output, null, sourcesOutput)
+  return runKotlin(files.project!!, files.root, output, sourcesOutput)
 }
 
 fun main(args: Array<String>) {
