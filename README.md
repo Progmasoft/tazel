@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.0 -->
+
 # Visual X# Kotlin project evaluator
 
 This Java 25/Kotlin component evaluates the single `Visual.XSharp.kts` project file used by `vxs`. It resolves source roots,

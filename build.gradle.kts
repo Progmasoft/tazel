@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: 2026 Leitwolf <support@xsharp-lang.xyz>
- * SPDX-License-Identifier: MPL-2.0
+ * SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+ * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.0
  */
 
 import org.gradle.api.JavaVersion
@@ -13,7 +13,7 @@ plugins {
   application
 }
 
-group = "org.progmasoft.visual.xsharp"
+group = "com.progmasoft.visual.xsharp"
 version = "0.3.2"
 
 repositories {
@@ -42,7 +42,7 @@ java {
 application {
   // VXDC is the only standalone JVM command. The native vxs driver invokes the
   // project evaluator main class directly from this distribution's libraries.
-  mainClass = "org.progmasoft.visual.xdc.VxdcKt"
+  mainClass = "com.progmasoft.visual.xdc.VxdcKt"
   applicationName = "vxdc"
   applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
