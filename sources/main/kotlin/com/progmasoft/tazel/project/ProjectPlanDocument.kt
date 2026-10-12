@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import kotlinx.serialization.Serializable
 
-private const val PROJECT_PLAN_FORMAT = "visual-xsharp-project-plan"
+private const val PROJECT_PLAN_FORMAT = "tala-project-plan"
 private const val PROJECT_PLAN_VERSION = 5
 
 /**

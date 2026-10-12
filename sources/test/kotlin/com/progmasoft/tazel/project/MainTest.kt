@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.file.Files
 import kotlin.test.Test
@@ -14,13 +14,13 @@ class MainTest {
   fun honorsExplicitKotlinRunner() {
     assertEquals(
       "D:/tools/kotlin-custom.bat",
-      kotlinCommand(mapOf("VXS_KOTLIN" to "D:/tools/kotlin-custom.bat"), "Windows 11"),
+      kotlinCommand(mapOf("TALA_KOTLIN" to "D:/tools/kotlin-custom.bat"), "Windows 11"),
     )
   }
 
   @Test
   fun resolvesWindowsBatchRunnerFromPath() {
-    val root = Files.createTempDirectory("vxs-kotlin-runner-")
+    val root = Files.createTempDirectory("tala-kotlin-runner-")
     try {
       val runner = Files.createFile(root.resolve("kotlin.bat"))
       assertEquals(

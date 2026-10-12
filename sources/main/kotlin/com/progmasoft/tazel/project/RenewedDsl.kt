@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
-@VisualXsharpKts
+@TalaKts
 class ProjectScope internal constructor() {
   var name: String? = null
   var version: String? = null
@@ -47,7 +47,7 @@ class ProjectScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class ExecutableSourcesScope internal constructor() {
   var name: String? = null
   var srcDir: String = "Sources"
@@ -73,13 +73,13 @@ class ExecutableSourcesScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class LibrarySourcesScope internal constructor() {
   var name: String? = null
   var srcDir: String = "Sources"
   var namespace: String? = null
   internal var excludes: MutableList<String>? = null
-  private val packageTypes = mutableListOf(ViPkgType.VXSLIB)
+  private val packageTypes = mutableListOf(ViPkgType.TALALIB)
 
   fun viPkgType(vararg values: ViPkgType) {
     if (values.isEmpty()) {
@@ -107,7 +107,7 @@ class LibrarySourcesScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class TestSourcesScope internal constructor(private val suiteName: String) {
   var testDir: String = "Tests/$suiteName"
   var framework: String? = null
@@ -119,7 +119,7 @@ class TestSourcesScope internal constructor(private val suiteName: String) {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class ViGetSourcesScope internal constructor() {
   var push: Boolean = false
   internal var excludes: MutableList<String>? = null
@@ -130,7 +130,7 @@ class ViGetSourcesScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class ProjectSourcesScope internal constructor() {
   private val executables = mutableListOf<ExecutableSourcesScope>()
   private val libraries = mutableListOf<LibrarySourcesScope>()
@@ -191,7 +191,7 @@ class ProjectSourcesScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class OutputDirectoriesScope internal constructor() {
   var release: String = "build/release"
   var debug: String = "build/debug"
@@ -201,7 +201,7 @@ class OutputDirectoriesScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class TargetsScope internal constructor() {
   private val values = mutableListOf<String>()
 
@@ -220,7 +220,7 @@ class TargetsScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class PmlScope internal constructor() {
   var enabled: Boolean = true
 
@@ -229,7 +229,7 @@ class PmlScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class WorkspaceScope internal constructor(private val name: String) {
   var path: String? = null
 
@@ -240,7 +240,7 @@ class WorkspaceScope internal constructor(private val name: String) {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class WorkspacesScope internal constructor() {
   private val values = mutableListOf<Workspace>()
 
@@ -257,7 +257,7 @@ class WorkspacesScope internal constructor() {
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class DependencyDeclarationScope internal constructor(private val publisher: String) {
   var name: String? = null
   var version: String? = null
@@ -308,7 +308,7 @@ class DependencyDeclarationScope internal constructor(private val publisher: Str
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class DependencyFeatureDeclarationScope internal constructor() {
   var enabled: Boolean = false
 }

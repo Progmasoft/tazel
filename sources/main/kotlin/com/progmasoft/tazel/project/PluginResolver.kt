@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -16,7 +16,7 @@ import kotlin.io.path.extension
 import kotlin.streams.toList
 
 object PluginResolver {
-  private const val DESCRIPTOR = "META-INF/visual-xsharp-plugin.properties"
+  private const val DESCRIPTOR = "META-INF/tala-plugin.properties"
   private val indexCache = ConcurrentHashMap<String, CachedIndex>()
 
   fun resolve(
@@ -24,7 +24,7 @@ object PluginResolver {
     requests: List<PluginRequest>,
   ): List<ResolvedPlugin> {
     if (requests.isEmpty()) return emptyList()
-    val cache = root.resolve(".visual-xsharp/plugins").toAbsolutePath().normalize()
+    val cache = root.resolve(".tazel/plugins").toAbsolutePath().normalize()
     val candidates =
       if (Files.isDirectory(cache)) index(cache).groupBy(ResolvedPlugin::coordinate) else emptyMap()
     return requests.map { request ->

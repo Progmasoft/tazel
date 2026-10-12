@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.file.Files
 import java.sql.DriverManager
@@ -153,7 +153,7 @@ class DependencyDslTest {
     assertTrue(document.contains("\"source\":\"local\""))
     assertTrue(document.contains("\"path\":\"packages/dependency.vipkg\""))
 
-    val root = Files.createTempDirectory("visual-xsharp-local-lock-")
+    val root = Files.createTempDirectory("tala-local-lock-")
     try {
       ProjectLockFile.write(
         root,
@@ -189,7 +189,7 @@ class DependencyDslTest {
 
   @Test
   fun writesBinaryLockfileWithoutDump() {
-    val root = Files.createTempDirectory("visual-xsharp-lock-")
+    val root = Files.createTempDirectory("tala-lock-")
     try {
       dependencies {
         dependency("Publisher") {
@@ -210,7 +210,7 @@ class DependencyDslTest {
       val lock = root.resolve(ProjectLockFile.FILE_NAME)
 
       assertTrue(Files.isRegularFile(lock))
-      assertFalse(Files.exists(root.resolve("Visual.XSharp.Lockfile.sqlite3.dump")))
+      assertFalse(Files.exists(root.resolve("LOCK.dump")))
       DriverManager.getConnection("jdbc:sqlite:$lock").use { connection ->
         connection.createStatement().use { statement ->
           statement.executeQuery("SELECT name, version FROM packages").use { rows ->
@@ -245,6 +245,6 @@ class DependencyDslTest {
     assertTrue(text.contains("\"publisher\":\"Publisher\""))
     assertTrue(text.contains("\"name\":\"Name\""))
     assertTrue(text.contains("\"stability\":\"BETA\""))
-    assertFalse(text.contains("XSharp.JSON"))
+    assertFalse(text.contains("Progmasoft.Tala.JSON"))
   }
 }

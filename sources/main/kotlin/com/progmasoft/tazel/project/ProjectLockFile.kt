@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -14,7 +14,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 
 object ProjectLockFile {
-  const val FILE_NAME = "Visual.XSharp.Lockfile.sqlite3"
+  const val FILE_NAME = "LOCK.sqlite3"
   private const val FORMAT_VERSION = 3
 
   fun write(
@@ -25,7 +25,7 @@ object ProjectLockFile {
     val validated =
       validateDependencies(manifest.required, manifest.optional, manifest.features, manifest.local)
     Files.createDirectories(root)
-    val temporary = Files.createTempFile(root, ".visual-xsharp-lock-", ".sqlite3")
+    val temporary = Files.createTempFile(root, ".tala-lock-", ".sqlite3")
     try {
       DriverManager.getConnection("jdbc:sqlite:${temporary.toAbsolutePath()}").use { connection ->
         connection.autoCommit = false
@@ -286,9 +286,7 @@ object ProjectLockFile {
         }
       }
     if (version != FORMAT_VERSION) {
-      throw ProjectConfigurationException(
-        "unsupported Visual.XSharp.Lockfile.sqlite3 format version '$version'"
-      )
+      throw ProjectConfigurationException("unsupported LOCK.sqlite3 format version '$version'")
     }
   }
 }

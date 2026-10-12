@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
-@DslMarker annotation class VisualXsharpKts
+@DslMarker annotation class TalaKts
 
-@VisualXsharpKts
+@TalaKts
 class CompilerScope internal constructor(private val settings: CompilerSettings) {
   var version: String
     get() = settings.version
@@ -44,7 +44,7 @@ class CompilerScope internal constructor(private val settings: CompilerSettings)
     }
 
   var warnings: Warnings
-    get() = com.progmasoft.visual.xsharp.project.Warnings.valueOf(settings.warningLevel.name)
+    get() = com.progmasoft.tazel.project.Warnings.valueOf(settings.warningLevel.name)
     set(value) {
       settings.warningLevel = WarningLevel.valueOf(value.name)
     }
@@ -76,7 +76,7 @@ class CompilerScope internal constructor(private val settings: CompilerSettings)
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class UnsafeCompilerScope internal constructor(private val settings: CompilerSettings) {
   var xppOptimizationPasses: Boolean
     get() = settings.xppOptimizationPasses
@@ -97,7 +97,7 @@ class UnsafeCompilerScope internal constructor(private val settings: CompilerSet
     }
 }
 
-@VisualXsharpKts
+@TalaKts
 class LlvmCompilerScope internal constructor(private val settings: CompilerSettings) {
   var optLevel: LlvmOptLevel
     get() =

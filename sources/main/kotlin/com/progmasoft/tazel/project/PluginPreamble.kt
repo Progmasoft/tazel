@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 /** A small, non-executing parser for the declarative plugins block. */
 object PluginPreamble {

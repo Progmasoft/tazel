@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import kotlin.io.path.extension
 
-@VisualXsharpKts
+@TalaKts
 class DependenciesScope internal constructor() {
   internal val required = mutableListOf<PackageDependency>()
   internal val optional = mutableListOf<OptionalPackageDependency>()

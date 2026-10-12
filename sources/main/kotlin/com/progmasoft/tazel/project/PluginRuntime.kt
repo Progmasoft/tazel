@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -117,7 +117,7 @@ object PluginRuntime {
 
   fun activate() {
     val manifest =
-      System.getProperty("vxs.project.pluginManifest")?.takeIf(String::isNotBlank) ?: return
+      System.getProperty("talac.project.pluginManifest")?.takeIf(String::isNotBlank) ?: return
     activate(
       PluginManifest.read(Path.of(manifest)),
       ServiceLoader.load(ProjectPlugin::class.java).toList(),
@@ -249,7 +249,7 @@ object PluginRuntime {
 
   private fun configuredProjectRoot(): Path {
     val root =
-      System.getProperty("vxs.project.root")?.takeIf(String::isNotBlank)
+      System.getProperty("talac.project.root")?.takeIf(String::isNotBlank)
         ?: throw ProjectConfigurationException(
           "project root is not configured for plugin activation"
         )

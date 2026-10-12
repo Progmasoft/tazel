@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -29,9 +29,9 @@ class ProjectDslTest {
 
   @AfterTest
   fun clearProperties() {
-    System.clearProperty("vxs.project.root")
-    System.clearProperty("vxs.project.output")
-    System.clearProperty("vxs.project.sources")
+    System.clearProperty("talac.project.root")
+    System.clearProperty("talac.project.output")
+    System.clearProperty("talac.project.sources")
   }
 
   @Test
@@ -68,7 +68,7 @@ class ProjectDslTest {
       library {
         name = "Runtime"
         namespace = "Artifacts.Runtime"
-        viPkgType(ViPkgType.VXSLIB, ViPkgType.STATICLIB)
+        viPkgType(ViPkgType.TALALIB, ViPkgType.STATICLIB)
       }
     }
 
@@ -76,7 +76,7 @@ class ProjectDslTest {
     assertEquals("Artifacts.Program", plan.executables.single().entry)
     assertEquals("Artifacts.Runtime", plan.libraries.single().namespace)
     assertEquals(
-      listOf(ViPkgType.VXSLIB, ViPkgType.STATICLIB),
+      listOf(ViPkgType.TALALIB, ViPkgType.STATICLIB),
       plan.libraries.single().viPkgTypes,
     )
     assertFalse(PlanWriter.write(plan).contains("\"emit\""))
@@ -254,7 +254,7 @@ class ProjectDslTest {
     sources { executable { entry = "Plan.Main" } }
     val text = PlanWriter.write(ProjectRuntime.build())
 
-    assertTrue(text.startsWith("{\"format\":\"visual-xsharp-project-plan\",\"version\":5"))
+    assertTrue(text.startsWith("{\"format\":\"tala-project-plan\",\"version\":5"))
     assertTrue(text.contains("\"entry\":\"Plan.Main\""))
     assertTrue(text.contains("\"xmmOptimizationPasses\":true"))
     assertFalse(text.contains("module"))
@@ -395,8 +395,8 @@ class ProjectDslTest {
 
   @Test
   fun emitsSourceRootsWithoutSearchingForEntryFile() {
-    val root = Files.createTempDirectory("visual-xsharp-project-")
-    val output = Files.createTempFile("visual-xsharp-sources-", ".bin")
+    val root = Files.createTempDirectory("tala-project-")
+    val output = Files.createTempFile("tala-sources-", ".bin")
     try {
       Files.createDirectories(root.resolve("Sources"))
       Files.createDirectories(root.resolve("Tests/Unit"))
@@ -416,13 +416,13 @@ class ProjectDslTest {
         test("integration") { testDir = "Tests/Integration" }
       }
       targets { target("x86_64-pc-windows-msvc") }
-      System.setProperty("vxs.project.root", root.toString())
-      System.setProperty("vxs.project.output", "sources0")
-      System.setProperty("vxs.project.sources", output.toString())
+      System.setProperty("talac.project.root", root.toString())
+      System.setProperty("talac.project.output", "sources0")
+      System.setProperty("talac.project.sources", output.toString())
 
       ProjectOutput.emit(ProjectRuntime.build())
       val records = readRecords(output)
-      assertEquals("visual-xsharp-sources-v6", records[0])
+      assertEquals("tala-sources-v6", records[0])
       assertEquals("build/debug", records[16])
       assertEquals("1", records[17])
       assertEquals("1", records[18])
@@ -444,7 +444,7 @@ class ProjectDslTest {
         records[33].endsWith("Tests\\Integration") || records[33].endsWith("Tests/Integration")
       )
       assertEquals("0", records[34])
-      assertFalse(records.any { it.endsWith(".vxs") })
+      assertFalse(records.any { it.endsWith(".tala") })
     } finally {
       root.toFile().deleteRecursively()
       Files.deleteIfExists(output)
