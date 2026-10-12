@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,9 +29,9 @@ class PluginInfrastructureTest {
 
   @AfterTest
   fun cleanupProperties() {
-    System.clearProperty("vxs.project.root")
-    System.clearProperty("vxs.project.output")
-    System.clearProperty("vxs.project.pluginManifest")
+    System.clearProperty("talac.project.root")
+    System.clearProperty("talac.project.output")
+    System.clearProperty("talac.project.pluginManifest")
     ProjectRuntime.reset()
   }
 
@@ -79,7 +79,7 @@ class PluginInfrastructureTest {
 
   @Test
   fun resolvesExplicitLocalPluginJarByItsVerifiedDescriptor() {
-    val root = Files.createTempDirectory("visual-xsharp-local-plugin-")
+    val root = Files.createTempDirectory("tala-local-plugin-")
     try {
       val artifact = createPluginJar(root)
       val request = PluginRequest("local", null, null, artifact.fileName.toString())
@@ -120,9 +120,9 @@ class PluginInfrastructureTest {
 
   @Test
   fun resolvesDescriptorAndVerifiesOptionalChecksum() {
-    val root = Files.createTempDirectory("visual-xsharp-plugin-resolver-")
+    val root = Files.createTempDirectory("tala-plugin-resolver-")
     try {
-      val directory = Files.createDirectories(root.resolve(".visual-xsharp/plugins"))
+      val directory = Files.createDirectories(root.resolve(".tala/plugins"))
       val artifact = createPluginJar(directory, version = "1.2.3")
       Files.writeString(artifact.resolveSibling("${artifact.fileName}.sha256"), sha256(artifact))
 
@@ -133,7 +133,7 @@ class PluginInfrastructureTest {
         )
 
       assertEquals("Progmasoft.Fixture", resolved.single().coordinate)
-      assertEquals(listOf("com.progmasoft.visual.xsharp.project.*"), resolved.single().imports)
+      assertEquals(listOf("com.progmasoft.tazel.project.*"), resolved.single().imports)
       assertEquals(64, resolved.single().sha256.length)
       assertSame(
         resolved.single(),
@@ -150,9 +150,9 @@ class PluginInfrastructureTest {
 
   @Test
   fun rejectsChecksumMismatchAndApiMismatch() {
-    val root = Files.createTempDirectory("visual-xsharp-plugin-integrity-")
+    val root = Files.createTempDirectory("tala-plugin-integrity-")
     try {
-      val directory = Files.createDirectories(root.resolve(".visual-xsharp/plugins"))
+      val directory = Files.createDirectories(root.resolve(".tala/plugins"))
       val artifact = createPluginJar(directory)
       Files.writeString(artifact.resolveSibling("${artifact.fileName}.sha256"), "0".repeat(64))
       assertFailsWith<ProjectConfigurationException> {
@@ -172,7 +172,7 @@ class PluginInfrastructureTest {
 
   @Test
   fun activatesLifecycleAndRejectsExtensionCollisions() {
-    val root = Files.createTempDirectory("visual-xsharp-plugin-runtime-")
+    val root = Files.createTempDirectory("tala-plugin-runtime-")
     try {
       val first = resolved(root, "First")
       val second = resolved(root, "Second")
@@ -201,7 +201,7 @@ class PluginInfrastructureTest {
 
   @Test
   fun lockfilePersistsResolvedPluginIdentityAndDigest() {
-    val root = Files.createTempDirectory("visual-xsharp-plugin-lock-")
+    val root = Files.createTempDirectory("tala-plugin-lock-")
     try {
       val plugin =
         PluginPlanEntry(
@@ -239,9 +239,9 @@ class PluginInfrastructureTest {
 
   @Test
   fun manifestRejectsArtifactChangedAfterResolution() {
-    val root = Files.createTempDirectory("visual-xsharp-plugin-manifest-")
+    val root = Files.createTempDirectory("tala-plugin-manifest-")
     try {
-      val directory = Files.createDirectories(root.resolve(".visual-xsharp/plugins"))
+      val directory = Files.createDirectories(root.resolve(".tala/plugins"))
       val artifact = createPluginJar(directory)
       val resolved =
         PluginResolver.resolve(
@@ -265,14 +265,14 @@ class PluginInfrastructureTest {
   ): Path {
     val path = directory.resolve("fixture-$version.jar")
     JarOutputStream(path.outputStream()).use { jar ->
-      jar.putNextEntry(JarEntry("META-INF/visual-xsharp-plugin.properties"))
+      jar.putNextEntry(JarEntry("META-INF/tala-plugin.properties"))
       jar.write(
         """
         publisher=Progmasoft
         name=Fixture
         version=$version
         apiVersion=$apiVersion
-        imports=com.progmasoft.visual.xsharp.project.*
+        imports=com.progmasoft.tazel.project.*
         """
           .trimIndent()
           .toByteArray()

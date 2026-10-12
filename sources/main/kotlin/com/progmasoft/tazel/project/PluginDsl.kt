@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
-@VisualXsharpKts
+@TalaKts
 class PluginDeclarationScope internal constructor(private val publisher: String) {
   var name: String? = null
   var version: String? = null
@@ -39,7 +39,7 @@ class PluginDeclarationScope internal constructor(private val publisher: String)
   }
 }
 
-@VisualXsharpKts
+@TalaKts
 class PluginsScope internal constructor() {
   private val requests = mutableListOf<PluginRequest>()
 

@@ -3,16 +3,16 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xdc
+package com.progmasoft.tazel.dc
 
-import com.progmasoft.visual.xsharp.project.DependencyManifest
-import com.progmasoft.visual.xsharp.project.LocalPackageDependency
-import com.progmasoft.visual.xsharp.project.OptionalPackageDependency
-import com.progmasoft.visual.xsharp.project.PackageDependency
-import com.progmasoft.visual.xsharp.project.PackageFeatureSelection
-import com.progmasoft.visual.xsharp.project.ProjectConfigurationException
-import com.progmasoft.visual.xsharp.project.ProjectLockFile
-import com.progmasoft.visual.xsharp.project.Stability
+import com.progmasoft.tazel.project.DependencyManifest
+import com.progmasoft.tazel.project.LocalPackageDependency
+import com.progmasoft.tazel.project.OptionalPackageDependency
+import com.progmasoft.tazel.project.PackageDependency
+import com.progmasoft.tazel.project.PackageFeatureSelection
+import com.progmasoft.tazel.project.ProjectConfigurationException
+import com.progmasoft.tazel.project.ProjectLockFile
+import com.progmasoft.tazel.project.Stability
 import java.nio.file.Files
 import java.sql.DriverManager
 import kotlin.io.path.readText
@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
 class LockfileDumpTest {
   @Test
   fun writesDeterministicReplayableSqlText() {
-    val root = Files.createTempDirectory("visual-xsharp-vxdc-")
+    val root = Files.createTempDirectory("tala-tadc-")
     try {
       val manifest =
         DependencyManifest(
@@ -48,7 +48,7 @@ class LockfileDumpTest {
 
       val text = first.readText()
       assertEquals(text, second.readText())
-      assertTrue(text.startsWith("-- Visual X# lockfile SQL dump\nPRAGMA foreign_keys=OFF;\n"))
+      assertTrue(text.startsWith("-- Tala lockfile SQL dump\nPRAGMA foreign_keys=OFF;\n"))
       assertTrue(text.contains("CREATE TABLE metadata"))
       assertTrue(text.contains("INSERT INTO \"metadata\" VALUES('format_version','3');"))
       assertTrue(text.contains("INSERT INTO \"local_packages\" VALUES('packages/o''neil.vipkg');"))
@@ -77,7 +77,7 @@ class LockfileDumpTest {
 
   @Test
   fun rejectsBinaryLockfileAsItsOwnOutput() {
-    val root = Files.createTempDirectory("visual-xsharp-vxdc-overwrite-")
+    val root = Files.createTempDirectory("tala-tadc-overwrite-")
     try {
       ProjectLockFile.write(root, DependencyManifest(emptyList(), emptyList(), emptyList()))
       val lockfile = root.resolve(ProjectLockFile.FILE_NAME)
@@ -89,24 +89,24 @@ class LockfileDumpTest {
 
   @Test
   fun parsesCaseSensitiveOptionsWithoutRestrictingTheOutputExtension() {
-    val root = Files.createTempDirectory("visual-xsharp-vxdc-command-")
+    val root = Files.createTempDirectory("tala-tadc-command-")
     try {
-      val project = root.resolve("Visual.XSharp.kts")
+      val project = root.resolve("BUILD.kts")
       Files.writeString(project, "sources { executable { entry = \"Example.Main\" } }")
       val command =
-        parseVxdcCommand(
+        parseTadcCommand(
           arrayOf("-Projectfile", project.toString(), "-Output", "Example.lock-report")
         )
       assertEquals(project.toFile().canonicalFile, command.projectFile)
       assertEquals("Example.lock-report", command.output.toString())
       assertEquals(
         "dump.json",
-        parseVxdcCommand(arrayOf("-Projectfile", project.toString(), "-Output", "dump.json"))
+        parseTadcCommand(arrayOf("-Projectfile", project.toString(), "-Output", "dump.json"))
           .output
           .toString(),
       )
       assertFailsWith<ProjectConfigurationException> {
-        parseVxdcCommand(
+        parseTadcCommand(
           arrayOf("-projectfile", project.toString(), "-Output", "Example.lock-report")
         )
       }

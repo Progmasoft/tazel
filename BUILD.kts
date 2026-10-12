@@ -7,7 +7,7 @@ project {
   name = "Example"
   version = "0.3.2"
   stability = Stability.BETA
-  description = "A Visual X# project"
+  description = "A Tala project"
   authors("Leitwolf", "Helmut")
   defaultFeatures("TOML")
 }

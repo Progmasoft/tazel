@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xdc
+package com.progmasoft.tazel.dc
 
-import com.progmasoft.visual.xsharp.project.ProjectConfigurationException
-import com.progmasoft.visual.xsharp.project.ProjectLockFile
+import com.progmasoft.tazel.project.ProjectConfigurationException
+import com.progmasoft.tazel.project.ProjectLockFile
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -16,7 +16,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.sql.Connection
 import java.sql.DriverManager
 
-/** Writes a deterministic, replayable SQL representation of a Visual X# lock database. */
+/** Writes a deterministic, replayable SQL representation of a Tala lock database. */
 object LockfileDump {
   fun write(
     lockfile: Path,
@@ -33,12 +33,12 @@ object LockfileDump {
 
     val parent = target.parent
     Files.createDirectories(parent)
-    val temporary = Files.createTempFile(parent, ".visual-xsharp-dump-", ".tmp")
+    val temporary = Files.createTempFile(parent, ".tala-dump-", ".tmp")
     try {
       DriverManager.getConnection("jdbc:sqlite:$source").use { connection ->
         ProjectLockFile.requireFormatVersion(connection)
         Files.newBufferedWriter(temporary, StandardCharsets.UTF_8).use { writer ->
-          writer.appendLine("-- Visual X# lockfile SQL dump")
+          writer.appendLine("-- Tala lockfile SQL dump")
           writer.appendLine("PRAGMA foreign_keys=OFF;")
           writer.appendLine("BEGIN TRANSACTION;")
           readTables(connection).forEach { table ->

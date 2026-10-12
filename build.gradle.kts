@@ -14,7 +14,7 @@ plugins {
   jacoco
 }
 
-group = "com.progmasoft.visual.xsharp"
+group = "com.progmasoft.tala"
 version = "0.5.1"
 
 repositories {
@@ -41,10 +41,10 @@ java {
 }
 
 application {
-  // VXDC is the only standalone JVM command. The native vxs driver invokes the
+  // TADC is the only standalone JVM command. The native talac driver invokes the
   // project evaluator main class directly from this distribution's libraries.
-  mainClass = "com.progmasoft.visual.xdc.VxdcKt"
-  applicationName = "vxdc"
+  mainClass = "com.progmasoft.tazel.dc.TadcKt"
+  applicationName = "tadc"
   applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 

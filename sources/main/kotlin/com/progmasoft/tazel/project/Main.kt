@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.io.File
 import java.nio.file.Files
@@ -20,7 +20,7 @@ internal data class ProjectFiles(
 )
 
 private fun usage() =
-  "internal vxs project evaluator usage: evaluate [project-root]\n" +
+  "internal talac project evaluator usage: evaluate [project-root]\n" +
     "       resolve [project-root]\n" +
     "       sources0 <project-root> <output-file>"
 
@@ -34,7 +34,7 @@ internal fun requireSupportedJava() {
 }
 
 private fun filesAt(root: File): ProjectFiles? {
-  val project = root.resolve("Visual.XSharp.kts").takeIf(File::isFile) ?: return null
+  val project = root.resolve("BUILD.kts").takeIf(File::isFile) ?: return null
   return ProjectFiles(root, project)
 }
 
@@ -89,7 +89,7 @@ internal fun kotlinCommand(
   osName: String = System.getProperty("os.name"),
 ): String {
   environment.entries
-    .firstOrNull { it.key.equals("VXS_KOTLIN", ignoreCase = true) }
+    .firstOrNull { it.key.equals("TALA_KOTLIN", ignoreCase = true) }
     ?.value
     ?.takeIf(String::isNotBlank)
     ?.let {
@@ -113,7 +113,7 @@ private fun runKotlin(
   output: String,
   sourcesOutput: Path?,
 ): Int {
-  val directory = Files.createTempDirectory("vxs-project-kts-")
+  val directory = Files.createTempDirectory("tala-project-kts-")
   return try {
     val prepared = prepareScript(script)
     val resolvedPlugins = PluginResolver.resolve(root.toPath(), prepared.requests)
@@ -126,7 +126,7 @@ private fun runKotlin(
         "import $importName\n"
       }
     wrapped.writeText(
-      "import com.progmasoft.visual.xsharp.project.*\n" +
+      "import com.progmasoft.tazel.project.*\n" +
         imports +
         "PluginRuntime.activate()\n" +
         prepared.source +
@@ -135,11 +135,11 @@ private fun runKotlin(
     val kotlin = kotlinCommand()
     val properties =
       mutableListOf(
-        "-Dvxs.project.root=${root.absolutePath}",
-        "-Dvxs.project.output=$output",
-        "-Dvxs.project.pluginManifest=$pluginManifest",
+        "-Dtazel.project.root=${root.absolutePath}",
+        "-Dtazel.project.output=$output",
+        "-Dtazel.project.pluginManifest=$pluginManifest",
       )
-    if (sourcesOutput != null) properties += "-Dvxs.project.sources=$sourcesOutput"
+    if (sourcesOutput != null) properties += "-Dtazel.project.sources=$sourcesOutput"
     val arguments = mutableListOf<String>()
     if (
       System.getProperty("os.name").startsWith("Windows") &&
@@ -213,7 +213,7 @@ fun main(args: Array<String>) {
       }
     exitProcess(status)
   } catch (error: ProjectConfigurationException) {
-    System.err.println("vxs: project evaluator: ${error.message}")
+    System.err.println("talac: project evaluator: ${error.message}")
     exitProcess(1)
   }
 }

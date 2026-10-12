@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
  */
 
-package com.progmasoft.visual.xsharp.project
+package com.progmasoft.tazel.project
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 
 object ProjectOutput {
-  private const val REGISTRY_VERSION = "visual-xsharp-sources-v6"
+  private const val REGISTRY_VERSION = "tala-sources-v6"
 
   fun emit(plan: ProjectPlan) {
     val root = projectRoot()
@@ -25,7 +25,7 @@ object ProjectOutput {
       ),
       plan.plugins,
     )
-    when (System.getProperty("vxs.project.output", "plan")) {
+    when (System.getProperty("talac.project.output", "plan")) {
       "plan" -> println(PlanWriter.write(plan))
       "resolve" -> Unit
       "sources0" -> writeRegistry(plan, resolved)
@@ -101,14 +101,14 @@ object ProjectOutput {
     plan: ProjectPlan,
     project: ResolvedRoots,
   ) {
-    val configuredOutput = System.getProperty("vxs.project.sources")?.takeIf(String::isNotBlank)
+    val configuredOutput = System.getProperty("talac.project.sources")?.takeIf(String::isNotBlank)
     val output = configuredOutput?.let { Files.newOutputStream(Path.of(it)) } ?: System.out
     try {
       val compiler = plan.compiler
       val optLevel =
         compiler.llvmOptLevel
           ?: if (compiler.buildMode == BuildMode.DEBUG) LlvmOptLevel.O0 else LlvmOptLevel.O3
-      // The DSL exports roots and exclusion policy, not a snapshot of .vxs files.
+      // The DSL exports roots and exclusion policy, not a snapshot of .tala files.
       // Namespace resolution and source discovery are compiler responsibilities;
       // neither file names nor directory layout define the entry type.
       listOf(
@@ -171,7 +171,7 @@ object ProjectOutput {
 
   private fun projectRoot(): Path {
     val configured =
-      System.getProperty("vxs.project.root")?.takeIf(String::isNotBlank)
+      System.getProperty("talac.project.root")?.takeIf(String::isNotBlank)
         ?: throw ProjectConfigurationException("project root is not configured")
     return Path.of(configured).toAbsolutePath().normalize()
   }
