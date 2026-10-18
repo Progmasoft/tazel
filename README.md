@@ -44,6 +44,23 @@ is needed beside the JRE.
 .\gradlew.bat installDist    # build\install\tazel\bin\tazel(.bat)
 ```
 
+The same steps, and a few more, are available as one Kotlin script built on Clikt. It needs the `kotlin` launcher (the
+GitHub runners have it; IntelliJ IDEA ships one under `plugins/Kotlin/kotlinc/bin`) and JDK 25:
+
+```powershell
+kotlin helpers/develop.main.kts --help
+kotlin helpers/develop.main.kts doctor          # JDK and Gradle wrapper
+kotlin helpers/develop.main.kts check           # what CI runs
+kotlin helpers/develop.main.kts run -- lock graph
+kotlin helpers/develop.main.kts version         # build.gradle.kts and CHANGELOG.md agree
+kotlin helpers/develop.main.kts version --set 0.2.0
+kotlin helpers/develop.main.kts clean           # build/, .gradle/, .kotlin/
+```
+
+`version --set` writes the version into `build.gradle.kts` and turns the notes under `## Unreleased` in `CHANGELOG.md`
+into the section of that version, dated today. The command line of Tazel itself stays hand-written; Clikt is used only
+by this developer script.
+
 Every resolved dependency is locked in `gradle.lockfile`, which OSV-Scanner also reads. After changing a dependency, run
 `.\gradlew.bat dependencies --write-locks` and commit the lock file with the change.
 
