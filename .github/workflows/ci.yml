@@ -46,11 +46,38 @@ jobs:
         shell: bash
         run: ./gradlew check --no-daemon
 
+  helpers:
+    name: Developer script
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install JDK 25
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # The runner image ships the kotlin launcher. Compiling the script proves
+      # it still builds; the version check keeps build.gradle.kts and the
+      # changelog in step.
+      - name: Check the host and the release metadata
+        shell: bash
+        run: |
+          kotlin -version
+          kotlin helpers/develop.main.kts doctor
+          kotlin helpers/develop.main.kts version
+
   required:
     name: CI Required
     runs-on: ubuntu-26.04
     if: always()
-    needs: [check]
+    needs: [check, helpers]
     steps:
-      - name: Require every host
-        run: test '${{ needs.check.result }}' = success
+      - name: Require every job
+        run: |
+          test '${{ needs.check.result }}' = success
+          test '${{ needs.helpers.result }}' = success

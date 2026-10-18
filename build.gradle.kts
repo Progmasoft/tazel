@@ -62,7 +62,7 @@ sourceSets {
 
 spotless {
   kotlin {
-    target("sources/**/*.kt")
+    target("sources/**/*.kt", "helpers/**/*.kts")
     ktfmt().googleStyle()
     trimTrailingWhitespace()
     endWithNewline()
