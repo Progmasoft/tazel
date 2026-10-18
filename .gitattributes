@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+# SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
+
+* text=auto eol=lf
+
+# The Windows wrapper is a batch file and keeps CRLF; the POSIX wrapper keeps LF
+# so that it runs on Linux, macOS and in Git Bash.
+*.bat text eol=crlf
+gradlew text eol=lf
+*.jar binary

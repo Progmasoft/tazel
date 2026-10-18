@@ -3,7 +3,8 @@
 
 # Tazel
 
-Tazel is the build system and package manager of Tala. The name joins Tala and Bazel.
+Tazel is the build system and package manager of [Tala](https://tala.run/). The name joins Tala and Bazel.
+It moved from the [compiler repository](https://github.com/Progmasoft/tala) with its history on 2026-10-18.
 
 Tazel is a Kotlin program for the JVM (25 or newer). It reads the project file, finds the sources and starts the compiler,
 the formatter or the linter as separate programs: Talac, `talafmt` and `talalint`. It compiles nothing itself and shares
@@ -17,8 +18,9 @@ tazel fmt -- --check
 tazel lint -- --fix
 ```
 
-[Command-line interfaces](../Documents/CLI.md#tazel) lists every command and [Tala project files](../Documents/PROJECT_FILES.md)
-describes the project file. [`BUILD.kts`](BUILD.kts) in this directory is the whole DSL in one file; a test evaluates it.
+[The `tazel` command](Documents/CLI.md) lists every command and [Tala project files](Documents/PROJECT_FILES.md)
+describes the project file. [`BUILD.kts`](BUILD.kts) is the whole DSL in one file; a test evaluates it.
+The documentation is also published at [tazel.tala.run](https://tazel.tala.run/).
 
 ## Layout
 

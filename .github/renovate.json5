@@ -1,0 +1,31 @@
+// SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+// SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
+
+// Renovate proposes the version updates of this repository. Dependabot keeps
+// its alerts and its security updates; its version updates are off, so that
+// two bots do not open the same pull request.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", "helpers:pinGitHubActionDigests"],
+
+  timezone: "Europe/Istanbul",
+  // Once a week, before the working day.
+  schedule: ["before 6am on monday"],
+
+  // A release is taken a week after it is published: one that turns out to
+  // be broken or malicious is usually withdrawn within days.
+  minimumReleaseAge: "7 days",
+
+  rebaseWhen: "conflicted",
+  prConcurrentLimit: 2,
+  prHourlyLimit: 2,
+  dependencyDashboard: true,
+  vulnerabilityAlerts: { enabled: false },
+
+  enabledManagers: ["github-actions", "gradle", "gradle-wrapper"],
+
+  packageRules: [
+    { matchManagers: ["github-actions"], groupName: "GitHub Actions" },
+    { matchManagers: ["gradle", "gradle-wrapper"], groupName: "Gradle plugins and libraries" },
+  ],
+}
