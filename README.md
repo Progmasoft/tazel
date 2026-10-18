@@ -18,9 +18,17 @@ tazel fmt -- --check
 tazel lint -- --fix
 ```
 
-[The `tazel` command](Documents/CLI.md) lists every command and [Tala project files](Documents/PROJECT_FILES.md)
-describes the project file. [`BUILD.kts`](BUILD.kts) is the whole DSL in one file; a test evaluates it.
-The documentation is also published at [tazel.tala.run](https://tazel.tala.run/).
+## Documentation
+
+- [The `tazel` command](Documents/CLI.md): every command, target selection, workspaces, the dependency graph.
+- [Tala project files](Documents/PROJECT_FILES.md): the project file, block by block. [`BUILD.kts`](BUILD.kts) is the
+  whole DSL in one file; a test evaluates it.
+- [The lockfile](Documents/LOCKFILE.md): what `LOCK.sqlite3` records, when it is written, and its text dump.
+- [Writing a plugin](Documents/PLUGINS.md): the descriptor, the API, and how Tazel verifies and loads a plugin.
+- [How Tazel works](Documents/ARCHITECTURE.md): one command followed through the code.
+- [Contributing](CONTRIBUTING.md): checks, tests, conventions, adding a command, releases.
+
+The site of Tazel is [tazel.tala.run](https://tazel.tala.run/).
 
 ## Layout
 

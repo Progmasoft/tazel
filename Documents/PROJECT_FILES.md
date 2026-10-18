@@ -3,7 +3,7 @@
 
 # Tala project files
 
-A project is described by one file, a Kotlin script that [Tazel](CLI.md#tazel) evaluates. Tazel reads it, finds the
+A project is described by one file, a Kotlin script that [Tazel](CLI.md) evaluates. Tazel reads it, finds the
 sources it names and starts the compiler; the compiler itself never sees a project file.
 
 ## Discovery
@@ -262,7 +262,7 @@ beside the JAR pins the expected digest. A plugin has no stability.
 
 A plugin is written against the package `com.progmasoft.api.tazel.dsl.plugin`. It can register DSL extensions, contribute
 metadata and run a hook once the project is complete. A plugin is trusted build logic: it runs with the full access of
-the JVM, and Tazel does not sandbox it.
+the JVM, and Tazel does not sandbox it. [Writing a plugin](PLUGINS.md) shows how one is built and loaded.
 
 ## Host values and helpers
 
@@ -288,6 +288,7 @@ the project file. It records declarations, not a solved dependency graph.
 
 `tazel lock create-dump` writes `LOCK.dump`: the same content as SQL text, deterministic and replayable by SQLite, for
 review and for diffs. `--path` writes it to another file in a folder that already exists; see [CLI](CLI.md).
+[The lockfile](LOCKFILE.md) describes its tables and when each command writes it.
 
 ## Tool configuration
 

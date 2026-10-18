@@ -8,6 +8,9 @@
 - `helpers/develop.main.kts`, a Kotlin script built on Clikt, runs the developer
   steps: `doctor`, `build`, `test`, `check`, `format`, `run`, `clean` and
   `version`. CI runs its `doctor` and `version` checks.
+- New documents: how Tazel works (one command through the code), writing a
+  plugin, the lockfile and its format, and a contributing guide, with an index
+  in `Documents/README.md`.
 
 ## 0.1.0 - 2026-10-18
 
