@@ -44,8 +44,10 @@ is needed beside the JRE.
 .\gradlew.bat installDist    # build\install\tazel\bin\tazel(.bat)
 ```
 
-The same steps, and a few more, are available as one Kotlin script built on Clikt. It needs the `kotlin` launcher (the
-GitHub runners have it; IntelliJ IDEA ships one under `plugins/Kotlin/kotlinc/bin`) and JDK 25:
+The same steps, and a few more, are available as one Kotlin script built on Clikt. It needs JDK 25 and the `kotlin` launcher.
+The GitHub runners have it. Elsewhere, unpack `kotlin-compiler-<version>.zip` from the
+[Kotlin releases](https://github.com/JetBrains/kotlin/releases) and put its `kotlinc/bin` on `PATH`; the launcher
+under `plugins/Kotlin/kotlinc/bin` in IntelliJ IDEA works too:
 
 ```powershell
 kotlin helpers/develop.main.kts --help
