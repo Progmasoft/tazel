@@ -97,6 +97,9 @@ A release is tagged `tazel-<version>`. To prepare one:
 ```powershell
 kotlin helpers/develop.main.kts version --set 0.2.0
 kotlin helpers/develop.main.kts check
+kotlin helpers/develop.main.kts version --release 0.2.0     # on main, before tagging
+kotlin helpers/develop.main.kts release-notes 0.2.0 --output notes.md
+kotlin helpers/develop.main.kts bundle
 ```
 
 `version --set` writes the version into `build.gradle.kts` and turns the notes under `## Unreleased` into the section

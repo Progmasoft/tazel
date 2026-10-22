@@ -75,6 +75,13 @@ spotless {
   }
 }
 
+// The distribution archives keep no file times and a fixed order, so the same commit packs into
+// the same bytes and the SHA-256 that `develop bundle` writes can be reproduced.
+tasks.withType<AbstractArchiveTask>().configureEach {
+  isPreserveFileTimestamps = false
+  isReproducibleFileOrder = true
+}
+
 tasks.jar {
   manifest {
     attributes("Implementation-Title" to "Tazel", "Implementation-Version" to project.version)
