@@ -61,15 +61,37 @@ jobs:
           distribution: temurin
           java-version: "25"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
       # The runner image ships the kotlin launcher. Compiling the script proves
-      # it still builds; the version check keeps build.gradle.kts and the
-      # changelog in step.
-      - name: Check the host and the release metadata
+      # it still builds; the self-test covers its logic, the version check
+      # keeps build.gradle.kts and the changelog in step, and verify-docs
+      # every relative Markdown link.
+      - name: Check the host, the script and the release metadata
         shell: bash
         run: |
           kotlin -version
+          kotlin helpers/develop.main.kts self-test
           kotlin helpers/develop.main.kts doctor
           kotlin helpers/develop.main.kts version
+          kotlin helpers/develop.main.kts verify-docs
+
+      # The distribution archives, smoke-tested, with their SHA-256.
+      - name: Bundle
+        shell: bash
+        run: kotlin helpers/develop.main.kts bundle
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tazel-distribution
+          path: |
+            build/distributions/*.zip
+            build/distributions/*.tar
+            build/distributions/*.sha256
+          if-no-files-found: error
+          retention-days: 14
 
   required:
     name: CI Required
