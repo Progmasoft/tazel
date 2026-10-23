@@ -32,6 +32,8 @@ import com.progmasoft.tazel.dsl.OperatingSystem
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectLoader
 import com.progmasoft.tazel.dsl.ProjectLocation
+import com.progmasoft.tazel.dsl.ScriptCache
+import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.coordinate
 import com.progmasoft.tazel.dsl.discoverProject
 import com.progmasoft.tazel.dsl.projectFileIn
@@ -76,6 +78,9 @@ class Tazel(
   private val toolchain: Toolchain,
   private val processes: Processes,
   private val version: String,
+  /** Where compiled project files are kept between runs; `null` compiles every time. */
+  private val scriptCache: ScriptCache? = null,
+  private val timings: Timings = Timings.disabled,
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
@@ -163,6 +168,8 @@ class Tazel(
   private fun warn(message: String) =
     terminal.println((bold + brightYellow)("warning") + ": " + message, stderr = true)
 
+  private fun projectLoader() = ProjectLoader(compilerVersion(), scriptCache, timings, version)
+
   private fun compilerVersion(): String =
     toolchain
       .find(Tool.TALAC)
@@ -171,8 +178,7 @@ class Tazel(
       ?.removePrefix("talac ")
       ?.takeIf(String::isNotBlank) ?: "unknown"
 
-  private fun load(): LoadedWorkspace =
-    loadWorkspace(ProjectLoader(compilerVersion()), discoverProject(directory))
+  private fun load(): LoadedWorkspace = loadWorkspace(projectLoader(), discoverProject(directory))
 
   private fun locked(project: LoadedProject) =
     LockedProject(project.plan.dependencies, project.plan.plugins.map(LockedPlugin::of))
@@ -354,7 +360,7 @@ class Tazel(
    */
   private fun lockGraph(command: Command.LockGraph): Int {
     val invert = command.invert
-    val loader = ProjectLoader(compilerVersion())
+    val loader = projectLoader()
     val workspace =
       if (invert is InvertTarget.Project) {
         projectFileAbove(directory)?.let { loadWorkspace(loader, it) }
