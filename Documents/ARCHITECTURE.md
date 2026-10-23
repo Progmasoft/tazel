@@ -51,13 +51,17 @@ whose file systems would otherwise match it.
 2. **The script.** The whole file is compiled and run by the Kotlin scripting host embedded in Tazel
    (`BasicJvmScriptingHost`), with the DSL and the imports of the plugins as default imports. A compiled script is kept
    in `ScriptCache` (`dsl/ScriptCache.kt`) under a SHA-256 of everything its compilation depends on, so a later run
-   skips the compilation and only evaluates it. The blocks of the script fill
-   one model, `ProjectRuntime`; when the script ends, the model is checked as a whole and becomes an immutable
-   `ProjectPlan`. Checks that depend on several blocks, such as the fields `sources.viget.push` requires, run at this point,
-   so the order of the blocks never matters.
+   skips the compilation and only evaluates it. The blocks of the script fill the `ProjectContext` of this evaluation;
+   when the script ends, the model is checked as a whole and becomes an immutable `ProjectPlan`. Checks that depend on
+   several blocks, such as the fields `sources.viget.push` requires, run at this point, so the order of the blocks never
+   matters.
 
-Only one script runs at a time, because the model it fills is a single object. A compile error in the script is reported
-with the file name, line and column; `panic(message)` stops the evaluation with that message.
+Every evaluation has its own `ProjectContext`: the model, the plugins of the project (`PluginState`) and what its
+`project` block wrote. A project file is a script of top-level calls, so `ProjectRuntime` binds the context to the thread
+that evaluates the script and unbinds it afterwards; `PluginRuntime`, which plugins call, reaches the plugins of that
+context. Project files can therefore be evaluated on several threads at once. Only the Kotlin compiler is used by one
+evaluation at a time. A compile error in the script is reported with the file name, line and column; `panic(message)`
+stops the evaluation with that message.
 
 ### 3. Workspaces and selection
 

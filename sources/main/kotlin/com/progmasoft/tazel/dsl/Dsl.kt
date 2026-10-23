@@ -5,7 +5,7 @@
 
 package com.progmasoft.tazel.dsl
 
-import com.progmasoft.tazel.dsl.plugin.PluginRuntime
+import com.progmasoft.tazel.dsl.plugin.PluginState
 
 @DslMarker annotation class TazelDsl
 
@@ -106,7 +106,21 @@ private fun requireLlvmArgument(value: String): String {
   return argument
 }
 
-class ProjectContext internal constructor(val host: Host = detectHost()) {
+/**
+ * The project one evaluation of a project file builds: the model its blocks fill, the plugins of
+ * the project and what its `project` block wrote. Every evaluation has its own, so two project
+ * files can be evaluated at the same time on two threads.
+ */
+class ProjectContext
+internal constructor(
+  compilerVersion: String = "unknown",
+  val host: Host = detectHost(),
+) {
+  /** The plugins of this project, from activation to the finished plan. */
+  internal val plugins = PluginState()
+
+  /** What the `project` block wrote, for a project file that reads it back afterwards. */
+  internal var projectView: ProjectScope? = null
   private var identity: ProjectIdentity? = null
   private val authors = mutableListOf<String>()
   private val defaultFeatures = mutableListOf<String>()
@@ -121,7 +135,7 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
   private val executables = mutableListOf<ExecutableSourceTarget>()
   private val libraries = mutableListOf<LibrarySourceTarget>()
   private val testSuites = mutableListOf<TestSuite>()
-  internal val compilerSettings = CompilerSettings()
+  internal val compilerSettings = CompilerSettings().apply { version = compilerVersion }
 
   val projectName: String?
     get() = identity?.name
@@ -251,7 +265,7 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
         compilerSettings.copy(),
         emptyList(),
       )
-    return PluginRuntime.finish(plan)
+    return plugins.finish(plan)
   }
 }
 
@@ -291,63 +305,87 @@ internal fun requireProjectDirectory(
 }
 
 /**
- * The project one evaluation of a project file is building. A project file is a script of top-level
- * calls, so the model they fill has to be reachable without a receiver; the evaluator resets it
- * before every script and reads it once the script returns.
+ * The project the DSL of the current thread fills. A project file is a script of top-level calls,
+ * so the model they fill has to be reachable without a receiver: the loader binds a fresh
+ * [ProjectContext] to the thread for the duration of one evaluation and unbinds it afterwards.
+ * Nothing is shared between evaluations, and evaluations on different threads do not wait for each
+ * other.
  */
 internal object ProjectRuntime {
-  private var context = ProjectContext()
+  private val active = ThreadLocal<ProjectContext>()
 
-  fun reset(compilerVersion: String = "unknown") {
-    PluginRuntime.reset()
-    forgetProjectView()
-    context = ProjectContext()
-    context.compilerSettings.version = compilerVersion
+  /** Runs [block] with [context] as the project the DSL of this thread fills. */
+  fun <T> evaluate(
+    context: ProjectContext,
+    block: () -> T,
+  ): T {
+    val previous = active.get()
+    active.set(context)
+    try {
+      return block()
+    } finally {
+      if (previous == null) active.remove() else active.set(previous)
+    }
   }
+
+  /**
+   * Binds a new project to this thread outside an evaluation, for code that calls the DSL directly
+   * rather than through a project file.
+   */
+  fun reset(compilerVersion: String = "unknown") {
+    active.set(ProjectContext(compilerVersion))
+  }
+
+  /** The project being evaluated on this thread. */
+  fun current(): ProjectContext =
+    active.get()
+      ?: throw ProjectConfigurationException(
+        "the project DSL can be used only while a project file is evaluated"
+      )
 
   fun configureIdentity(
     identity: ProjectIdentity,
     authors: List<String>,
     defaultFeatures: List<String>,
-  ) = context.configureIdentity(identity, authors, defaultFeatures)
+  ) = current().configureIdentity(identity, authors, defaultFeatures)
 
   fun configureOutputDirectories(
     release: String,
     debug: String,
-  ) = context.configureOutputDirectories(release, debug)
+  ) = current().configureOutputDirectories(release, debug)
 
-  fun configureTargets(values: List<String>) = context.configureTargets(values)
+  fun configureTargets(values: List<String>) = current().configureTargets(values)
 
-  fun configureWorkspace(value: Workspace) = context.configureWorkspace(value)
+  fun configureWorkspace(value: Workspace) = current().configureWorkspace(value)
 
-  fun configurePml(enabled: Boolean) = context.configurePml(enabled)
+  fun configurePml(enabled: Boolean) = current().configurePml(enabled)
 
   fun configurePublishing(
     push: Boolean,
     excludes: List<String>?,
-  ) = context.configurePublishing(push, excludes)
+  ) = current().configurePublishing(push, excludes)
 
   fun configureSourceTargets(
     executables: List<ExecutableSourceTarget>,
     libraries: List<LibrarySourceTarget>,
-  ) = context.configureSourceTargets(executables, libraries)
+  ) = current().configureSourceTargets(executables, libraries)
 
-  fun dependencies(block: DependenciesScope.() -> Unit) = context.dependencies(block)
+  fun dependencies(block: DependenciesScope.() -> Unit) = current().dependencies(block)
 
-  fun configureTestSuites(suites: List<TestSuite>) = context.configureTestSuites(suites)
+  fun configureTestSuites(suites: List<TestSuite>) = current().configureTestSuites(suites)
 
-  fun compiler(block: CompilerScope.() -> Unit) = context.compiler(block)
+  fun compiler(block: CompilerScope.() -> Unit) = current().compiler(block)
 
-  fun build() = context.build()
+  fun build() = current().build()
 
   val compilerScope
-    get() = CompilerScope(context.compilerSettings)
+    get() = CompilerScope(current().compilerSettings)
 
   val projectName
-    get() = context.projectName
+    get() = current().projectName
 
   val host
-    get() = context.host
+    get() = current().host
 }
 
 /** The operating system Tazel runs on. */

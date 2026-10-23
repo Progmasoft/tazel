@@ -100,6 +100,60 @@ class ProjectLoaderTest {
   }
 
   @Test
+  fun projectFilesAreEvaluatedInParallelWithoutSharingAProject() = inProject { root ->
+    // Both scripts wait for each other in the middle of their evaluation, so they are certainly
+    // evaluated at the same time; each must still build only its own project.
+    val barrier = java.util.concurrent.CyclicBarrier(2)
+    ParallelFixture.barrier = barrier
+    val names = listOf("First", "Second")
+    val locations = names.map { name ->
+      val directory = Files.createDirectories(root.resolve(name))
+      Files.writeString(
+        directory.resolve("BUILD.kts"),
+        """
+        project { name = "$name" }
+        com.progmasoft.tazel.dsl.ParallelFixture.barrier!!.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        sources { executable { entry = "$name.Program" } }
+        check(project.name == "$name")
+        """
+          .trimIndent(),
+      )
+      projectFileIn(directory)!!
+    }
+    val loader = ProjectLoader("1.0.0")
+    val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+    try {
+      val plans =
+        locations
+          .map { location -> pool.submit<ProjectPlan> { loader.load(location).plan } }
+          .map { it.get(5, java.util.concurrent.TimeUnit.MINUTES) }
+      assertEquals(names, plans.map { it.identity?.name })
+      assertEquals(names.map { "$it.Program" }, plans.map { it.executables.single().entry })
+    } finally {
+      pool.shutdownNow()
+      ParallelFixture.barrier = null
+    }
+  }
+
+  @Test
+  fun theDslBelongsToTheEvaluationThatRunsIt() = inProject { root ->
+    Files.writeString(
+      root.resolve("BUILD.kts"),
+      "project { name = \"Bound\" }\nsources { executable { entry = \"Bound.Program\" } }",
+    )
+    val thread = Thread {
+      ProjectLoader("1.0.0").load(projectFileIn(root)!!)
+      // Once the evaluation is over, nothing of it stays bound to the thread.
+      assertFailsWith<ProjectConfigurationException> { ProjectRuntime.current() }
+    }
+    var failure: Throwable? = null
+    thread.setUncaughtExceptionHandler { _, error -> failure = error }
+    thread.start()
+    thread.join()
+    failure?.let { throw it }
+  }
+
+  @Test
   fun theSampleProjectFileOfTazelUsesTheWholeDsl() {
     // Gradle runs the tests in the directory of Tazel, where the sample lives.
     val plan = ProjectLoader("0.0.0").load(projectFileIn(Path.of(""))!!).plan
@@ -129,4 +183,9 @@ class ProjectLoaderTest {
     assertTrue(problem("compiler { wundef = true }").contains("wundef"))
     assertTrue(problem("error(\"boom\")").contains("boom"))
   }
+}
+
+/** Lets the project files of a test wait for each other. */
+object ParallelFixture {
+  @Volatile var barrier: java.util.concurrent.CyclicBarrier? = null
 }
