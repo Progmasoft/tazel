@@ -146,6 +146,24 @@ directory of a member, that member is the project.
 A tool is looked for in three places, in this order: the path named by `TAZEL_TALAC`, `TAZEL_TALAFMT` or `TAZEL_TALALINT`;
 the installation `tazel` runs from; the directories of `PATH`.
 
+## Compiled project files
+
+The first run compiles the project file; later runs load the compiled script from the cache and only evaluate it. An
+entry is used only when everything the compilation depends on is the same: the script text and name, the Kotlin compiler
+version, the JVM target, the default imports and compiler options, Tazel's classpath and the SHA-256 of each plugin JAR.
+Otherwise the file is compiled again. An entry that cannot be read is treated as missing. The cache keeps the 256 most
+recently used entries.
+
+The cache lives in `TAZEL_CACHE_DIR` when it is set, otherwise in `%LOCALAPPDATA%\Progmasoft\Tazel\Cache` on Windows,
+`~/Library/Caches/Progmasoft/Tazel` on macOS and `$XDG_CACHE_HOME/progmasoft/tazel` (`~/.cache/progmasoft/tazel`)
+elsewhere. Deleting it is always safe.
+
+## Timings
+
+With `TAZEL_TIMINGS=1`, Tazel prints how long each phase of the run took, on the standard error stream: JVM startup, the
+Kotlin scripting host, plugin resolution and class loading, script compilation or loading it from the cache, script
+evaluation, and the whole command.
+
 ## Not implemented yet
 
 These are refused by name with exit code `1`:

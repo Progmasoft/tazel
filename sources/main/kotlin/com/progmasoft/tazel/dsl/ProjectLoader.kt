@@ -10,10 +10,12 @@ import com.progmasoft.tazel.dsl.plugin.PluginPreamble
 import com.progmasoft.tazel.dsl.plugin.PluginResolver
 import com.progmasoft.tazel.dsl.plugin.PluginRuntime
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
+import java.io.File
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.ServiceLoader
+import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.ResultValue
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
@@ -92,9 +94,17 @@ fun discoverProject(start: Path): ProjectLocation {
 /**
  * Runs project files. The script of a project is compiled and run inside Tazel itself, so a machine
  * needs no Kotlin installation beside it.
+ *
+ * With a [cache], a project file whose compiled form is already on disk is not compiled again: see
+ * [scriptCacheKey] for what decides that. [timings] receives the duration of each phase.
  */
-class ProjectLoader(private val compilerVersion: String = "unknown") {
-  private val host = BasicJvmScriptingHost()
+class ProjectLoader(
+  private val compilerVersion: String = "unknown",
+  private val cache: ScriptCache? = null,
+  private val timings: Timings = Timings.disabled,
+  private val tazelVersion: String = "development",
+) {
+  private val host by lazy { timings.measure(Phase.SCRIPT_HOST) { BasicJvmScriptingHost() } }
 
   fun load(location: ProjectLocation): LoadedProject {
     requireSupportedJava()
@@ -106,7 +116,10 @@ class ProjectLoader(private val compilerVersion: String = "unknown") {
           "${location.file} could not be read as UTF-8 text: ${error.message}"
         )
       }
-    val plugins = PluginResolver.resolve(location.root, PluginPreamble.parse(source))
+    val plugins =
+      timings.measure(Phase.PLUGINS) {
+        PluginResolver.resolve(location.root, PluginPreamble.parse(source))
+      }
     val pluginLoader =
       URLClassLoader(
         plugins.map { it.artifact.toUri().toURL() }.toTypedArray(),
@@ -116,11 +129,11 @@ class ProjectLoader(private val compilerVersion: String = "unknown") {
     synchronized(ProjectRuntime) {
       ProjectRuntime.reset(compilerVersion)
       try {
-        PluginRuntime.activate(
-          plugins,
-          ServiceLoader.load(ProjectPlugin::class.java, pluginLoader).toList(),
-          location.root,
-        )
+        val implementations =
+          timings.measure(Phase.PLUGINS) {
+            ServiceLoader.load(ProjectPlugin::class.java, pluginLoader).toList()
+          }
+        PluginRuntime.activate(plugins, implementations, location.root)
         run(location, source, plugins, pluginLoader)
         return LoadedProject(location, ProjectRuntime.build())
       } finally {
@@ -136,11 +149,13 @@ class ProjectLoader(private val compilerVersion: String = "unknown") {
     pluginLoader: ClassLoader,
   ) {
     val imports =
-      listOf("com.progmasoft.tazel.dsl.*", "com.progmasoft.tazel.dsl.plugin.plugins") +
-        plugins.flatMap(ResolvedPlugin::imports)
+      (listOf("com.progmasoft.tazel.dsl.*", "com.progmasoft.tazel.dsl.plugin.plugins") +
+          plugins.flatMap(ResolvedPlugin::imports))
+        .distinct()
+    val options = listOf("-jvm-target", MINIMUM_JAVA.toString())
     val compilation = ScriptCompilationConfiguration {
-      defaultImports(imports.distinct())
-      compilerOptions.append("-jvm-target", MINIMUM_JAVA.toString())
+      defaultImports(imports)
+      compilerOptions.append(options)
       jvm {
         dependenciesFromClassContext(ProjectLoader::class, wholeClasspath = true)
         updateClasspath(plugins.map { it.artifact.toFile() })
@@ -150,7 +165,25 @@ class ProjectLoader(private val compilerVersion: String = "unknown") {
     val fileName = location.file.fileName.toString()
     // The script host tells a script by its extension; every project file is the same script.
     val scriptName = if (fileName.endsWith(".kts")) fileName else "$fileName.kts"
-    val result = host.eval(source.toScriptSource(scriptName), compilation, evaluation)
+    val script =
+      compile(
+        location,
+        ScriptCacheInputs(
+          source = source,
+          scriptName = scriptName,
+          imports = imports,
+          compilerOptions = options,
+          jvmTarget = MINIMUM_JAVA,
+          classpath = ownClasspath(),
+          plugins = plugins,
+          tazelVersion = tazelVersion,
+        ),
+        compilation,
+      )
+    val result =
+      timings.measure(Phase.EVALUATION) {
+        host.runInCoroutineContext { host.evaluator(script, evaluation) }
+      }
     val errors =
       result.reports.filter {
         it.severity == ScriptDiagnostic.Severity.ERROR ||
@@ -175,6 +208,44 @@ class ProjectLoader(private val compilerVersion: String = "unknown") {
     }
   }
 
+  /**
+   * The compiled form of a project file: from [cache] when an entry for the same inputs is there,
+   * otherwise compiled now and kept for the next run.
+   */
+  private fun compile(
+    location: ProjectLocation,
+    inputs: ScriptCacheInputs,
+    compilation: ScriptCompilationConfiguration,
+  ): CompiledScript {
+    val cache = this.cache
+    val key = cache?.let { scriptCacheKey(inputs) }
+    if (cache != null && key != null) {
+      timings
+        .measure(Phase.CACHE_LOAD) { cache.load(key) }
+        ?.let {
+          return it
+        }
+    }
+    val result =
+      timings.measure(Phase.COMPILATION) {
+        host.runInCoroutineContext {
+          host.compiler(inputs.source.toScriptSource(inputs.scriptName), compilation)
+        }
+      }
+    val errors =
+      result.reports.filter {
+        it.severity == ScriptDiagnostic.Severity.ERROR ||
+          it.severity == ScriptDiagnostic.Severity.FATAL
+      }
+    if (result !is ResultWithDiagnostics.Success || errors.isNotEmpty()) {
+      throw ProjectConfigurationException(
+        errors.ifEmpty { result.reports }.joinToString("\n") { describe(location, it) }
+      )
+    }
+    if (cache != null && key != null) cache.store(key, result.value)
+    return result.value
+  }
+
   private fun describe(
     location: ProjectLocation,
     report: ScriptDiagnostic,
@@ -184,3 +255,10 @@ class ProjectLoader(private val compilerVersion: String = "unknown") {
     return "${location.file.fileName}$position: ${report.message}"
   }
 }
+
+/** The classpath Tazel runs with, which project files are compiled against. */
+private fun ownClasspath(): List<Path> =
+  System.getProperty("java.class.path")
+    .split(File.pathSeparator)
+    .filter(String::isNotBlank)
+    .map(Path::of)

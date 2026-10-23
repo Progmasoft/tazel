@@ -49,7 +49,9 @@ whose file systems would otherwise match it.
    run any code. `PluginResolver` finds each declared JAR, checks its descriptor and digest, and `PluginRuntime` activates
    the plugins. See [Writing a plugin](PLUGINS.md).
 2. **The script.** The whole file is compiled and run by the Kotlin scripting host embedded in Tazel
-   (`BasicJvmScriptingHost`), with the DSL and the imports of the plugins as default imports. The blocks of the script fill
+   (`BasicJvmScriptingHost`), with the DSL and the imports of the plugins as default imports. A compiled script is kept
+   in `ScriptCache` (`dsl/ScriptCache.kt`) under a SHA-256 of everything its compilation depends on, so a later run
+   skips the compilation and only evaluates it. The blocks of the script fill
    one model, `ProjectRuntime`; when the script ends, the model is checked as a whole and becomes an immutable
    `ProjectPlan`. Checks that depend on several blocks, such as the fields `sources.viget.push` requires, run at this point,
    so the order of the blocks never matters.

@@ -15,9 +15,24 @@ import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.widgets.Text
 import com.progmasoft.tazel.driver.SystemProcesses
 import com.progmasoft.tazel.driver.Toolchain
+import com.progmasoft.tazel.dsl.Phase
+import com.progmasoft.tazel.dsl.ScriptCache
+import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.detectHost
 import java.nio.file.Path
+import java.time.Duration
+import java.time.Instant
 import kotlin.system.exitProcess
+
+/**
+ * Records the time from the start of the process to [main] as the JVM startup: loading the runtime,
+ * the classes of Tazel and the main class.
+ */
+private fun recordJvmStartup(timings: Timings) {
+  if (!timings.enabled) return
+  val started = ProcessHandle.current().info().startInstant().orElse(null) ?: return
+  timings.record(Phase.JVM_STARTUP, Duration.between(started, Instant.now()))
+}
 
 /** The version the JAR of Tazel was built as; a run from loose classes has none. */
 internal fun tazelVersion(): String =
@@ -114,6 +129,8 @@ internal fun reportError(
 }
 
 fun main(arguments: Array<String>) {
+  val timings = Timings.fromEnvironment()
+  recordJvmStartup(timings)
   val terminal = Terminal()
   val exitCode =
     when (val parsed = parseCommandLine(arguments.toList())) {
@@ -130,9 +147,12 @@ fun main(arguments: Array<String>) {
             Toolchain(host.os),
             SystemProcesses,
             tazelVersion(),
+            ScriptCache.forUser(),
+            timings,
           )
-          .run(parsed.command)
+          .let { tazel -> timings.measure(Phase.COMMAND) { tazel.run(parsed.command) } }
       }
     }
+  timings.report().forEach { terminal.println(dim(it), stderr = true) }
   exitProcess(exitCode)
 }
