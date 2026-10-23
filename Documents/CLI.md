@@ -32,6 +32,9 @@ tazel <command> [arguments]
 | `tazel viget vipkg-desc Publisher.Name` | prints the description (`project.description`) of a package of ViGet |
 | `tazel fmt [-- options]` | formats the sources with `talafmt` |
 | `tazel lint [--workspace] [-- options]` | lints the sources with `talalint` |
+| `tazel jvm start-daemon` | starts the JVM daemon that keeps Tazel warm between commands |
+| `tazel jvm restart-daemon` | stops the daemon and starts it again |
+| `tazel jvm stop-daemon` | stops the daemon |
 | `tazel version` | prints the version of Tazel |
 | `tazel help [command]` | prints the help, or the help of one command |
 
@@ -158,11 +161,46 @@ The cache lives in `TAZEL_CACHE_DIR` when it is set, otherwise in `%LOCALAPPDATA
 `~/Library/Caches/Progmasoft/Tazel` on macOS and `$XDG_CACHE_HOME/progmasoft/tazel` (`~/.cache/progmasoft/tazel`)
 elsewhere. Deleting it is always safe.
 
+## The JVM daemon
+
+Every `tazel` starts a JVM, and the first project file it evaluates loads the Kotlin compiler and scripting host. The
+daemon is a JVM that stays up and runs the commands instead, so those classes are loaded once. It does not replace the
+cache of compiled project files; a command in the daemon uses the cache as well.
+
+`tazel jvm start-daemon` starts it, unless one is already running. `tazel jvm stop-daemon` lets the commands it is
+running finish, for at most a minute, and stops it; a daemon that does not answer is ended. `tazel jvm restart-daemon`
+does both. These three commands always run in the process that read them.
+
+While a daemon is running, every other command goes to it and prints what it would have printed itself. The daemon runs
+the command with the arguments, working directory, environment and terminal of the client, and the programs it starts
+read what is typed into the client. Each command has its own project contexts, so several clients can be served at once;
+at most eight commands run at the same time and the rest wait. `TAZEL_DAEMON` says when a command goes to the daemon:
+
+| `TAZEL_DAEMON` | A command |
+| --- | --- |
+| `auto` (the default) | goes to the daemon when one is running, and runs directly otherwise |
+| `start` | goes to the daemon, which is started first when none is running |
+| `off` | always runs directly |
+
+A daemon serves one user and one installation. Its files are in `TAZEL_DAEMON_DIR` when it is set, otherwise in the
+`daemon` directory under `%LOCALAPPDATA%\Progmasoft\Tazel` on Windows, `~/Library/Application Support/Progmasoft/Tazel` on
+macOS and `$XDG_STATE_HOME/progmasoft/tazel` (`~/.local/state/progmasoft/tazel`) elsewhere: a Unix domain socket, a token,
+a lock, the process id and the log. The directory is readable only by the user, and a client must present the token the
+daemon wrote there. A client of a different version or protocol is refused and runs the command directly; another
+installation, version or Java runtime has a daemon of its own. The lock keeps a second daemon of the same installation
+from starting, and the files of a daemon that died are removed by the next client.
+
+The daemon stops by itself after `TAZEL_DAEMON_IDLE_MINUTES` without a client, 180 by default; `0` keeps it running. Its
+heap is limited to `TAZEL_DAEMON_MAX_HEAP` (`2g` by default) and its class metadata to 1 GiB; a daemon that runs out of
+either exits, and the next command runs directly or starts a new one. When a client goes away in the middle of a command,
+the programs the command started are stopped.
+
 ## Timings
 
 With `TAZEL_TIMINGS=1`, Tazel prints how long each phase of the run took, on the standard error stream: JVM startup, the
 Kotlin scripting host, plugin resolution and class loading, script compilation or loading it from the cache, script
-evaluation, and the whole command.
+evaluation, and the whole command. A command that ran in the daemon also shows IPC: the time between sending the
+command and its end that the daemon did not spend on the command. JVM startup is then the startup of the client.
 
 ## Not implemented yet
 

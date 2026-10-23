@@ -64,6 +64,19 @@ enum class CommandName(val words: String, val summary: String) {
   HELP("help", "print this help, or the help of one command"),
   FMT("fmt", "format the sources of the project with talafmt"),
   LINT("lint", "lint the sources of the project with talalint"),
+  JVM_START_DAEMON(
+    "jvm start-daemon",
+    "start the JVM daemon that keeps Tazel warm between commands",
+  ),
+  JVM_RESTART_DAEMON("jvm restart-daemon", "stop the JVM daemon and start it again"),
+  JVM_STOP_DAEMON("jvm stop-daemon", "stop the JVM daemon"),
+}
+
+/** What `tazel jvm` does with the daemon. */
+enum class DaemonAction(val commandName: CommandName) {
+  START(CommandName.JVM_START_DAEMON),
+  RESTART(CommandName.JVM_RESTART_DAEMON),
+  STOP(CommandName.JVM_STOP_DAEMON),
 }
 
 /** One invocation of Tazel after its words became values. */
@@ -159,6 +172,14 @@ sealed interface Command {
   /** [toolArguments] are what follows `--`; they are handed to talafmt unread. */
   data class Fmt(val toolArguments: List<String>) : Command {
     override val name = CommandName.FMT
+  }
+
+  /**
+   * Starts, restarts or stops the JVM daemon. These commands always run in the process that read
+   * them; they are never handed to a daemon.
+   */
+  data class Daemon(val action: DaemonAction) : Command {
+    override val name = action.commandName
   }
 
   /**
@@ -329,6 +350,15 @@ private class ArgumentReader(private val arguments: List<String>) {
       "help" -> help()
       "fmt" -> fmt()
       "lint" -> lint()
+      "jvm" -> {
+        val action =
+          when (action("jvm", "start-daemon", "restart-daemon", "stop-daemon")) {
+            "start-daemon" -> DaemonAction.START
+            "restart-daemon" -> DaemonAction.RESTART
+            else -> DaemonAction.STOP
+          }
+        Command.Daemon(action).also { finish(action.commandName) }
+      }
       else ->
         reject(
           "'$word' is not a command of tazel; write tazel help for the commands",

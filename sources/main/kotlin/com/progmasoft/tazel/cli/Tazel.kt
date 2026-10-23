@@ -107,6 +107,8 @@ class Tazel(
           throw Stop(
             "tazel ${command.name.words} needs ViGet, and the ViGet client is not implemented yet"
           )
+        is Command.Daemon ->
+          throw Stop("tazel ${command.name.words} manages the daemon from the command line itself")
         Command.ViPkgCreate ->
           throw Stop(
             "tazel vipkg create is not implemented yet: the compiler cannot write a library, " +
