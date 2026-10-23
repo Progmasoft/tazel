@@ -114,6 +114,18 @@ through Mordant. While several targets are worked through on an interactive term
 bar; the output of the tools is then gathered and printed above the bar instead of writing over it. In a pipe or in CI
 no bar is drawn and the tools write to the terminal directly.
 
+## The daemon
+
+`main` parses the command line first. `tazel jvm ...` is handled by `runDaemonCommand`; any other command is offered to
+the daemon by `forwardToDaemon` before it runs in the process. `DaemonClient` connects to the Unix domain socket that
+`DaemonPaths` names, introduces itself with the token, the protocol and the version (`DaemonProtocol.kt`), and sends the
+arguments, the working directory, the environment and what the terminal can show. `DaemonServer` answers each client on
+its own thread: it builds a `Tazel` for the request, with a `ForwardingTerminal` and `ForwardingProcesses` that send
+output to the client and read its input, and with `RoutedStream` in place of `System.out` and `System.err`, so what a
+project file prints reaches the client of the command that evaluated it. The output comes back as frames, and the last
+frame carries the exit code and the phase timings. A daemon is started by `DaemonMain`, on the Java runtime and the
+classpath of the client.
+
 ## Seams for tests
 
 `Tazel` receives everything that touches the machine as a constructor argument: the terminal, the working directory,

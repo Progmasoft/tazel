@@ -139,6 +139,17 @@ fun main(arguments: Array<String>) {
         ExitCode.USAGE
       }
       is ParseResult.Parsed -> {
+        val command = parsed.command
+        val environment = System.getenv()
+        val client = DaemonClient(DaemonPaths.forInstallation(tazelVersion()), tazelVersion())
+        if (command is Command.Daemon) {
+          exitProcess(runDaemonCommand(terminal, command.action, client, environment))
+        }
+        val mode = DaemonMode.of(environment::get)
+        forwardToDaemon(terminal, arguments.toList(), client, mode, environment, timings)?.let {
+          timings.report().forEach { line -> terminal.println(dim(line), stderr = true) }
+          exitProcess(it)
+        }
         val host = detectHost()
         Tazel(
             terminal,

@@ -123,6 +123,9 @@ class CommandLineTest {
         CommandName.HELP to parsed("help"),
         CommandName.FMT to parsed("fmt"),
         CommandName.LINT to parsed("lint"),
+        CommandName.JVM_START_DAEMON to parsed("jvm", "start-daemon"),
+        CommandName.JVM_RESTART_DAEMON to parsed("jvm", "restart-daemon"),
+        CommandName.JVM_STOP_DAEMON to parsed("jvm", "stop-daemon"),
       )
     assertEquals(CommandName.entries.toSet(), expected.keys)
     expected.forEach { (name, command) -> assertEquals(name, command.name) }
