@@ -8,7 +8,6 @@ package com.progmasoft.tazel.dsl
 import com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
 import com.progmasoft.tazel.dsl.plugin.PluginPreamble
 import com.progmasoft.tazel.dsl.plugin.PluginResolver
-import com.progmasoft.tazel.dsl.plugin.PluginRuntime
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
 import java.io.File
 import java.net.URLClassLoader
@@ -125,17 +124,17 @@ class ProjectLoader(
         plugins.map { it.artifact.toUri().toURL() }.toTypedArray(),
         ProjectLoader::class.java.classLoader,
       )
-    // The model a script fills is one object, so two scripts are never run at once.
-    synchronized(ProjectRuntime) {
-      ProjectRuntime.reset(compilerVersion)
+    // Each evaluation fills its own project, so project files can be evaluated on several threads.
+    val context = ProjectContext(compilerVersion)
+    return ProjectRuntime.evaluate(context) {
       try {
         val implementations =
           timings.measure(Phase.PLUGINS) {
             ServiceLoader.load(ProjectPlugin::class.java, pluginLoader).toList()
           }
-        PluginRuntime.activate(plugins, implementations, location.root)
+        context.plugins.activate(plugins, implementations, location.root)
         run(location, source, plugins, pluginLoader)
-        return LoadedProject(location, ProjectRuntime.build())
+        LoadedProject(location, context.build())
       } finally {
         pluginLoader.close()
       }
@@ -228,8 +227,11 @@ class ProjectLoader(
     }
     val result =
       timings.measure(Phase.COMPILATION) {
-        host.runInCoroutineContext {
-          host.compiler(inputs.source.toScriptSource(inputs.scriptName), compilation)
+        // Evaluations run in parallel; the Kotlin compiler is used by one of them at a time.
+        synchronized(compilerLock) {
+          host.runInCoroutineContext {
+            host.compiler(inputs.source.toScriptSource(inputs.scriptName), compilation)
+          }
         }
       }
     val errors =
@@ -262,3 +264,6 @@ private fun ownClasspath(): List<Path> =
     .split(File.pathSeparator)
     .filter(String::isNotBlank)
     .map(Path::of)
+
+/** Serializes compilations of project files in this JVM. */
+private val compilerLock = Any()

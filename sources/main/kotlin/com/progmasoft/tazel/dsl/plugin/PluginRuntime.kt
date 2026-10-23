@@ -9,11 +9,17 @@ import com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
 import com.progmasoft.api.tazel.dsl.plugin.ProjectPluginContext
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectPlan
+import com.progmasoft.tazel.dsl.ProjectRuntime
 import com.progmasoft.tazel.dsl.requireModuleSegment
 import com.progmasoft.tazel.dsl.requireText
 import java.nio.file.Path
 
-object PluginRuntime {
+/**
+ * The plugins of one project: those resolved for it, the ones its project file declared, and what
+ * each registered, contributed and asked to run when the plan is finished. Each [ProjectContext]
+ * has its own, so plugins of two projects never see each other.
+ */
+class PluginState internal constructor() {
   private enum class Phase {
     EMPTY,
     ACTIVATING,
@@ -67,7 +73,7 @@ object PluginRuntime {
     phase = Phase.CONFIGURING
   }
 
-  fun declare(request: PluginRequest) {
+  internal fun declare(request: PluginRequest) {
     checkPhase(Phase.CONFIGURING, "plugins may be declared only while the project is configuring")
     val plugin =
       resolved.singleOrNull { it.requestCoordinate == request.coordinate }
@@ -86,7 +92,7 @@ object PluginRuntime {
     }
   }
 
-  fun requireExtension(
+  internal fun requireExtension(
     name: String,
     publisher: String,
     plugin: String,
@@ -136,15 +142,6 @@ object PluginRuntime {
     return plan.copy(plugins = entries)
   }
 
-  internal fun reset() {
-    phase = Phase.EMPTY
-    resolved = emptyList()
-    declared.clear()
-    extensions.clear()
-    contributions.clear()
-    finalizers.clear()
-  }
-
   private fun checkPhase(
     expected: Phase,
     message: String,
@@ -152,7 +149,7 @@ object PluginRuntime {
     if (phase != expected) throw ProjectConfigurationException(message)
   }
 
-  private class Context(
+  private inner class Context(
     private val owner: String,
     override val projectRoot: Path,
   ) : ProjectPluginContext {
@@ -187,4 +184,28 @@ object PluginRuntime {
       finalizers += owner to action
     }
   }
+}
+
+/**
+ * The plugins of the project being evaluated on this thread. A project file declares its plugins
+ * through this object, and the extensions of plugins check their registration with
+ * [requireExtension].
+ */
+object PluginRuntime {
+  private val state
+    get() = ProjectRuntime.current().plugins
+
+  fun declare(request: PluginRequest) = state.declare(request)
+
+  fun requireExtension(
+    name: String,
+    publisher: String,
+    plugin: String,
+  ) = state.requireExtension(name, publisher, plugin)
+
+  internal fun activate(
+    plugins: List<ResolvedPlugin>,
+    implementations: List<ProjectPlugin>,
+    projectRoot: Path,
+  ) = state.activate(plugins, implementations, projectRoot)
 }

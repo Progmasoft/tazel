@@ -184,6 +184,7 @@ class PluginInfrastructureTest {
         }
       val secondPlugin = fixturePlugin("Second") { context -> context.registerExtension("native") }
 
+      ProjectRuntime.reset()
       assertFailsWith<ProjectConfigurationException> {
         PluginRuntime.activate(listOf(first, second), listOf(firstPlugin, secondPlugin), root)
       }

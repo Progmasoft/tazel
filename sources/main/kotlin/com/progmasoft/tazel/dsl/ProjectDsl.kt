@@ -31,15 +31,8 @@ class ProjectScope internal constructor() {
       authors,
       defaultFeatures,
     )
-    projectView = this
+    ProjectRuntime.current().projectView = this
   }
-}
-
-// What the last `project` block wrote, for a project file that reads it back afterwards.
-private var projectView: ProjectScope? = null
-
-internal fun forgetProjectView() {
-  projectView = null
 }
 
 @TazelDsl
@@ -290,7 +283,9 @@ fun project(block: ProjectScope.() -> Unit) = ProjectScope().apply(block).apply(
 
 /** The `project` block as it was written, for a project file that reads it back. */
 val project: ProjectScope
-  get() = projectView ?: throw ProjectConfigurationException("project is read before it is written")
+  get() =
+    ProjectRuntime.current().projectView
+      ?: throw ProjectConfigurationException("project is read before it is written")
 
 fun sources(block: ProjectSourcesScope.() -> Unit) = ProjectSourcesScope().apply(block).apply()
 
