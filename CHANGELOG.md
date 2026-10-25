@@ -5,6 +5,14 @@
 
 ## Unreleased
 
+- Compiled project files are cached per user; a later run only evaluates them.
+- Every project evaluation has its own context, so project files can be
+  evaluated on several threads at once.
+- `tazel jvm start-daemon`, `restart-daemon` and `stop-daemon` manage a JVM
+  daemon that keeps Tazel warm; `TAZEL_DAEMON` chooses when a command goes to
+  it.
+- `TAZEL_TIMINGS=1` prints how long each phase of a run took.
+
 ## 0.1.0 - 2026-10-18
 
 The first release of Tazel from a repository of its own. Until 0.6.0 Tazel was
