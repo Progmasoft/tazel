@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-29
+
 - Options take their value after a space, `=` or `:`, and short options also
   joined: `-eFirst`, `-e First`, `-e=First`, `-e:First`, `--executable:First`.
   After `=` or `:` an option that may be repeated takes a list:
