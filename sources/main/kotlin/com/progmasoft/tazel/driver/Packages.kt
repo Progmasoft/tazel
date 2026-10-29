@@ -18,7 +18,12 @@ import com.progmasoft.tazel.dsl.projectFileIn
 data class LoadedWorkspace(
   val root: LoadedProject,
   val members: List<LoadedProject>,
-) {
+) : AutoCloseable {
+  /** Releases the plugin JARs the build steps of the projects hold open. */
+  override fun close() {
+    (listOf(root) + members).forEach(LoadedProject::close)
+  }
+
   /** Every ViPkg: the root when it has targets of its own, then the members. */
   val all: List<LoadedProject>
     get() = listOf(root).filter(LoadedProject::hasTargets) + members
@@ -35,8 +40,9 @@ data class LoadedWorkspace(
     }
 }
 
+/** Whether the project builds anything: a Tala target, or a step a plugin added to its build. */
 val LoadedProject.hasTargets: Boolean
-  get() = plan.executables.isNotEmpty() || plan.libraries.isNotEmpty()
+  get() = plan.executables.isNotEmpty() || plan.libraries.isNotEmpty() || buildSteps.isNotEmpty()
 
 /** The name a ViPkg is selected and reported by: the name of its project, or its directory. */
 val LoadedProject.displayName: String

@@ -6,9 +6,12 @@
 package com.progmasoft.tazel.dsl
 
 import com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
+import com.progmasoft.tazel.dsl.plugin.PluginBuildStep
 import com.progmasoft.tazel.dsl.plugin.PluginPreamble
+import com.progmasoft.tazel.dsl.plugin.PluginRegistry
 import com.progmasoft.tazel.dsl.plugin.PluginResolver
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
+import com.progmasoft.tazel.dsl.plugin.ViGetPlugins
 import java.io.File
 import java.net.URLClassLoader
 import java.nio.file.Files
@@ -43,11 +46,22 @@ data class ProjectLocation(
   val file: Path,
 )
 
-/** A project file after its script ran. */
+/**
+ * A project file after its script ran, with the steps its plugins added to the build.
+ *
+ * The classes of those steps come from the JARs of the plugins, which stay open while the project
+ * is in use; [close] releases them.
+ */
 data class LoadedProject(
   val location: ProjectLocation,
   val plan: ProjectPlan,
-)
+  val buildSteps: List<PluginBuildStep> = emptyList(),
+  private val pluginLoader: AutoCloseable? = null,
+) : AutoCloseable {
+  override fun close() {
+    pluginLoader?.close()
+  }
+}
 
 internal fun isSupportedJavaFeature(actual: Int) = actual >= MINIMUM_JAVA
 
@@ -102,6 +116,13 @@ class ProjectLoader(
   private val cache: ScriptCache? = null,
   private val timings: Timings = Timings.disabled,
   private val tazelVersion: String = "development",
+  /**
+   * Whether a project keeps the JARs of its plugins open for the steps they added to its build. A
+   * command that does not build reads the steps only to know the project builds something.
+   */
+  private val keepBuildSteps: Boolean = false,
+  /** Where plugins missing from the plugin cache of a project are fetched from. */
+  private val registry: PluginRegistry? = ViGetPlugins(),
 ) {
   private val host by lazy { timings.measure(Phase.SCRIPT_HOST) { BasicJvmScriptingHost() } }
 
@@ -117,7 +138,7 @@ class ProjectLoader(
       }
     val plugins =
       timings.measure(Phase.PLUGINS) {
-        PluginResolver.resolve(location.root, PluginPreamble.parse(source))
+        PluginResolver.resolve(location.root, PluginPreamble.parse(source), registry)
       }
     val pluginLoader =
       URLClassLoader(
@@ -127,16 +148,22 @@ class ProjectLoader(
     // Each evaluation fills its own project, so project files can be evaluated on several threads.
     val context = ProjectContext(compilerVersion)
     return ProjectRuntime.evaluate(context) {
+      var loaded: LoadedProject? = null
       try {
         val implementations =
           timings.measure(Phase.PLUGINS) {
             ServiceLoader.load(ProjectPlugin::class.java, pluginLoader).toList()
           }
-        context.plugins.activate(plugins, implementations, location.root)
+        context.plugins.activate(plugins, implementations, location.root, context.host)
         run(location, source, plugins, pluginLoader)
-        LoadedProject(location, context.build())
+        val steps = context.plugins.buildSteps
+        // The loader stays open only when a build step will still need classes of the plugins.
+        val keep = keepBuildSteps && steps.isNotEmpty()
+        LoadedProject(location, context.build(), steps, pluginLoader.takeIf { keep }).also {
+          if (keep) loaded = it
+        }
       } finally {
-        pluginLoader.close()
+        if (loaded == null) pluginLoader.close()
       }
     }
   }

@@ -17,6 +17,23 @@ interface Processes {
     directory: Path,
   ): Int
 
+  /**
+   * Runs [command] like [run] with the variables of [environment] added to those of Tazel. Only the
+   * build steps of plugins pass variables; a stand-in that starts no program may ignore them.
+   */
+  fun runWith(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
+  ): Int = run(command, directory)
+
+  /** Runs [command] like [runGathered] with the variables of [environment] added. */
+  fun runGatheredWith(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
+  ): GatheredRun = runGathered(command, directory)
+
   /** Runs [command] and returns what it wrote to its output, or null when it failed. */
   fun capture(command: List<String>): String?
 
@@ -40,9 +57,20 @@ object SystemProcesses : Processes {
   override fun run(
     command: List<String>,
     directory: Path,
+  ): Int = runWith(command, directory, emptyMap())
+
+  override fun runWith(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
   ): Int =
     try {
-      ProcessBuilder(command).directory(directory.toFile()).inheritIO().start().waitFor()
+      ProcessBuilder(command)
+        .directory(directory.toFile())
+        .inheritIO()
+        .also { it.environment().putAll(environment) }
+        .start()
+        .waitFor()
     } catch (error: java.io.IOException) {
       throw ProjectConfigurationException(
         "${command.first()} could not be started: ${error.message}"
@@ -52,11 +80,18 @@ object SystemProcesses : Processes {
   override fun runGathered(
     command: List<String>,
     directory: Path,
+  ): GatheredRun = runGatheredWith(command, directory, emptyMap())
+
+  override fun runGatheredWith(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
   ): GatheredRun =
     try {
       val process =
         ProcessBuilder(command)
           .directory(directory.toFile())
+          .also { it.environment().putAll(environment) }
           .redirectErrorStream(true)
           .redirectInput(ProcessBuilder.Redirect.from(nullDevice()))
           .start()

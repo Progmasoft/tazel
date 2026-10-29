@@ -11,6 +11,7 @@ import com.progmasoft.api.tazel.dsl.plugin.ProjectPluginContext
 import com.progmasoft.tazel.dsl.DependencyManifest
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectRuntime
+import com.progmasoft.tazel.dsl.detectHost
 import com.progmasoft.tazel.dsl.sources
 import com.progmasoft.tazel.lock.LockedPlugin
 import com.progmasoft.tazel.lock.LockedProject
@@ -186,11 +187,16 @@ class PluginInfrastructureTest {
 
       ProjectRuntime.reset()
       assertFailsWith<ProjectConfigurationException> {
-        PluginRuntime.activate(listOf(first, second), listOf(firstPlugin, secondPlugin), root)
+        PluginRuntime.activate(
+          listOf(first, second),
+          listOf(firstPlugin, secondPlugin),
+          root,
+          detectHost(),
+        )
       }
 
       ProjectRuntime.reset()
-      PluginRuntime.activate(listOf(first), listOf(firstPlugin), root)
+      PluginRuntime.activate(listOf(first), listOf(firstPlugin), root, detectHost())
       PluginRuntime.declare(PluginRequest("Publisher", "First", "1.0.0"))
       sources {
         executable {

@@ -11,6 +11,7 @@ import com.github.ajalt.mordant.rendering.TextColors.brightYellow
 import com.github.ajalt.mordant.rendering.TextStyles.bold
 import com.github.ajalt.mordant.rendering.TextStyles.dim
 import com.github.ajalt.mordant.terminal.Terminal
+import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.tazel.driver.Emit
 import com.progmasoft.tazel.driver.LoadedWorkspace
 import com.progmasoft.tazel.driver.Processes
@@ -27,6 +28,7 @@ import com.progmasoft.tazel.driver.loadWorkspace
 import com.progmasoft.tazel.driver.select
 import com.progmasoft.tazel.dsl.DependencyScope
 import com.progmasoft.tazel.dsl.ExecutableSourceTarget
+import com.progmasoft.tazel.dsl.Host
 import com.progmasoft.tazel.dsl.LoadedProject
 import com.progmasoft.tazel.dsl.OperatingSystem
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
@@ -35,7 +37,10 @@ import com.progmasoft.tazel.dsl.ProjectLocation
 import com.progmasoft.tazel.dsl.ScriptCache
 import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.coordinate
+import com.progmasoft.tazel.dsl.detectHost
 import com.progmasoft.tazel.dsl.discoverProject
+import com.progmasoft.tazel.dsl.plugin.toPluginBuildMode
+import com.progmasoft.tazel.dsl.plugin.toPluginHost
 import com.progmasoft.tazel.dsl.projectFileIn
 import com.progmasoft.tazel.lock.LockedPlugin
 import com.progmasoft.tazel.lock.LockedProject
@@ -138,9 +143,10 @@ class Tazel(
     command: List<String>,
     directory: Path,
     progress: StepProgress,
+    environment: Map<String, String> = emptyMap(),
   ): Int {
-    if (!progress.drawing) return processes.run(command, directory)
-    val run = processes.runGathered(command, directory)
+    if (!progress.drawing) return processes.runWith(command, directory, environment)
+    val run = processes.runGatheredWith(command, directory, environment)
     if (run.output.isNotBlank()) terminal.println(run.output.trimEnd(), stderr = true)
     return run.exitCode
   }
@@ -170,7 +176,8 @@ class Tazel(
   private fun warn(message: String) =
     terminal.println((bold + brightYellow)("warning") + ": " + message, stderr = true)
 
-  private fun projectLoader() = ProjectLoader(compilerVersion(), scriptCache, timings, version)
+  private fun projectLoader(forBuild: Boolean = false) =
+    ProjectLoader(compilerVersion(), scriptCache, timings, version, keepBuildSteps = forBuild)
 
   private fun compilerVersion(): String =
     toolchain
@@ -180,7 +187,12 @@ class Tazel(
       ?.removePrefix("talac ")
       ?.takeIf(String::isNotBlank) ?: "unknown"
 
-  private fun load(): LoadedWorkspace = loadWorkspace(projectLoader(), discoverProject(directory))
+  /**
+   * The workspace of the current directory. Only a build, which runs the steps of plugins, keeps
+   * the plugin JARs open for them; it closes the workspace when it is done.
+   */
+  private fun load(forBuild: Boolean = false): LoadedWorkspace =
+    loadWorkspace(projectLoader(forBuild), discoverProject(directory))
 
   private fun locked(project: LoadedProject) =
     LockedProject(project.plan.dependencies, project.plan.plugins.map(LockedPlugin::of))
@@ -199,27 +211,97 @@ class Tazel(
     emit: Emit,
   ): List<Path> {
     val started = TimeSource.Monotonic.markNow()
-    val workspace = load()
-    val selected = select(workspace.all, selection)
-    val compiler = toolchain.require(Tool.TALAC)
-    val outputs = mutableListOf<Path>()
-    val verb = if (emit == Emit.METADATA) "Checking" else "Building"
-    StepProgress.start(terminal, verb, selected.sumOf { it.executables.size }).use { progress ->
-      for (targets in selected) {
-        val project = targets.project
-        keepLockCurrent(project)
-        requireNoDependencies(project, DependencyScope.BUILD)
-        refuseLibraries(targets, selection)
-        for (executable in targets.executables) {
-          progress.working(executable.name)
-          outputs.add(compile(compiler, project, executable, emit, progress))
-          progress.done()
+    load(forBuild = true).use { workspace ->
+      val selected = select(workspace.all, selection)
+      // A check only reads the Tala sources; the steps of plugins build, so only a build runs them.
+      val runSteps = emit != Emit.METADATA
+      val compiler =
+        if (selected.any { it.executables.isNotEmpty() }) toolchain.require(Tool.TALAC) else null
+      val outputs = mutableListOf<Path>()
+      var stepsRun = 0
+      val verb = if (emit == Emit.METADATA) "Checking" else "Building"
+      val work = selected.sumOf {
+        it.executables.size + if (runSteps) it.project.buildSteps.size else 0
+      }
+      StepProgress.start(terminal, verb, work).use { progress ->
+        for (targets in selected) {
+          val project = targets.project
+          keepLockCurrent(project)
+          requireNoDependencies(project, DependencyScope.BUILD)
+          refuseLibraries(targets, selection)
+          if (runSteps) stepsRun += runBuildSteps(project, progress)
+          for (executable in targets.executables) {
+            progress.working(executable.name)
+            outputs.add(compile(compiler!!, project, executable, emit, progress))
+            progress.done()
+          }
         }
       }
+      if (outputs.isEmpty() && stepsRun == 0) {
+        throw Stop("the selection holds no executable to compile")
+      }
+      finished(if (emit == Emit.METADATA) "check" else "build", started)
+      return outputs
     }
-    if (outputs.isEmpty()) throw Stop("the selection holds no executable to compile")
-    finished(if (emit == Emit.METADATA) "check" else "build", started)
-    return outputs
+  }
+
+  /**
+   * Runs the steps the plugins of [project] added to its build, in the order they were added, and
+   * returns how many ran. Each step has a work directory of its own below `.tazel/build`.
+   */
+  private fun runBuildSteps(
+    project: LoadedProject,
+    progress: StepProgress,
+  ): Int {
+    val root = project.location.root
+    val plan = project.plan
+    val output = root.resolve(plan.outputDirectory).normalize()
+    for (step in project.buildSteps) {
+      progress.working("${step.owner} ${step.name}")
+      val work = root.resolve(".tazel/build").resolve(step.owner).resolve(step.name)
+      Files.createDirectories(work)
+      Files.createDirectories(output)
+      val services =
+        object : StepServices {
+          override fun status(
+            verb: String,
+            message: String,
+          ) = this@Tazel.status(verb, message)
+
+          override fun warn(message: String) = this@Tazel.warn(message)
+
+          override fun run(
+            command: List<String>,
+            directory: Path,
+            environment: Map<String, String>,
+          ) = execute(command, directory, progress, environment)
+
+          override fun findProgram(name: String) = toolchain.findProgram(name)
+        }
+      val context =
+        PluginStepContext(
+          root,
+          output,
+          plan.compiler.buildMode.toPluginBuildMode(),
+          Host(os, detectHost().architecture).toPluginHost(),
+          work,
+          services,
+        )
+      try {
+        step.step.run(context)
+      } catch (failure: BuildStepException) {
+        throw Stop("${step.owner} ${step.name}: ${failure.message}")
+      } catch (problem: ProjectConfigurationException) {
+        throw problem
+      } catch (error: Exception) {
+        throw Stop(
+          "build step '${step.name}' of plugin '${step.owner}' failed: " +
+            (error.message ?: error.javaClass.name)
+        )
+      }
+      progress.done()
+    }
+    return project.buildSteps.size
   }
 
   private fun compile(
