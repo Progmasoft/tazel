@@ -8,7 +8,9 @@ package com.progmasoft.tazel.cli
 import com.progmasoft.api.tazel.dsl.plugin.BuildContext
 import com.progmasoft.api.tazel.dsl.plugin.BuildMode
 import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
+import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
 import com.progmasoft.api.tazel.dsl.plugin.Host
+import com.progmasoft.api.tazel.dsl.plugin.ProjectSummary
 import java.nio.file.Path
 
 /** What a build step reaches of Tazel: its output and the programs it starts. */
@@ -26,12 +28,19 @@ internal interface StepServices {
     environment: Map<String, String>,
   ): Int
 
+  fun capture(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
+  ): CapturedRun
+
   fun findProgram(name: String): Path?
 }
 
 /** The [BuildContext] one build step of a plugin runs with. */
 internal class PluginStepContext(
   override val projectRoot: Path,
+  override val project: ProjectSummary,
   override val outputDirectory: Path,
   override val buildMode: BuildMode,
   override val host: Host,
@@ -52,6 +61,15 @@ internal class PluginStepContext(
   ): Int {
     if (command.isEmpty()) fail("a build step asked to run an empty command")
     return services.run(command, directory, environment)
+  }
+
+  override fun capture(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
+  ): CapturedRun {
+    if (command.isEmpty()) fail("a build step asked to run an empty command")
+    return services.capture(command, directory, environment)
   }
 
   override fun findProgram(name: String): Path? = services.findProgram(name)

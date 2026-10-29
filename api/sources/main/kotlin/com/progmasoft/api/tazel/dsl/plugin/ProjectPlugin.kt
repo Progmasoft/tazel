@@ -13,22 +13,17 @@ const val PROJECT_PLUGIN_API_VERSION = 2
 /**
  * A plugin of the Tazel project file.
  *
- * Tazel finds a plugin as the [java.util.ServiceLoader] service of its JAR, checks it against the
- * descriptor of the JAR, `META-INF/tazel-plugin.properties`, and calls [apply] once for every
- * project that declares it, before the project file runs. The project file then uses the DSL the
- * plugin defines, such as a `cmake { }` block; see [PluginExtensions].
+ * Who the plugin is, its publisher, name, version and API version, is written once, in the
+ * descriptor of its JAR, `META-INF/tazel-plugin.properties`; the class does not repeat it. The
+ * service entry of the JAR, `META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin`,
+ * names the class, which needs a public constructor without parameters. Tazel creates it for every
+ * project that declares the plugin and calls [apply] before the project file runs. The project file
+ * then uses the DSL the plugin defines, such as a `cmake { }` block; see [PluginExtensions].
  *
  * A plugin runs with the same JVM permissions as Tazel. The integrity and the compatibility of its
  * JAR are checked before it is activated; its code is not sandboxed.
  */
-interface ProjectPlugin {
-  /** The Progmasoft Account the plugin is published under on ViGet. */
-  val publisher: String
-  val name: String
-  val version: String
-  val apiVersion: Int
-    get() = PROJECT_PLUGIN_API_VERSION
-
+fun interface ProjectPlugin {
   fun apply(context: ProjectPluginContext)
 }
 

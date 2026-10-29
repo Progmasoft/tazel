@@ -38,6 +38,15 @@ internal fun Host.toPluginHost() =
 
 internal fun BuildMode.toPluginBuildMode() = PluginBuildMode.valueOf(name)
 
+/** The project as the API of plugins describes it. */
+fun ProjectPlan.toPluginSummary(): ProjectSummary =
+  object : ProjectSummary {
+    override val name = identity?.name
+    override val version = identity?.version
+    override val buildMode = compiler.buildMode.toPluginBuildMode()
+    override val outputDirectory = this@toPluginSummary.outputDirectory
+  }
+
 /**
  * The plugins of one project: those resolved for it, the ones its project file declared, and what
  * each registered, contributed, added to the build and asked to run when the plan is finished. Each
@@ -67,6 +76,10 @@ class PluginState internal constructor() {
   val buildSteps: List<PluginBuildStep>
     get() = steps.toList()
 
+  /**
+   * Activates [plugins]; [implementations] holds the instance of each, in the same order. The
+   * identity of a plugin is the one of its verified descriptor.
+   */
   internal fun activate(
     plugins: List<ResolvedPlugin>,
     implementations: List<ProjectPlugin>,
@@ -74,26 +87,12 @@ class PluginState internal constructor() {
     host: Host,
   ) {
     checkPhase(Phase.EMPTY, "plugin runtime is already active")
+    require(plugins.size == implementations.size) { "every plugin needs its instance" }
     phase = Phase.ACTIVATING
     resolved = plugins
     this.projectRoot = projectRoot
     this.host = host.toPluginHost()
-    val byCoordinate = implementations.groupBy { "${it.publisher}.${it.name}" }
-    plugins.forEach { plugin ->
-      val matches = byCoordinate[plugin.coordinate].orEmpty()
-      if (matches.size != 1) {
-        throw ProjectConfigurationException(
-          "plugin '${plugin.coordinate}' must expose exactly one ProjectPlugin service; found ${matches.size}"
-        )
-      }
-      val implementation = matches.single()
-      if (
-        implementation.version != plugin.version || implementation.apiVersion != plugin.apiVersion
-      ) {
-        throw ProjectConfigurationException(
-          "plugin service '${plugin.coordinate}' does not match its verified descriptor"
-        )
-      }
+    plugins.zip(implementations).forEach { (plugin, implementation) ->
       val context = Context(plugin.coordinate, projectRoot, this.host!!)
       try {
         implementation.apply(context)
@@ -173,7 +172,7 @@ class PluginState internal constructor() {
       )
     }
     phase = Phase.FINALIZING
-    val summary = Summary(plan)
+    val summary = plan.toPluginSummary()
     finalizers.forEach { (owner, action) ->
       try {
         action(summary)
@@ -203,13 +202,6 @@ class PluginState internal constructor() {
     message: String,
   ) {
     if (phase != expected) throw ProjectConfigurationException(message)
-  }
-
-  private class Summary(plan: ProjectPlan) : ProjectSummary {
-    override val name = plan.identity?.name
-    override val version = plan.identity?.version
-    override val buildMode = plan.compiler.buildMode.toPluginBuildMode()
-    override val outputDirectory = plan.outputDirectory
   }
 
   private inner class Scope(

@@ -12,6 +12,7 @@ import com.github.ajalt.mordant.rendering.TextStyles.bold
 import com.github.ajalt.mordant.rendering.TextStyles.dim
 import com.github.ajalt.mordant.terminal.Terminal
 import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
+import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
 import com.progmasoft.tazel.driver.Emit
 import com.progmasoft.tazel.driver.LoadedWorkspace
 import com.progmasoft.tazel.driver.Processes
@@ -41,6 +42,7 @@ import com.progmasoft.tazel.dsl.detectHost
 import com.progmasoft.tazel.dsl.discoverProject
 import com.progmasoft.tazel.dsl.plugin.toPluginBuildMode
 import com.progmasoft.tazel.dsl.plugin.toPluginHost
+import com.progmasoft.tazel.dsl.plugin.toPluginSummary
 import com.progmasoft.tazel.dsl.projectFileIn
 import com.progmasoft.tazel.lock.LockedPlugin
 import com.progmasoft.tazel.lock.LockedProject
@@ -276,11 +278,21 @@ class Tazel(
             environment: Map<String, String>,
           ) = execute(command, directory, progress, environment)
 
+          override fun capture(
+            command: List<String>,
+            directory: Path,
+            environment: Map<String, String>,
+          ) =
+            processes.runGatheredWith(command, directory, environment).let {
+              CapturedRun(it.exitCode, it.output)
+            }
+
           override fun findProgram(name: String) = toolchain.findProgram(name)
         }
       val context =
         PluginStepContext(
           root,
+          project.plan.toPluginSummary(),
           output,
           plan.compiler.buildMode.toPluginBuildMode(),
           Host(os, detectHost().architecture).toPluginHost(),

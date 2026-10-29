@@ -62,6 +62,8 @@ data class ResolvedPlugin(
   val artifact: Path,
   val requestCoordinate: String = "$publisher.$name",
   val metadata: PluginMetadata = PluginMetadata(),
+  /** The class the service entry of the JAR names, which implements `ProjectPlugin`. */
+  val pluginClass: String = "",
 ) {
   val coordinate: String
     get() = "$publisher.$name"

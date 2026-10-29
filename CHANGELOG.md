@@ -15,10 +15,14 @@
 - Plugin API 2, published as `com.progmasoft.tazel:tazel-api` from the new module
   `api/`. A plugin can add build steps through `PluginExtensions`; `tazel build`
   and `tazel run` run them before the Tala targets compile, with a
-  `BuildContext` that runs programs, finds them on `PATH` and stops the build. A
+  `BuildContext` that runs programs or captures what they print, finds them on
+  `PATH`, tells the project and stops the build. A
   project built only by its plugins needs no Tala target. `onFinalize` now
   receives a `ProjectSummary` instead of the internal plan, and the context
-  tells the host. Plugins built for API 1 are not loaded.
+  tells the host. `ProjectPlugin` no longer states the publisher, name and
+  version of the plugin: they come from its descriptor alone, and the service
+  entry of the JAR names the class Tazel creates. Plugins built for API 1 are
+  not loaded.
 - A ViGet plugin missing from `.tazel/plugins` is downloaded from
   `viget.progmasoft.com/dslplugins/tazel` and checked against the SHA-256 its
   index lists; `TAZEL_VIGET_URL` names a mirror.

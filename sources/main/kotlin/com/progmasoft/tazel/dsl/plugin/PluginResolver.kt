@@ -21,6 +21,8 @@ import kotlin.streams.toList
 
 object PluginResolver {
   private const val DESCRIPTOR = "META-INF/tazel-plugin.properties"
+  private const val SERVICE = "META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin"
+  private val CLASS_NAME = Regex("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
   private val indexCache = ConcurrentHashMap<String, CachedIndex>()
 
   /**
@@ -150,12 +152,24 @@ object PluginResolver {
       throw ProjectConfigurationException("plugin artifact escapes its configured root: $artifact")
     }
     val properties = Properties()
-    JarFile(normalized.toFile(), true).use { jar ->
-      val entry =
-        jar.getJarEntry(DESCRIPTOR)
-          ?: throw ProjectConfigurationException("plugin artifact has no $DESCRIPTOR: $artifact")
-      jar.getInputStream(entry).use(properties::load)
-    }
+    val classes =
+      JarFile(normalized.toFile(), true).use { jar ->
+        val entry =
+          jar.getJarEntry(DESCRIPTOR)
+            ?: throw ProjectConfigurationException("plugin artifact has no $DESCRIPTOR: $artifact")
+        jar.getInputStream(entry).use(properties::load)
+        val service =
+          jar.getJarEntry(SERVICE)
+            ?: throw ProjectConfigurationException("plugin artifact has no $SERVICE: $artifact")
+        jar.getInputStream(service).bufferedReader().readLines()
+      }
+    // The service entry names one class; lines may carry `#` comments, as for ServiceLoader.
+    val named = classes.map { it.substringBefore('#').trim() }.filter(String::isNotEmpty)
+    val pluginClass =
+      named.singleOrNull()?.takeIf { it.matches(CLASS_NAME) }
+        ?: throw ProjectConfigurationException(
+          "the service entry of $artifact must name exactly one class; it names ${named.size}"
+        )
     val publisher =
       requireModuleSegment(properties.required("publisher", artifact), "plugin publisher")
     val name = requireModuleSegment(properties.required("name", artifact), "plugin name")
@@ -187,6 +201,7 @@ object PluginResolver {
       imports,
       normalized,
       metadata = PluginMetadata.of(properties),
+      pluginClass = pluginClass,
     )
   }
 

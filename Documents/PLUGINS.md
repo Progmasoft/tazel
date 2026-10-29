@@ -132,8 +132,9 @@ An import must be a dotted name, optionally ending in `.*`; anything else is ref
 com.example.cmake.CMakePlugin
 ```
 
-Each plugin JAR provides exactly one such class for its coordinate, and its `publisher`, `name`, `version` and
-`apiVersion` must be those of the descriptor.
+The entry names exactly one class; a line may end in a `#` comment. The class implements `ProjectPlugin` and has a
+public constructor without parameters. Who the plugin is comes from the descriptor alone: the class does not state its
+publisher, name or version.
 
 ## The API
 
@@ -141,12 +142,7 @@ The API is `com.progmasoft.tazel:tazel-api`, the packages `com.progmasoft.api.ta
 `ProjectPlugin`:
 
 ```kotlin
-interface ProjectPlugin {
-  val publisher: String
-  val name: String
-  val version: String
-  val apiVersion: Int get() = PROJECT_PLUGIN_API_VERSION
-
+fun interface ProjectPlugin {
   fun apply(context: ProjectPluginContext)
 }
 
@@ -212,10 +208,12 @@ A project whose plugins add steps needs no Tala target. A step runs with a `Buil
 | Member | What it is |
 | --- | --- |
 | `projectRoot`, `host`, `buildMode` | the project, the machine and `DEBUG` or `RELEASE` |
+| `project` | the `ProjectSummary` of the project: its name, version, build mode and output directory |
 | `outputDirectory` | the absolute directory the build mode of the project writes artifacts to |
 | `workDirectory` | a directory of the step for intermediate files: `.tazel/build/<Publisher>.<Name>/<step>` of the project, the same in every build |
 | `status(verb, message)`, `warn(message)` | prints a line in the output of Tazel |
 | `run(command, directory, environment)` | runs a program, with variables added to those of Tazel, and returns its exit code; what it prints goes to the output of Tazel |
+| `capture(command, directory, environment)` | runs a program like `run`, but returns its exit code and what it printed instead of showing it: for a probe whose failure is an answer, or a program whose output the step reads |
 | `findProgram(name)` | the program on `PATH`, with the executable extension of the host, or `null` |
 | `fail(message)` | stops the build with the coordinate of the plugin, the name of the step and the message |
 
@@ -234,8 +232,8 @@ CMakeLists.txt`.
    and the JAR is kept only when its SHA-256 is the one the index lists.
 2. **Verify.** Tazel reads the descriptor, checks every key and computes the SHA-256 digest of the JAR. When a file
    `<plugin>.jar.sha256` lies beside the JAR, its first word must be that digest, in lower-case hex.
-3. **Activate.** The JARs are put on a class loader of their own, the `ProjectPlugin` services are loaded, matched against
-   their descriptors, and `apply` runs for each plugin in the order of the declarations.
+3. **Activate.** The JARs are put on a class loader of their own; for each plugin, the class its service entry names is
+   created with its public constructor, and `apply` runs in the order of the declarations.
 4. **Configure.** The project file runs. Its `plugins` block declares the same plugins again; each must have been resolved
    in step 1 with the version the block names. The blocks of the plugins add their build steps.
 5. **Finalize.** After the script, every finalizer runs with the summary of the project, and the plugin entries are added
