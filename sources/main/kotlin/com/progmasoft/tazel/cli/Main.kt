@@ -5,6 +5,7 @@
 
 package com.progmasoft.tazel.cli
 
+import com.github.ajalt.mordant.rendering.AnsiLevel
 import com.github.ajalt.mordant.rendering.TextColors.brightCyan
 import com.github.ajalt.mordant.rendering.TextColors.brightRed
 import com.github.ajalt.mordant.rendering.TextStyles.bold
@@ -60,7 +61,9 @@ private const val SELECTION_HELP =
     "  --vipkg, -p Name        only the ViPkg of this name\n" +
     "  --executable, -e Name   only the executable of this name\n" +
     "  --library, -l Name      only the library of this name\n" +
-    "Each flag may be written several times."
+    "Each flag may be written several times. The name follows the flag, or comes after = or :\n" +
+    "(--executable=Name, -e:Name), or, for a short flag, is joined to it (-eName). After = or :\n" +
+    "a flag takes a list: -e=First,Second."
 
 private const val GRAPH_HELP =
   "Every project of the workspace is a root of the graph. A dependency that a feature of the\n" +
@@ -74,13 +77,18 @@ private const val GRAPH_HELP =
     "                          Name.vipkg       that local package\n" +
     "  --depth Levels        print at most this many levels below each root"
 
+private const val OUTPUT_HELP =
+  "  --color always|auto|never     colors; auto uses them on a terminal that has them\n" +
+    "  --progress always|auto|never  the progress bar; auto draws it on an interactive terminal\n" +
+    "  --quiet                       leave out the status lines, and the bar unless --progress asks"
+
 /** The help as Mordant renders it: a title, the usage, and the commands as a table. */
 internal fun helpWidget(topic: CommandName?): Widget {
   if (topic != null) return Text(helpText(topic))
   return verticalLayout {
     cell((bold + brightCyan)("Tazel") + ", the build system and package manager of Tala.")
     cell("")
-    cell(bold("usage") + ": tazel <command> [arguments]")
+    cell(bold("usage") + ": tazel [output options] <command> [arguments]")
     cell("")
     cell(bold("commands") + ":")
     // Aligned lines rather than a table: a table wraps a long summary into a second row and can
@@ -89,6 +97,9 @@ internal fun helpWidget(topic: CommandName?): Widget {
     CommandName.entries.forEach {
       cell("  " + (bold + brightCyan)(it.words.padEnd(width)) + "  " + it.summary)
     }
+    cell("")
+    cell(bold("output options") + ", anywhere before --:")
+    cell(OUTPUT_HELP)
     cell("")
     cell(dim("tazel help <command> explains one command."))
   }
@@ -110,9 +121,31 @@ internal fun helpText(topic: CommandName?): String {
   val commands =
     CommandName.entries.joinToString("\n") { "  ${it.words.padEnd(width)}  ${it.summary}" }
   return "Tazel, the build system and package manager of Tala.\n\n" +
-    "usage: tazel <command> [arguments]\n\n" +
+    "usage: tazel [output options] <command> [arguments]\n\n" +
     "commands:\n$commands\n\n" +
+    "output options, anywhere before --:\n$OUTPUT_HELP\n\n" +
     "tazel help <command> explains one command."
+}
+
+/**
+ * The terminal [output] asks for. [make] builds one with the ANSI level and the interactivity
+ * given, each detected where it is `null`. The colors are settled first, so `--progress=always`,
+ * which makes the terminal interactive for the bar, does not turn colors on in a pipe by itself.
+ */
+internal fun outputTerminal(
+  output: OutputOptions,
+  make: (ansiLevel: AnsiLevel?, interactive: Boolean?) -> Terminal,
+): Terminal {
+  val progress = output.effectiveProgress == WhenMode.ALWAYS
+  if (output.color == WhenMode.AUTO && !progress) return make(null, null)
+  val detected = make(null, null).terminalInfo.ansiLevel
+  val level =
+    when (output.color) {
+      WhenMode.ALWAYS -> if (detected == AnsiLevel.NONE) AnsiLevel.ANSI16 else detected
+      WhenMode.AUTO -> detected
+      WhenMode.NEVER -> AnsiLevel.NONE
+    }
+  return make(level, if (progress) true else null)
 }
 
 /**
@@ -131,9 +164,17 @@ internal fun reportError(
 fun main(arguments: Array<String>) {
   val timings = Timings.fromEnvironment()
   recordJvmStartup(timings)
-  val terminal = Terminal()
+  val parsed = parseCommandLine(arguments.toList())
+  val terminal =
+    if (parsed is ParseResult.Parsed) {
+      outputTerminal(parsed.output) { level, interactive ->
+        Terminal(ansiLevel = level, interactive = interactive)
+      }
+    } else {
+      Terminal()
+    }
   val exitCode =
-    when (val parsed = parseCommandLine(arguments.toList())) {
+    when (parsed) {
       is ParseResult.Rejected -> {
         reportError(terminal, parsed.message, parsed.hint)
         ExitCode.USAGE
@@ -160,6 +201,7 @@ fun main(arguments: Array<String>) {
             tazelVersion(),
             ScriptCache.forUser(),
             timings,
+            parsed.output,
           )
           .let { tazel -> timings.measure(Phase.COMMAND) { tazel.run(parsed.command) } }
       }

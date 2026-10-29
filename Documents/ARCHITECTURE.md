@@ -34,8 +34,10 @@ tazel build -e Server
 message and, for a mistyped word, a hint. No later step looks at the raw arguments again. A rejected line exits with `2`
 before any file is read.
 
-Option values come from the next argument (`--vipkg Name`, `--path File`). Everything after `--` is kept, unread, for the
-program the command starts.
+An option takes its value from the next argument, after `=` or `:`, or, for a short option, joined to it (`--vipkg Name`,
+`--vipkg=Name`, `-p:Name`, `-pName`); after `=` or `:` an option that may be repeated takes a list. The output options
+`--color`, `--progress` and `--quiet` are taken out first, wherever they stand before `--`, and travel beside the command
+as `OutputOptions`. Everything after `--` is kept, unread, for the program the command starts.
 
 ### 2. Finding and running the project file
 
@@ -113,7 +115,8 @@ with a hint line under it when one exists; Tazel prints no stack trace for an er
 Status lines (`Compiling`, `Checking`, `Finished`) go to standard output, errors and warnings to standard error, all
 through Mordant. While several targets are worked through on an interactive terminal, `StepProgress` draws a progress
 bar; the output of the tools is then gathered and printed above the bar instead of writing over it. In a pipe or in CI
-no bar is drawn and the tools write to the terminal directly.
+no bar is drawn and the tools write to the terminal directly. `outputTerminal` builds the terminal `--color` and
+`--progress` ask for, in the client and in the daemon alike; `--quiet` drops the status lines.
 
 ## The daemon
 

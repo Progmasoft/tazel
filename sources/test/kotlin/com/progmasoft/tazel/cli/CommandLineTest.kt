@@ -162,7 +162,10 @@ class CommandLineTest {
     assertContains(rejected("build", "-p", "Name", "-p", "Name"), "-p Name is written twice")
     assertContains(rejected("build", "-e", "My.Tool"), "'My.Tool' is not one")
     assertContains(rejected("build", "-e", "9lives"), "'9lives' is not one")
-    assertContains(rejected("build", "--vipkg=Name"), "'--vipkg=Name' is not an argument")
+    assertEquals(
+      Command.Build(TargetSelection(viPkgs = listOf("Name"))),
+      parsed("build", "--vipkg=Name"),
+    )
     assertContains(rejected("build", "--release"), "'--release' is not an argument of tazel build")
     assertContains(rejected("check", "Sources"), "'Sources' is not an argument of tazel check")
     // The same name may be a package and an executable; the lists are separate.
@@ -290,5 +293,96 @@ class CommandLineTest {
     assertEquals("run", closestTo("rn", listOf("run", "fmt")))
     // A word picks its aside, so the same mistake reads the same every time.
     assertEquals(asideFor("biuld"), asideFor("biuld"))
+  }
+
+  @Test
+  fun aValueIsWrittenInEverySpelling() {
+    val two = Command.Build(TargetSelection(executables = listOf("First", "Second")))
+    assertEquals(two, parsed("build", "-eFirst", "-eSecond"))
+    assertEquals(two, parsed("build", "-e", "First", "-e", "Second"))
+    assertEquals(two, parsed("build", "-e=First,Second"))
+    assertEquals(two, parsed("build", "-e:First,Second"))
+    assertEquals(two, parsed("build", "--executable", "First", "--executable", "Second"))
+    assertEquals(two, parsed("build", "--executable=First,Second"))
+    assertEquals(two, parsed("build", "--executable:First", "--executable=Second"))
+    assertEquals(
+      Command.Run(
+        TargetSelection(viPkgs = listOf("App"), libraries = listOf("Core")),
+        listOf("-x"),
+      ),
+      parsed("run", "-pApp", "--library:Core", "--", "-x"),
+    )
+    assertEquals(
+      Command.LockGraph(invert = InvertTarget.Project("Server"), depth = 1),
+      parsed("lock", "graph", "-iServer", "--depth=1"),
+    )
+    assertEquals(
+      Command.LockGraph(invert = InvertTarget.Package(PackageCoordinate("Publisher", "Name"))),
+      parsed("lock", "graph", "--invert:Publisher.Name"),
+    )
+    // A path keeps what follows the first separator, colons and commas included.
+    assertEquals(
+      Command.LockCreateDump("C:\\Locks,old.sql"),
+      parsed("lock", "create-dump", "--path=C:\\Locks,old.sql"),
+    )
+    assertEquals(
+      Command.LockCreateDump("dump.sql"),
+      parsed("lock", "create-dump", "--path:dump.sql"),
+    )
+  }
+
+  @Test
+  fun wrongValuesAreExplained() {
+    assertContains(rejected("build", "-e="), "-e requires a value after '-e='")
+    assertContains(rejected("build", "--executable:"), "--executable requires a value")
+    assertContains(rejected("build", "-e=First,,Second"), "and '' is not one")
+    assertContains(rejected("build", "-e=First,First"), "-e First is written twice")
+    // Joined or after a space, a value is one name; a list needs = or :.
+    assertContains(rejected("build", "-e", "First,Second"), "'First,Second' is not one")
+    assertContains(rejected("lock", "graph", "--locked=yes"), "--locked takes no value")
+    assertContains(rejected("lock", "graph", "-dx"), "-d takes no value")
+    assertContains(rejected("install", "-g=1", "Publisher.Name"), "-g takes no value")
+    assertContains(hint("build", "--vipgk=Server").orEmpty(), "did you mean --vipkg?")
+  }
+
+  @Test
+  fun outputOptionsStandAnywhereBeforeTheArgumentsPassedOn() {
+    fun output(vararg arguments: String) =
+      assertIs<ParseResult.Parsed>(parseCommandLine(arguments.toList())).output
+
+    assertEquals(OutputOptions(), output("build"))
+    assertEquals(
+      OutputOptions(WhenMode.NEVER, WhenMode.ALWAYS, quiet = true),
+      output("--color", "never", "build", "--progress=always", "--quiet"),
+    )
+    assertEquals(OutputOptions(color = WhenMode.ALWAYS), output("build", "--color:always"))
+    assertEquals(Command.Build(everything), parsed("--quiet", "build"))
+    assertEquals(Command.Help(null), parsed("--color=never"))
+    // After -- they belong to the program.
+    assertEquals(
+      Command.Run(everything, listOf("--quiet", "--color", "never")),
+      parsed("run", "--", "--quiet", "--color", "never"),
+    )
+    assertEquals(OutputOptions(), output("run", "--", "--quiet"))
+
+    assertContains(rejected("build", "--color", "sometimes"), "always, auto or never")
+    // The hint is spelled the way the option was written.
+    assertContains(hint("build", "--color=alwys").orEmpty(), "did you mean --color=always?")
+    assertContains(hint("build", "--color:awlyas").orEmpty(), "did you mean --color:always?")
+    assertContains(hint("build", "--progress", "nevr").orEmpty(), "did you mean --progress never?")
+    assertContains(rejected("build", "--color"), "--color requires a value")
+    assertContains(rejected("--quiet", "build", "--quiet"), "--quiet is written twice")
+    assertContains(rejected("--quiet=yes", "build"), "--quiet takes no value")
+    assertContains(hint("build", "--quite").orEmpty(), "did you mean --quiet?")
+  }
+
+  @Test
+  fun quietHidesTheBarUnlessProgressAsksForIt() {
+    assertEquals(WhenMode.AUTO, OutputOptions().effectiveProgress)
+    assertEquals(WhenMode.NEVER, OutputOptions(quiet = true).effectiveProgress)
+    assertEquals(
+      WhenMode.ALWAYS,
+      OutputOptions(progress = WhenMode.ALWAYS, quiet = true).effectiveProgress,
+    )
   }
 }

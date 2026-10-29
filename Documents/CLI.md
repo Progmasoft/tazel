@@ -9,7 +9,7 @@ Exit codes are shared: `0` success, `1` the work failed, `2` the command line it
 hands through the exit code of the program it ran.
 
 ```text
-tazel <command> [arguments]
+tazel [output options] <command> [arguments]
 ```
 
 `tazel` works on the project the current directory belongs to: the nearest directory, upward, that holds a
@@ -51,9 +51,45 @@ tazel build --executable Name     tazel build -e Name
 tazel build --library Name        tazel build -l Name
 ```
 
-An option of `tazel` takes its value from the next argument. Each flag may be written several times, and the kinds may be
-combined. `--vipkg` keeps the named ViPkgs; once `--executable` or `--library` is written, only named targets remain. A name
+Each flag may be written several times, and the kinds may be combined; [Writing options](#writing-options) shows the
+spellings. `--vipkg` keeps the named ViPkgs; once `--executable` or `--library` is written, only named targets remain. A name
 that selects nothing is an error.
+
+## Writing options
+
+An option takes its value in any of these spellings; the short ones work the same for `-p`, `-l` and `-i`, and the long
+ones for every option with a value, such as `--path`, `--invert` and `--depth`:
+
+```text
+tazel build -eFirst -eSecond                 # short, joined
+tazel build -e First -e Second               # short, after a space
+tazel build -e=First,Second                  # short, after =
+tazel build -e:First,Second                  # short, after :
+tazel build --executable First --executable Second
+tazel build --executable=First,Second
+tazel build --executable:First,Second
+```
+
+After `=` or `:` an option that may be written several times takes a list separated by commas; joined or after a space a
+value is one name, so `-e First,Second` is refused. The value of an option that is written once is everything after the
+first `=` or `:`, so `--path=C:\Locks\old.sql` keeps its colon. A value after a space may not start with `-`, and a flag
+without a value, such as `--locked`, refuses one: `--locked=yes` is an error. A hint for a mistyped value is spelled the
+way the option was written: `--color:awlyas` suggests `--color:always`.
+
+## Output options
+
+These may stand anywhere before `--`, before the command or after it:
+
+| Option | Effect |
+| --- | --- |
+| `--color always\|auto\|never` | colors. `auto`, the default, uses them on a terminal that has them; `always` also in a pipe or in CI |
+| `--progress always\|auto\|never` | the progress bar. `auto`, the default, draws it on an interactive terminal that can move its cursor; `always` draws it everywhere |
+| `--quiet` | leaves out the status lines, and the progress bar unless `--progress` asks for it. Warnings, errors and what a command is for, such as the graph of `tazel lock graph` or the output of the program `tazel run` starts, are still printed |
+
+```text
+tazel --quiet build
+tazel build --color=never --progress:never
+```
 
 ## Writing the lockfile as text
 
@@ -107,10 +143,11 @@ Tazel does not fetch packages from ViGet yet, so a ViGet package appears without
 ## Output
 
 Tazel prints a status line for each step, such as `Compiling Demo (Demo, 3 sources)`, and closes a command with the
-time it took: `Finished build in 1.84s`. While `check`, `build`, `run`, `fmt` and `lint` work through their targets on an
+time it took: `Finished build in 1.84s`; `--quiet` leaves them out. While `check`, `build`, `run`, `fmt` and `lint` work through their targets on an
 interactive terminal, a progress bar under the status lines shows the step in hand, how many are done and the time so
 far; the output of `talac`, `talafmt` and `talalint` is then printed above the bar. In a pipe, in CI or on a terminal
-that cannot move its cursor no bar is drawn, and the tools write to the terminal directly. The program that `tazel run`
+that cannot move its cursor no bar is drawn, and the tools write to the terminal directly; `--progress` and `--color`
+choose otherwise. The program that `tazel run`
 starts always writes directly. The terminal output uses Mordant.
 
 ## Mistyped words
@@ -221,7 +258,8 @@ These are refused by name with exit code `1`:
   warning; a library selected by name is an error.
 - projects with dependencies: nothing fetches a dependency or hands it to the compiler yet. `tazel lock resolve` still
   records what the project declares.
-- `tazel test` when the selection declares a test suite: Tala has no test framework yet.
+- `tazel test` when the selection declares a test suite. Tala writes tests with the built-in `[Fact]` attribute and
+  `#expect`, but Talac does not compile them yet.
 - `tazel vipkg create`, `tazel update`, `tazel install`, `tazel viget push`, `tazel viget update` and
   `tazel viget vipkg-desc`.
 
