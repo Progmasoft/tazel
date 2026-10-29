@@ -149,6 +149,17 @@ directory of a member, that member is the project.
 A tool is looked for in three places, in this order: the path named by `TAZEL_TALAC`, `TAZEL_TALAFMT` or `TAZEL_TALALINT`;
 the installation `tazel` runs from; the directories of `PATH`.
 
+## Plugins
+
+A plugin a project declares with `plugin("Publisher") { ... }` is looked for in the plugin cache of the project,
+`.tazel/plugins`. When the cache has no matching version, Tazel downloads it from ViGet into
+`.tazel/plugins/<Publisher>/<Name>/<Version>/` and checks its SHA-256 against the index of the plugin; later runs use the
+cache without asking ViGet. `TAZEL_VIGET_URL` replaces the address of ViGet, `https://viget.progmasoft.com`, for a mirror.
+See [Writing a plugin](PLUGINS.md).
+
+`build` and `run` run the steps that plugins add to the build of a project before its Tala targets compile; `check`
+and `test` do not run them.
+
 ## Compiled project files
 
 The first run compiles the project file; later runs load the compiled script from the cache and only evaluate it. An

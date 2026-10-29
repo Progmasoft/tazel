@@ -247,11 +247,13 @@ internal class ForwardingProcesses(
   private fun builder(
     command: List<String>,
     directory: Path?,
+    added: Map<String, String> = emptyMap(),
   ) =
     ProcessBuilder(command).also { builder ->
       directory?.let { builder.directory(it.toFile()) }
       builder.environment().clear()
       builder.environment().putAll(environment)
+      builder.environment().putAll(added)
     }
 
   private fun started(
@@ -269,8 +271,14 @@ internal class ForwardingProcesses(
   override fun run(
     command: List<String>,
     directory: Path,
+  ): Int = runWith(command, directory, emptyMap())
+
+  override fun runWith(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
   ): Int {
-    val process = started(command, builder(command, directory))
+    val process = started(command, builder(command, directory, environment))
     val stop = {
       process.destroyForcibly()
       Unit
@@ -331,11 +339,17 @@ internal class ForwardingProcesses(
   override fun runGathered(
     command: List<String>,
     directory: Path,
+  ): GatheredRun = runGatheredWith(command, directory, emptyMap())
+
+  override fun runGatheredWith(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
   ): GatheredRun {
     val process =
       started(
         command,
-        builder(command, directory)
+        builder(command, directory, environment)
           .redirectErrorStream(true)
           .redirectInput(ProcessBuilder.Redirect.from(nullDevice())),
       )

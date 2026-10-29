@@ -36,10 +36,11 @@ The site of Tazel is [tazel.tala.run](https://tazel.tala.run/).
 | --- | --- |
 | `com.progmasoft.tazel.cli` | the command line: the typed parser, the commands, `main` |
 | `com.progmasoft.tazel.dsl` | the project DSL, its model and the loader that evaluates a project file |
-| `com.progmasoft.tazel.dsl.plugin` | the plugin host: preamble, resolution, verification, activation |
+| `com.progmasoft.tazel.dsl.plugin` | the plugin host: preamble, resolution, the ViGet download, verification, activation, build steps |
 | `com.progmasoft.tazel.driver` | source discovery, compiler arguments, tool lookup, workspaces |
 | `com.progmasoft.tazel.lock` | `LOCK.sqlite3` and `LOCK.dump` |
-| `com.progmasoft.api.tazel.dsl.plugin` | the API a plugin is written against |
+| `com.progmasoft.api.tazel.dsl.plugin` | the API a plugin is written against, in `api/` (`com.progmasoft.tazel:tazel-api`) |
+| `com.progmasoft.tazel.gradle` | the Gradle plugin `com.progmasoft.tazel.plugin` for building plugins, in `gradle-plugin/` |
 
 The command line is read by a parser written by hand; there is no command-line library. Terminal output goes through
 Mordant. The project file is compiled and run inside Tazel by the embedded Kotlin scripting host, so no Kotlin installation

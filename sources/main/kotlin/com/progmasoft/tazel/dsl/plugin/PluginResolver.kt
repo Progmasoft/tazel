@@ -23,18 +23,65 @@ object PluginResolver {
   private const val DESCRIPTOR = "META-INF/tazel-plugin.properties"
   private val indexCache = ConcurrentHashMap<String, CachedIndex>()
 
+  /**
+   * The plugins [requests] name: a local plugin from the project directory, a hosted one from the
+   * plugin cache of the project, `.tazel/plugins`, or, when the cache has no matching version, from
+   * [registry], which adds it to the cache first.
+   */
   fun resolve(
     root: Path,
     requests: List<PluginRequest>,
+    registry: PluginRegistry? = null,
   ): List<ResolvedPlugin> {
     if (requests.isEmpty()) return emptyList()
     val cache = root.resolve(".tazel/plugins").toAbsolutePath().normalize()
-    val candidates =
-      if (Files.isDirectory(cache)) index(cache).groupBy(ResolvedPlugin::coordinate) else emptyMap()
+    var candidates = cachedCandidates(cache)
+    val missing = requests.filter { request ->
+      !request.isLocal && candidates[request.coordinate].orEmpty().none { request.accepts(it) }
+    }
+    if (missing.isNotEmpty() && registry != null) {
+      missing.forEach { fetch(cache, it, registry) }
+      candidates = cachedCandidates(cache)
+    }
     return requests.map { request ->
       if (request.isLocal) resolveLocal(root, request)
       else select(request, candidates[request.coordinate].orEmpty())
     }
+  }
+
+  private fun cachedCandidates(cache: Path): Map<String, List<ResolvedPlugin>> =
+    if (Files.isDirectory(cache)) index(cache).groupBy(ResolvedPlugin::coordinate) else emptyMap()
+
+  private fun PluginRequest.accepts(plugin: ResolvedPlugin) =
+    version == null || plugin.version == version
+
+  /** Downloads the version [request] takes to `<cache>/<Publisher>/<Name>/<Version>/`. */
+  private fun fetch(
+    cache: Path,
+    request: PluginRequest,
+    registry: PluginRegistry,
+  ) {
+    val publisher = request.publisher
+    val name = request.name!!
+    val versions = registry.versions(publisher, name)
+    if (versions.isEmpty()) {
+      throw ProjectConfigurationException(
+        "plugin '${request.coordinate}' is not published on ViGet"
+      )
+    }
+    val chosen =
+      ViGetPlugins.choose(request.version, versions, ::compareVersions)
+        ?: throw ProjectConfigurationException(
+          request.version?.let { "plugin '${request.coordinate}' has no version $it on ViGet" }
+            ?: "plugin '${request.coordinate}' has no version on ViGet for plugin API $PROJECT_PLUGIN_API_VERSION"
+        )
+    val target =
+      cache
+        .resolve(publisher)
+        .resolve(name)
+        .resolve(chosen.version)
+        .resolve("$name-${chosen.version}.jar")
+    registry.download(publisher, name, chosen, target)
   }
 
   internal fun clearCache() = indexCache.clear()
@@ -139,6 +186,7 @@ object PluginResolver {
       digest,
       imports,
       normalized,
+      metadata = PluginMetadata.of(properties),
     )
   }
 
@@ -164,7 +212,7 @@ object PluginResolver {
     else selected.copy(requestCoordinate = request.coordinate)
   }
 
-  private fun compareVersions(
+  internal fun compareVersions(
     left: String,
     right: String,
   ): Int {

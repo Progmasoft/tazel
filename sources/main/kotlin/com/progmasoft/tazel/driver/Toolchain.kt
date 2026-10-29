@@ -47,6 +47,23 @@ class Toolchain(
       .firstOrNull(Files::isRegularFile)
   }
 
+  /**
+   * The program [name] on `PATH`, for the build steps of plugins: with the executable extension of
+   * the host unless [name] has it already.
+   */
+  fun findProgram(name: String): Path? {
+    val extension = executableExtension(os)
+    val fileName =
+      if (extension.isEmpty() || name.endsWith(extension, ignoreCase = true)) name
+      else name + extension
+    return variable("PATH")
+      .orEmpty()
+      .split(File.pathSeparatorChar)
+      .filter(String::isNotEmpty)
+      .map { Path.of(it).resolve(fileName) }
+      .firstOrNull(Files::isRegularFile)
+  }
+
   fun require(tool: Tool): Path =
     find(tool)
       ?: throw ProjectConfigurationException(

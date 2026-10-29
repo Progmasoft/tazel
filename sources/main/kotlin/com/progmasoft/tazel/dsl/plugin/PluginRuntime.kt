@@ -5,8 +5,16 @@
 
 package com.progmasoft.tazel.dsl.plugin
 
+import com.progmasoft.api.tazel.dsl.plugin.BuildMode as PluginBuildMode
+import com.progmasoft.api.tazel.dsl.plugin.BuildStep
+import com.progmasoft.api.tazel.dsl.plugin.ExtensionHost
+import com.progmasoft.api.tazel.dsl.plugin.ExtensionScope
+import com.progmasoft.api.tazel.dsl.plugin.Host as PluginHost
 import com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
 import com.progmasoft.api.tazel.dsl.plugin.ProjectPluginContext
+import com.progmasoft.api.tazel.dsl.plugin.ProjectSummary
+import com.progmasoft.tazel.dsl.BuildMode
+import com.progmasoft.tazel.dsl.Host
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectPlan
 import com.progmasoft.tazel.dsl.ProjectRuntime
@@ -14,10 +22,27 @@ import com.progmasoft.tazel.dsl.requireModuleSegment
 import com.progmasoft.tazel.dsl.requireText
 import java.nio.file.Path
 
+/** A step a plugin added to the build of its project, with the plugin that added it. */
+data class PluginBuildStep(
+  val owner: String,
+  val name: String,
+  val step: BuildStep,
+)
+
+/** The host as the API of plugins describes it. */
+internal fun Host.toPluginHost() =
+  PluginHost(
+    com.progmasoft.api.tazel.dsl.plugin.OperatingSystem.valueOf(os.name),
+    com.progmasoft.api.tazel.dsl.plugin.Architecture.valueOf(architecture.name),
+  )
+
+internal fun BuildMode.toPluginBuildMode() = PluginBuildMode.valueOf(name)
+
 /**
  * The plugins of one project: those resolved for it, the ones its project file declared, and what
- * each registered, contributed and asked to run when the plan is finished. Each [ProjectContext]
- * has its own, so plugins of two projects never see each other.
+ * each registered, contributed, added to the build and asked to run when the plan is finished. Each
+ * [com.progmasoft.tazel.dsl.ProjectContext] has its own, so plugins of two projects never see each
+ * other.
  */
 class PluginState internal constructor() {
   private enum class Phase {
@@ -30,19 +55,29 @@ class PluginState internal constructor() {
 
   private var phase = Phase.EMPTY
   private var resolved = emptyList<ResolvedPlugin>()
+  private var projectRoot: Path? = null
+  private var host: PluginHost? = null
   private val declared = linkedSetOf<String>()
   private val extensions = linkedMapOf<String, String>()
   private val contributions = linkedMapOf<String, LinkedHashMap<String, String>>()
-  private val finalizers = mutableListOf<Pair<String, (ProjectPlan) -> Unit>>()
+  private val finalizers = mutableListOf<Pair<String, (ProjectSummary) -> Unit>>()
+  private val steps = mutableListOf<PluginBuildStep>()
+
+  /** The steps the plugins added to the build, in the order they were added. */
+  val buildSteps: List<PluginBuildStep>
+    get() = steps.toList()
 
   internal fun activate(
     plugins: List<ResolvedPlugin>,
     implementations: List<ProjectPlugin>,
     projectRoot: Path,
+    host: Host,
   ) {
     checkPhase(Phase.EMPTY, "plugin runtime is already active")
     phase = Phase.ACTIVATING
     resolved = plugins
+    this.projectRoot = projectRoot
+    this.host = host.toPluginHost()
     val byCoordinate = implementations.groupBy { "${it.publisher}.${it.name}" }
     plugins.forEach { plugin ->
       val matches = byCoordinate[plugin.coordinate].orEmpty()
@@ -59,7 +94,7 @@ class PluginState internal constructor() {
           "plugin service '${plugin.coordinate}' does not match its verified descriptor"
         )
       }
-      val context = Context(plugin.coordinate, projectRoot)
+      val context = Context(plugin.coordinate, projectRoot, this.host!!)
       try {
         implementation.apply(context)
       } catch (error: ProjectConfigurationException) {
@@ -108,6 +143,26 @@ class PluginState internal constructor() {
     }
   }
 
+  /** The scope the block of [extension] adds its work through. */
+  internal fun extensionScope(extension: String): ExtensionScope {
+    checkPhase(
+      Phase.CONFIGURING,
+      "plugin extension '$extension' can be used only while the project file runs",
+    )
+    val owner =
+      extensions[extension]
+        ?: throw ProjectConfigurationException(
+          "plugin extension '$extension' is not registered by any plugin of the project"
+        )
+    val plugin = resolved.first { it.coordinate == owner }
+    if (plugin.requestCoordinate !in declared) {
+      throw ProjectConfigurationException(
+        "plugin extension '$extension' is used before its plugin '$owner' is declared in plugins { }"
+      )
+    }
+    return Scope(owner, projectRoot!!, host!!)
+  }
+
   internal fun finish(plan: ProjectPlan): ProjectPlan {
     if (phase == Phase.EMPTY) return plan
     checkPhase(Phase.CONFIGURING, "plugin runtime cannot finalize from phase $phase")
@@ -118,9 +173,10 @@ class PluginState internal constructor() {
       )
     }
     phase = Phase.FINALIZING
+    val summary = Summary(plan)
     finalizers.forEach { (owner, action) ->
       try {
-        action(plan)
+        action(summary)
       } catch (error: Exception) {
         throw ProjectConfigurationException(
           "plugin '$owner' failed while finalizing the project: ${error.message ?: error.javaClass.name}"
@@ -149,9 +205,36 @@ class PluginState internal constructor() {
     if (phase != expected) throw ProjectConfigurationException(message)
   }
 
+  private class Summary(plan: ProjectPlan) : ProjectSummary {
+    override val name = plan.identity?.name
+    override val version = plan.identity?.version
+    override val buildMode = plan.compiler.buildMode.toPluginBuildMode()
+    override val outputDirectory = plan.outputDirectory
+  }
+
+  private inner class Scope(
+    private val owner: String,
+    override val projectRoot: Path,
+    override val host: PluginHost,
+  ) : ExtensionScope {
+    override fun buildStep(
+      name: String,
+      step: BuildStep,
+    ) {
+      val normalized = requireModuleSegment(name, "build step name")
+      if (steps.any { it.owner == owner && it.name == normalized }) {
+        throw ProjectConfigurationException(
+          "plugin '$owner' added build step '$normalized' more than once"
+        )
+      }
+      steps += PluginBuildStep(owner, normalized, step)
+    }
+  }
+
   private inner class Context(
     private val owner: String,
     override val projectRoot: Path,
+    override val host: PluginHost,
   ) : ProjectPluginContext {
     override fun registerExtension(name: String) {
       val normalized = requireModuleSegment(name, "plugin extension")
@@ -180,7 +263,7 @@ class PluginState internal constructor() {
       }
     }
 
-    override fun onFinalize(action: (ProjectPlan) -> Unit) {
+    override fun onFinalize(action: (ProjectSummary) -> Unit) {
       finalizers += owner to action
     }
   }
@@ -207,5 +290,15 @@ object PluginRuntime {
     plugins: List<ResolvedPlugin>,
     implementations: List<ProjectPlugin>,
     projectRoot: Path,
-  ) = state.activate(plugins, implementations, projectRoot)
+    host: Host,
+  ) = state.activate(plugins, implementations, projectRoot, host)
+}
+
+/**
+ * The [ExtensionHost] of the API of plugins: [com.progmasoft.api.tazel.dsl.plugin.PluginExtensions]
+ * finds it as a service and reaches the project being evaluated on its thread through it.
+ */
+class TazelExtensionHost : ExtensionHost {
+  override fun require(extension: String): ExtensionScope =
+    ProjectRuntime.current().plugins.extensionScope(extension)
 }

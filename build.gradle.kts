@@ -13,7 +13,7 @@ plugins {
   jacoco
 }
 
-group = "com.progmasoft.tala"
+group = "com.progmasoft.tazel"
 version = "0.1.0"
 
 repositories {
@@ -21,11 +21,13 @@ repositories {
 }
 
 dependencies {
+  implementation(project(":tazel-api"))
   implementation("com.github.ajalt.mordant:mordant:3.0.1")
   implementation("org.jetbrains.kotlin:kotlin-scripting-common:2.4.0")
   implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:2.4.0")
   implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host:2.4.0")
   implementation("org.xerial:sqlite-jdbc:3.53.1.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
   testImplementation(kotlin("test"))
 }
 
@@ -56,19 +58,22 @@ application {
 }
 
 sourceSets {
-  main { kotlin.srcDir("sources/main/kotlin") }
+  main {
+    kotlin.srcDir("sources/main/kotlin")
+    resources.srcDir("sources/main/resources")
+  }
   test { kotlin.srcDir("sources/test/kotlin") }
 }
 
 spotless {
   kotlin {
-    target("sources/**/*.kt", "helpers/**/*.kts")
+    target("sources/**/*.kt", "api/sources/**/*.kt", "gradle-plugin/sources/**/*.kt", "helpers/**/*.kts")
     ktfmt().googleStyle()
     trimTrailingWhitespace()
     endWithNewline()
   }
   kotlinGradle {
-    target("*.gradle.kts")
+    target("*.gradle.kts", "api/*.gradle.kts", "gradle-plugin/*.gradle.kts")
     ktlint()
     trimTrailingWhitespace()
     endWithNewline()

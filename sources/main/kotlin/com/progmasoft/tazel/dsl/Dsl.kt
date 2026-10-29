@@ -220,8 +220,14 @@ internal constructor(
   }
 
   fun build(): ProjectPlan {
-    // A project that only gathers the members of a workspace has no sources of its own.
-    if (executables.isEmpty() && libraries.isEmpty() && workspace == null) {
+    // A project that only gathers the members of a workspace has no sources of its own, and one
+    // whose plugins build it, such as a C project, needs no Tala target.
+    if (
+      executables.isEmpty() &&
+        libraries.isEmpty() &&
+        workspace == null &&
+        plugins.buildSteps.isEmpty()
+    ) {
       throw ProjectConfigurationException(
         "sources requires at least one executable or library target"
       )

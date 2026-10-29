@@ -46,8 +46,9 @@ whose file systems would otherwise match it.
 `ProjectLoader.load` then works in two phases:
 
 1. **Plugins.** `PluginPreamble` reads only the `plugins { }` block of the file, with a small lexer and parser that do not
-   run any code. `PluginResolver` finds each declared JAR, checks its descriptor and digest, and `PluginRuntime` activates
-   the plugins. See [Writing a plugin](PLUGINS.md).
+   run any code. `PluginResolver` finds each declared JAR, in the project or in its plugin cache, downloads a missing one
+   from ViGet through `ViGetPlugins` (`dsl/plugin/PluginRegistry.kt`), checks its descriptor and digest, and
+   `PluginRuntime` activates the plugins. See [Writing a plugin](PLUGINS.md).
 2. **The script.** The whole file is compiled and run by the Kotlin scripting host embedded in Tazel
    (`BasicJvmScriptingHost`), with the DSL and the imports of the plugins as default imports. A compiled script is kept
    in `ScriptCache` (`dsl/ScriptCache.kt`) under a SHA-256 of everything its compilation depends on, so a later run
@@ -139,7 +140,8 @@ disk without a compiler. See [Contributing](../CONTRIBUTING.md#tests).
 | --- | --- |
 | `com.progmasoft.tazel.cli` | `main`, the command-line parser, the commands, help, hints, the progress bar, the dependency graph |
 | `com.progmasoft.tazel.dsl` | the DSL scopes, the model and `ProjectPlan`, the loader that runs a project file |
-| `com.progmasoft.tazel.dsl.plugin` | the plugin preamble, resolution and verification, the plugin runtime |
+| `com.progmasoft.tazel.dsl.plugin` | the plugin preamble, resolution, the ViGet download and verification, the plugin runtime and its build steps |
 | `com.progmasoft.tazel.driver` | workspaces and selection, source discovery, compiler arguments, tool lookup, processes |
 | `com.progmasoft.tazel.lock` | `LOCK.sqlite3` and its text dump |
-| `com.progmasoft.api.tazel.dsl.plugin` | `ProjectPlugin` and `ProjectPluginContext`, the API a plugin is written against |
+| `com.progmasoft.api.tazel.dsl.plugin` | the API a plugin is written against: `ProjectPlugin`, `PluginExtensions`, `BuildContext`; the module `api/`, published as `com.progmasoft.tazel:tazel-api` |
+| `com.progmasoft.tazel.gradle` | the Gradle plugin `com.progmasoft.tazel.plugin`, which builds plugins; the module `gradle-plugin/` |

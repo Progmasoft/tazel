@@ -12,6 +12,23 @@
   daemon that keeps Tazel warm; `TAZEL_DAEMON` chooses when a command goes to
   it.
 - `TAZEL_TIMINGS=1` prints how long each phase of a run took.
+- Plugin API 2, published as `com.progmasoft.tazel:tazel-api` from the new module
+  `api/`. A plugin can add build steps through `PluginExtensions`; `tazel build`
+  and `tazel run` run them before the Tala targets compile, with a
+  `BuildContext` that runs programs, finds them on `PATH` and stops the build. A
+  project built only by its plugins needs no Tala target. `onFinalize` now
+  receives a `ProjectSummary` instead of the internal plan, and the context
+  tells the host. Plugins built for API 1 are not loaded.
+- A ViGet plugin missing from `.tazel/plugins` is downloaded from
+  `viget.progmasoft.com/dslplugins/tazel` and checked against the SHA-256 its
+  index lists; `TAZEL_VIGET_URL` names a mirror.
+- The descriptor of a plugin can describe it for ViGet: `description`,
+  `author.N`, `license`, `homepage` and `repository`.
+- The Gradle plugin `com.progmasoft.tazel.plugin`, from the new module
+  `gradle-plugin/`, builds plugins: it adds the repository of the API,
+  `tazelApi()` and the `tazelPlugin { }` block, from which it writes the
+  descriptor and the service entry.
+- The Maven group of Tazel is `com.progmasoft.tazel`.
 
 ## 0.1.0 - 2026-10-18
 
