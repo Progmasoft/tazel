@@ -5,6 +5,16 @@
 
 ## Unreleased
 
+- Options take their value after a space, `=` or `:`, and short options also
+  joined: `-eFirst`, `-e First`, `-e=First`, `-e:First`, `--executable:First`.
+  After `=` or `:` an option that may be repeated takes a list:
+  `-e=First,Second`. A hint for a mistyped value keeps the spelling it was
+  written with.
+- `--color always|auto|never`, `--progress always|auto|never` and `--quiet`
+  choose how Tazel writes; they may stand anywhere before `--`.
+- `tazel test` explains that Talac does not compile `[Fact]` tests yet, instead
+  of saying that Tala has no test framework.
+
 ## 0.2.0 - 2026-10-29
 
 - Compiled project files are cached per user; a later run only evaluates them.

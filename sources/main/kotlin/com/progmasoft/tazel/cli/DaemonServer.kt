@@ -236,8 +236,17 @@ internal class DaemonServer(
     input: RequestInput,
     timings: Timings,
   ): Int {
-    val terminal = Terminal(terminalInterface = ForwardingTerminal(request.terminal, sink))
-    return when (val parsed = parseCommandLine(request.arguments)) {
+    val parsed = parseCommandLine(request.arguments)
+    val output = (parsed as? ParseResult.Parsed)?.output ?: OutputOptions()
+    val terminal =
+      outputTerminal(output) { level, interactive ->
+        Terminal(
+          ansiLevel = level,
+          interactive = interactive,
+          terminalInterface = ForwardingTerminal(request.terminal, sink),
+        )
+      }
+    return when (parsed) {
       is ParseResult.Rejected -> {
         reportError(terminal, parsed.message, parsed.hint)
         ExitCode.USAGE
@@ -254,6 +263,7 @@ internal class DaemonServer(
             tazelVersion,
             ScriptCache.forUser(request.environment::get),
             timings,
+            parsed.output,
           )
         timings.measure(Phase.COMMAND) { tazel.run(parsed.command) }
       }

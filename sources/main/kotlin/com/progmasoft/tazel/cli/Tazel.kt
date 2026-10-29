@@ -88,6 +88,8 @@ class Tazel(
   /** Where compiled project files are kept between runs; `null` compiles every time. */
   private val scriptCache: ScriptCache? = null,
   private val timings: Timings = Timings.disabled,
+  /** --color, --progress and --quiet; the terminal already has the colors they ask for. */
+  private val output: OutputOptions = OutputOptions(),
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
@@ -170,10 +172,14 @@ class Tazel(
     return ExitCode.FAILURE
   }
 
+  /** A status line; --quiet leaves them out. */
   private fun status(
     verb: String,
     rest: String,
-  ) = terminal.println((bold + brightGreen)(verb.padStart(STATUS_WIDTH)) + " " + rest)
+  ) {
+    if (!output.quiet)
+      terminal.println((bold + brightGreen)(verb.padStart(STATUS_WIDTH)) + " " + rest)
+  }
 
   private fun warn(message: String) =
     terminal.println((bold + brightYellow)("warning") + ": " + message, stderr = true)
@@ -225,7 +231,7 @@ class Tazel(
       val work = selected.sumOf {
         it.executables.size + if (runSteps) it.project.buildSteps.size else 0
       }
-      StepProgress.start(terminal, verb, work).use { progress ->
+      StepProgress.start(terminal, verb, work, output.effectiveProgress).use { progress ->
         for (targets in selected) {
           val project = targets.project
           keepLockCurrent(project)
@@ -407,7 +413,9 @@ class Tazel(
       return ExitCode.SUCCESS
     }
     throw Stop(
-      "test suites cannot run yet: Tala has no test framework to run " + suites.joinToString()
+      "test suites cannot run yet: Talac does not compile [Fact] tests and #expect yet, so " +
+        suites.joinToString() +
+        " cannot be built"
     )
   }
 
@@ -617,7 +625,7 @@ class Tazel(
     val verb = if (tool == Tool.TALAFMT) "Formatting" else "Linting"
     var result = ExitCode.SUCCESS
     val started = TimeSource.Monotonic.markNow()
-    StepProgress.start(terminal, verb, selected.size).use { progress ->
+    StepProgress.start(terminal, verb, selected.size, output.effectiveProgress).use { progress ->
       for (targets in selected) {
         progress.working(targets.project.displayName)
         val files = sourcesOf(targets, includeTests = selection.isEverything)

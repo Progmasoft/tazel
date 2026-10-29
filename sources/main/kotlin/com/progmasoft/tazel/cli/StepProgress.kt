@@ -26,9 +26,10 @@ import java.util.concurrent.Future
  * A progress bar under the status lines while a command works through a known number of steps: a
  * spinner, the verb, the step in hand, the bar, the count and the time so far.
  *
- * It is drawn only on an interactive terminal that can move its cursor. In a pipe, in CI and in the
- * tests nothing is drawn, and the status lines tell the same story. Everything else Tazel prints
- * goes through the same [Terminal], which keeps the bar below it.
+ * By default it is drawn only on an interactive terminal that can move its cursor. In a pipe, in CI
+ * and in the tests nothing is drawn, and the status lines tell the same story. `--progress=always`
+ * draws it everywhere and `--progress=never` nowhere. Everything else Tazel prints goes through the
+ * same [Terminal], which keeps the bar below it.
  */
 internal class StepProgress
 private constructor(
@@ -58,16 +59,24 @@ private constructor(
   }
 
   companion object {
-    /** Starts a bar of [total] steps for [verb], or one that draws nothing where it cannot. */
+    /**
+     * Starts a bar of [total] steps for [verb], or one that draws nothing where [mode] or the
+     * terminal does not let it.
+     */
     fun start(
       terminal: Terminal,
       verb: String,
       total: Int,
+      mode: WhenMode = WhenMode.AUTO,
     ): StepProgress {
       val info = terminal.terminalInfo
-      if (total < 1 || !info.outputInteractive || !info.supportsAnsiCursor) {
-        return StepProgress(null, null)
-      }
+      val drawable =
+        when (mode) {
+          WhenMode.ALWAYS -> true
+          WhenMode.AUTO -> info.outputInteractive && info.supportsAnsiCursor
+          WhenMode.NEVER -> false
+        }
+      if (total < 1 || !drawable) return StepProgress(null, null)
       val layout =
         progressBarContextLayout<String> {
           spinner(Spinner.Dots(brightCyan))

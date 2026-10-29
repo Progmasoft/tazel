@@ -195,9 +195,39 @@ sealed interface Command {
   }
 }
 
+/** Whether Tazel uses something the terminal may or may not support. */
+enum class WhenMode(val word: String) {
+  /** Always, also in a pipe or in CI. */
+  ALWAYS("always"),
+
+  /** When the terminal supports it; the default. */
+  AUTO("auto"),
+  NEVER("never"),
+}
+
+/**
+ * How Tazel writes, whatever the command: [color] for colors, [progress] for the progress bar, and
+ * [quiet] to leave out the status lines. They may be written anywhere before `--`.
+ */
+data class OutputOptions(
+  val color: WhenMode = WhenMode.AUTO,
+  val progress: WhenMode = WhenMode.AUTO,
+  val quiet: Boolean = false,
+) {
+  /**
+   * Whether the progress bar may be drawn: --quiet hides it too, unless --progress asks for it
+   * explicitly.
+   */
+  val effectiveProgress: WhenMode
+    get() = if (quiet && progress == WhenMode.AUTO) WhenMode.NEVER else progress
+}
+
 /** The outcome of reading a command line: a command, or the reason there is none. */
 sealed interface ParseResult {
-  data class Parsed(val command: Command) : ParseResult
+  data class Parsed(
+    val command: Command,
+    val output: OutputOptions = OutputOptions(),
+  ) : ParseResult
 
   /** [hint] suggests what was probably meant, when a word looks like a typo of a real one. */
   data class Rejected(
@@ -211,16 +241,103 @@ sealed interface ParseResult {
  *
  * The parser is written by hand so that every accepted line is a value of [Command] and nothing
  * else: there is no table of strings a later stage would have to interpret again. An option takes
- * its value from the next argument, `--vipkg Name`; `--` ends the arguments Tazel reads.
+ * its value from the next argument (`--vipkg Name`, `-p Name`), after `=` or `:` (`--vipkg=Name`,
+ * `-p:Name`), or, for a short option, joined to it (`-pName`). After `=` or `:` an option that may
+ * be repeated also takes a list: `-e=First,Second`. `--` ends the arguments Tazel reads.
  */
-fun parseCommandLine(arguments: List<String>): ParseResult {
-  if (arguments.isEmpty()) return ParseResult.Parsed(Command.Help(null))
-  val reader = ArgumentReader(arguments)
-  return try {
-    ParseResult.Parsed(reader.command())
+fun parseCommandLine(arguments: List<String>): ParseResult =
+  try {
+    val (output, rest) = outputOptions(arguments)
+    val command = if (rest.isEmpty()) Command.Help(null) else ArgumentReader(rest).command()
+    ParseResult.Parsed(command, output)
   } catch (problem: CommandLineProblem) {
     ParseResult.Rejected(problem.message ?: "the command line could not be read", problem.hint)
   }
+
+/**
+ * One option as it is written: [flag] is its name, `--vipkg` or `-p`; [attached] is the value
+ * written in the same argument, and [separated] tells that `=` or `:` put it there, which lets an
+ * option that may be repeated take a list.
+ */
+private class OptionWord(
+  val written: String,
+  val flag: String,
+  val attached: String?,
+  val separated: Boolean,
+) {
+  fun noValue() {
+    if (attached != null) reject("$flag takes no value, and '$written' gives it one")
+  }
+
+  /** The option with [value], spelled the way it was written: `--color:x`, `--color=x`, `-ex`. */
+  fun spelled(value: String): String =
+    when {
+      separated -> flag + written[flag.length] + value
+      attached != null -> flag + value
+      else -> "$flag $value"
+    }
+}
+
+/** The option [argument] is, or `null` for an argument that is not one, such as `--` or a name. */
+private fun optionWord(argument: String): OptionWord? {
+  if (argument == "--" || argument.length < 2 || argument[0] != '-') return null
+  if (argument.startsWith("--")) {
+    val at = argument.indexOfFirst { it == '=' || it == ':' }
+    return if (at < 0) OptionWord(argument, argument, null, false)
+    else OptionWord(argument, argument.substring(0, at), argument.substring(at + 1), true)
+  }
+  val flag = argument.substring(0, 2)
+  val rest = argument.substring(2)
+  return when {
+    rest.isEmpty() -> OptionWord(argument, flag, null, false)
+    rest[0] == '=' || rest[0] == ':' -> OptionWord(argument, flag, rest.substring(1), true)
+    else -> OptionWord(argument, flag, rest, false)
+  }
+}
+
+private val outputFlags = listOf("--color", "--progress", "--quiet")
+
+/**
+ * Takes the options of [OutputOptions] out of [arguments], wherever they stand before `--`, and
+ * returns them with the arguments that remain.
+ */
+private fun outputOptions(arguments: List<String>): Pair<OutputOptions, List<String>> {
+  var output = OutputOptions()
+  val seen = mutableSetOf<String>()
+  val rest = mutableListOf<String>()
+  var index = 0
+  fun mode(word: OptionWord): WhenMode {
+    if (!seen.add(word.flag)) reject("${word.flag} is written twice")
+    val text =
+      word.attached
+        ?: arguments.getOrNull(++index)?.takeUnless { it.startsWith("-") }
+        ?: reject("${word.flag} requires a value: always, auto or never")
+    return WhenMode.entries.firstOrNull { it.word == text }
+      ?: reject(
+        "${word.flag} takes always, auto or never, and '$text' is none of them",
+        hint(text, WhenMode.entries.map { it.word }, word::spelled),
+      )
+  }
+  while (index < arguments.size) {
+    val argument = arguments[index]
+    if (argument == "--") {
+      rest += arguments.subList(index, arguments.size)
+      break
+    }
+    val word = optionWord(argument)
+    when (word?.flag) {
+      "--color" -> output = output.copy(color = mode(word))
+      "--progress" -> output = output.copy(progress = mode(word))
+      "--quiet" -> {
+        word.noValue()
+        if (!seen.add(word.flag)) reject("--quiet is written twice")
+        output = output.copy(quiet = true)
+      }
+      else -> rest += argument
+    }
+    index++
+  }
+  return output to rest
 }
 
 private class CommandLineProblem(
@@ -254,11 +371,12 @@ private class SelectionBuilder {
   val executables = mutableListOf<String>()
   val libraries = mutableListOf<String>()
 
-  /** True when [flag] was one of the selection flags and its value was taken from [reader]. */
+  /** True when [word] was one of the selection flags and its values were taken from [reader]. */
   fun take(
-    flag: String,
+    word: OptionWord?,
     reader: ArgumentReader,
   ): Boolean {
+    val flag = word?.flag ?: return false
     val destination =
       when (flag) {
         "--vipkg",
@@ -269,10 +387,11 @@ private class SelectionBuilder {
         "-l" -> libraries
         else -> return false
       }
-    val value = reader.value(flag)
-    if (!isTargetName(value)) reject("$flag takes the name of a target, and '$value' is not one")
-    if (value in destination) reject("$flag $value is written twice")
-    destination += value
+    for (value in reader.values(word)) {
+      if (!isTargetName(value)) reject("$flag takes the name of a target, and '$value' is not one")
+      if (value in destination) reject("$flag $value is written twice")
+      destination += value
+    }
     return true
   }
 
@@ -286,13 +405,24 @@ private class ArgumentReader(private val arguments: List<String>) {
 
   private fun next() = arguments[position++]
 
-  /** The argument after a flag that takes a value. */
-  fun value(flag: String): String {
-    if (!hasNext()) reject("$flag requires a value")
+  /** The value of an option: the one written with it, or else the next argument. */
+  fun value(word: OptionWord): String {
+    word.attached?.let {
+      if (it.isEmpty()) reject("${word.flag} requires a value after '${word.written}'")
+      return it
+    }
+    if (!hasNext()) reject("${word.flag} requires a value")
     val value = next()
-    if (value.startsWith("-")) reject("$flag requires a value, and '$value' is an option")
+    if (value.startsWith("-")) reject("${word.flag} requires a value, and '$value' is an option")
     return value
   }
+
+  /** The values of an option that may be repeated: after `=` or `:`, a list separated by commas. */
+  fun values(word: OptionWord): List<String> =
+    if (word.separated) value(word).split(',') else listOf(value(word))
+
+  /** The next argument as an option, or `null` with the argument as it is written. */
+  fun nextOption(): Pair<String, OptionWord?> = next().let { it to optionWord(it) }
 
   /** Everything after `--`, or nothing when the line ended before one. */
   private fun passThrough(): List<String> {
@@ -370,16 +500,17 @@ private class ArgumentReader(private val arguments: List<String>) {
   private fun lockCreateDump(): Command {
     var path: String? = null
     while (hasNext()) {
-      when (val argument = next()) {
+      val (argument, word) = nextOption()
+      when (word?.flag) {
         "--path" -> {
           if (path != null) reject("--path is written twice")
-          path = value("--path")
+          path = value(word)
           if (path.isBlank()) reject("--path takes the name of a file, and it is empty")
         }
         else ->
           reject(
             "'$argument' is not an argument of tazel lock create-dump",
-            hint(argument, listOf("--path")),
+            hint(word?.flag ?: argument, listOf("--path") + outputFlags),
           )
       }
     }
@@ -406,26 +537,39 @@ private class ArgumentReader(private val arguments: List<String>) {
       if (!seen.add(flag)) reject("$flag is written twice")
     }
     while (hasNext()) {
-      when (val argument = next()) {
-        "--locked" -> graph = graph.copy(locked = true).also { once("--locked") }
-        "--all-features" -> graph = graph.copy(allFeatures = true).also { once("--all-features") }
+      val (argument, word) = nextOption()
+      when (word?.flag) {
+        "--locked" -> {
+          word.noValue()
+          graph = graph.copy(locked = true).also { once("--locked") }
+        }
+        "--all-features" -> {
+          word.noValue()
+          graph = graph.copy(allFeatures = true).also { once("--all-features") }
+        }
         "--duplicates",
-        "-d" -> graph = graph.copy(duplicates = true).also { once("--duplicates") }
+        "-d" -> {
+          word.noValue()
+          graph = graph.copy(duplicates = true).also { once("--duplicates") }
+        }
         "--invert",
         "-i" -> {
           once("--invert")
-          graph = graph.copy(invert = invertTarget(value(argument)))
+          graph = graph.copy(invert = invertTarget(value(word)))
         }
         "--depth" -> {
           once("--depth")
-          val text = value(argument)
+          val text = value(word)
           val depth =
             text.toIntOrNull()?.takeIf { it >= 0 }
               ?: reject("--depth takes a number of levels, 0 or more, and '$text' is not one")
           graph = graph.copy(depth = depth)
         }
         else ->
-          reject("'$argument' is not an argument of tazel lock graph", hint(argument, graphFlags))
+          reject(
+            "'$argument' is not an argument of tazel lock graph",
+            hint(word?.flag ?: argument, graphFlags + outputFlags),
+          )
       }
     }
     if (graph.duplicates && graph.invert != null) {
@@ -438,9 +582,12 @@ private class ArgumentReader(private val arguments: List<String>) {
   private fun selection(command: CommandName): TargetSelection {
     val selection = SelectionBuilder()
     while (hasNext()) {
-      val flag = next()
-      if (!selection.take(flag, this)) {
-        reject("'$flag' is not an argument of tazel ${command.words}", hint(flag, selectionFlags))
+      val (argument, word) = nextOption()
+      if (!selection.take(word, this)) {
+        reject(
+          "'$argument' is not an argument of tazel ${command.words}",
+          hint(word?.flag ?: argument, selectionFlags + outputFlags),
+        )
       }
     }
     return selection.build()
@@ -449,12 +596,12 @@ private class ArgumentReader(private val arguments: List<String>) {
   private fun run(): Command {
     val selection = SelectionBuilder()
     while (hasNext()) {
-      val flag = next()
-      if (flag == "--") return Command.Run(selection.build(), passThrough())
-      if (!selection.take(flag, this)) {
+      val (argument, word) = nextOption()
+      if (argument == "--") return Command.Run(selection.build(), passThrough())
+      if (!selection.take(word, this)) {
         reject(
-          "'$flag' is not an argument of tazel run; program arguments follow '--'",
-          hint(flag, selectionFlags),
+          "'$argument' is not an argument of tazel run; program arguments follow '--'",
+          hint(word?.flag ?: argument, selectionFlags + outputFlags),
         )
       }
     }
@@ -465,9 +612,11 @@ private class ArgumentReader(private val arguments: List<String>) {
     var coordinate: PackageCoordinate? = null
     var global = false
     while (hasNext()) {
-      when (val argument = next()) {
+      val (argument, word) = nextOption()
+      when (word?.flag) {
         "--global",
         "-g" -> {
+          word.noValue()
           if (global) reject("--global is written twice")
           global = true
         }
@@ -475,7 +624,7 @@ private class ArgumentReader(private val arguments: List<String>) {
           if (argument.startsWith("-")) {
             reject(
               "'$argument' is not an option of tazel install",
-              hint(argument, listOf("--global", "-g")),
+              hint(word?.flag ?: argument, listOf("--global", "-g") + outputFlags),
             )
           }
           if (coordinate != null)
@@ -516,18 +665,19 @@ private class ArgumentReader(private val arguments: List<String>) {
     var workspace = false
     var toolArguments = emptyList<String>()
     while (hasNext()) {
-      val flag = next()
-      if (flag == "--") {
+      val (argument, word) = nextOption()
+      if (argument == "--") {
         toolArguments = passThrough()
         break
       }
-      if (flag == "--workspace") {
+      if (word?.flag == "--workspace") {
+        word.noValue()
         if (workspace) reject("--workspace is written twice")
         workspace = true
-      } else if (!selection.take(flag, this)) {
+      } else if (!selection.take(word, this)) {
         reject(
-          "'$flag' is not an argument of tazel lint; options of talalint follow '--'",
-          hint(flag, selectionFlags + "--workspace"),
+          "'$argument' is not an argument of tazel lint; options of talalint follow '--'",
+          hint(word?.flag ?: argument, selectionFlags + "--workspace" + outputFlags),
         )
       }
     }
