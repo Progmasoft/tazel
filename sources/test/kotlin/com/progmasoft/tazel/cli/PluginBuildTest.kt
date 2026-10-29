@@ -28,10 +28,6 @@ import kotlin.test.assertTrue
  * its DSL, [fixtureCompile], adds a step that runs a program.
  */
 class FixtureBuildPlugin : ProjectPlugin {
-  override val publisher = "Publisher"
-  override val name = "Native"
-  override val version = "1.0.0"
-
   override fun apply(context: ProjectPluginContext) = context.registerExtension("native")
 }
 
@@ -117,7 +113,10 @@ class PluginBuildTest {
     }
   }
 
-  private fun fixture(block: Fixture.() -> Unit) {
+  private fun fixture(
+    pluginClass: String = FixtureBuildPlugin::class.java.name,
+    block: Fixture.() -> Unit,
+  ) {
     val root = Files.createTempDirectory("tazel-plugin-build-")
     try {
       val fixture = Fixture(root)
@@ -136,7 +135,7 @@ class PluginBuildTest {
         )
         jar.closeEntry()
         jar.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
-        jar.write(FixtureBuildPlugin::class.java.name.toByteArray())
+        jar.write(pluginClass.toByteArray())
         jar.closeEntry()
       }
       fixture.block()
@@ -175,6 +174,43 @@ class PluginBuildTest {
     assertTrue(Files.isRegularFile(root.resolve(".tazel/build/Publisher.Native/compile/done")))
     assertTrue("Compiling" in recorder.stdout())
   }
+
+  @Test
+  fun aServiceEntryThatNamesNoClassOfTheJarIsReported() =
+    fixture(pluginClass = "com.example.Missing") {
+      write(
+        "BUILD.kts",
+        """
+        plugins {
+          localPlugin { path = "native.jar" }
+        }
+        fixtureCompile("cc", "main.c")
+        """,
+      )
+
+      assertEquals(ExitCode.FAILURE, build())
+      assertTrue(
+        "plugin 'Publisher.Native' names com.example.Missing, which its JAR does not hold" in
+          recorder.stderr(),
+        recorder.stderr(),
+      )
+    }
+
+  @Test
+  fun aServiceThatIsNoPluginIsReported() =
+    fixture(pluginClass = "java.lang.Object") {
+      write(
+        "BUILD.kts",
+        """
+        plugins {
+          localPlugin { path = "native.jar" }
+        }
+        """,
+      )
+
+      assertEquals(ExitCode.FAILURE, build())
+      assertTrue("java.lang.Object does not implement ProjectPlugin" in recorder.stderr())
+    }
 
   @Test
   fun aFailedProgramStopsTheBuild() = fixture {

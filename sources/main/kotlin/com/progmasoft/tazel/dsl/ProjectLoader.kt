@@ -16,7 +16,6 @@ import java.io.File
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.ServiceLoader
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.api.ResultValue
 import kotlin.script.experimental.api.ResultWithDiagnostics
@@ -151,9 +150,7 @@ class ProjectLoader(
       var loaded: LoadedProject? = null
       try {
         val implementations =
-          timings.measure(Phase.PLUGINS) {
-            ServiceLoader.load(ProjectPlugin::class.java, pluginLoader).toList()
-          }
+          timings.measure(Phase.PLUGINS) { plugins.map { instantiate(it, pluginLoader) } }
         context.plugins.activate(plugins, implementations, location.root, context.host)
         run(location, source, plugins, pluginLoader)
         val steps = context.plugins.buildSteps
@@ -165,6 +162,40 @@ class ProjectLoader(
       } finally {
         if (loaded == null) pluginLoader.close()
       }
+    }
+  }
+
+  /**
+   * The instance of [plugin]: the class its service entry names, made with its public constructor.
+   */
+  private fun instantiate(
+    plugin: ResolvedPlugin,
+    loader: ClassLoader,
+  ): ProjectPlugin {
+    val type =
+      try {
+        Class.forName(plugin.pluginClass, true, loader)
+      } catch (_: ClassNotFoundException) {
+        throw ProjectConfigurationException(
+          "plugin '${plugin.coordinate}' names ${plugin.pluginClass}, which its JAR does not hold"
+        )
+      }
+    if (!ProjectPlugin::class.java.isAssignableFrom(type)) {
+      throw ProjectConfigurationException(
+        "plugin '${plugin.coordinate}': ${plugin.pluginClass} does not implement ProjectPlugin"
+      )
+    }
+    return try {
+      type.getConstructor().newInstance() as ProjectPlugin
+    } catch (_: NoSuchMethodException) {
+      throw ProjectConfigurationException(
+        "plugin '${plugin.coordinate}': ${plugin.pluginClass} needs a public constructor without parameters"
+      )
+    } catch (error: ReflectiveOperationException) {
+      throw ProjectConfigurationException(
+        "plugin '${plugin.coordinate}': ${plugin.pluginClass} could not be created: " +
+          (error.cause?.message ?: error.message ?: error.javaClass.name)
+      )
     }
   }
 

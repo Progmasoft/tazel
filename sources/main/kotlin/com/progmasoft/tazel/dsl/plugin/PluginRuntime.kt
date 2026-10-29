@@ -76,6 +76,10 @@ class PluginState internal constructor() {
   val buildSteps: List<PluginBuildStep>
     get() = steps.toList()
 
+  /**
+   * Activates [plugins]; [implementations] holds the instance of each, in the same order. The
+   * identity of a plugin is the one of its verified descriptor.
+   */
   internal fun activate(
     plugins: List<ResolvedPlugin>,
     implementations: List<ProjectPlugin>,
@@ -83,26 +87,12 @@ class PluginState internal constructor() {
     host: Host,
   ) {
     checkPhase(Phase.EMPTY, "plugin runtime is already active")
+    require(plugins.size == implementations.size) { "every plugin needs its instance" }
     phase = Phase.ACTIVATING
     resolved = plugins
     this.projectRoot = projectRoot
     this.host = host.toPluginHost()
-    val byCoordinate = implementations.groupBy { "${it.publisher}.${it.name}" }
-    plugins.forEach { plugin ->
-      val matches = byCoordinate[plugin.coordinate].orEmpty()
-      if (matches.size != 1) {
-        throw ProjectConfigurationException(
-          "plugin '${plugin.coordinate}' must expose exactly one ProjectPlugin service; found ${matches.size}"
-        )
-      }
-      val implementation = matches.single()
-      if (
-        implementation.version != plugin.version || implementation.apiVersion != plugin.apiVersion
-      ) {
-        throw ProjectConfigurationException(
-          "plugin service '${plugin.coordinate}' does not match its verified descriptor"
-        )
-      }
+    plugins.zip(implementations).forEach { (plugin, implementation) ->
       val context = Context(plugin.coordinate, projectRoot, this.host!!)
       try {
         implementation.apply(context)

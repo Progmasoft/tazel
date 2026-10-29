@@ -178,12 +178,11 @@ class PluginInfrastructureTest {
     try {
       val first = resolved(root, "First")
       val second = resolved(root, "Second")
-      val firstPlugin =
-        fixturePlugin("First") { context ->
-          context.registerExtension("native")
-          context.contribute("enabled", "true")
-        }
-      val secondPlugin = fixturePlugin("Second") { context -> context.registerExtension("native") }
+      val firstPlugin = fixturePlugin { context ->
+        context.registerExtension("native")
+        context.contribute("enabled", "true")
+      }
+      val secondPlugin = fixturePlugin { context -> context.registerExtension("native") }
 
       ProjectRuntime.reset()
       assertFailsWith<ProjectConfigurationException> {
@@ -257,6 +256,9 @@ class PluginInfrastructureTest {
           .toByteArray()
       )
       jar.closeEntry()
+      jar.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
+      jar.write("# The class of the plugin.\ncom.example.FixturePlugin\n".toByteArray())
+      jar.closeEntry()
     }
     return path
   }
@@ -275,17 +277,9 @@ class PluginInfrastructureTest {
       root.resolve("$name.jar"),
     )
 
-  private fun fixturePlugin(
-    name: String,
-    action: (ProjectPluginContext) -> Unit,
-  ) =
-    object : ProjectPlugin {
-      override val publisher = "Publisher"
-      override val name = name
-      override val version = "1.0.0"
-
-      override fun apply(context: ProjectPluginContext) = action(context)
-    }
+  private fun fixturePlugin(action: (ProjectPluginContext) -> Unit) = ProjectPlugin { context ->
+    action(context)
+  }
 
   private fun sha256(path: Path): String {
     val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
