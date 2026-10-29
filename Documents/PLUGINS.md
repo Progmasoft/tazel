@@ -53,7 +53,7 @@ the plugin is built for:
 // build.gradle.kts of the plugin
 plugins {
   kotlin("jvm") version "2.4.0"
-  id("com.progmasoft.tazel.plugin") version "0.2.0"
+  id("com.progmasoft.tazel.plugin") version "0.3.0"
 }
 
 version = "0.1.0"
