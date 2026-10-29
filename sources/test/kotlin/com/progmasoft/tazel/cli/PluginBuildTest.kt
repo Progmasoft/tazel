@@ -28,10 +28,6 @@ import kotlin.test.assertTrue
  * its DSL, [fixtureCompile], adds a step that runs a program.
  */
 class FixtureBuildPlugin : ProjectPlugin {
-  override val publisher = "Publisher"
-  override val name = "Native"
-  override val version = "1.0.0"
-
   override fun apply(context: ProjectPluginContext) = context.registerExtension("native")
 }
 
@@ -43,11 +39,16 @@ fun fixtureCompile(
 ) {
   PluginExtensions.require("native").buildStep("compile") { context ->
     if (failWith != null) context.fail(failWith)
-    val output = context.outputDirectory.resolve("program${context.host.executableExtension}")
+    val program = context.projectRoot.resolve(compiler).toString()
+    // A probe whose output is read and not shown.
+    val probe = context.capture(listOf(program, "--version"))
+    if (probe.exitCode != 0 || "fixture compiler" !in probe.output) context.fail("the probe failed")
+    val name = context.project.name ?: "program"
+    val output = context.outputDirectory.resolve("$name${context.host.executableExtension}")
     context.status("Compiling", source)
     val exitCode =
       context.run(
-        listOf(context.projectRoot.resolve(compiler).toString(), source, "-o", output.toString()),
+        listOf(program, source, "-o", output.toString()),
         environment = mapOf("NATIVE_MODE" to context.buildMode.name),
       )
     if (exitCode != 0) context.fail("$compiler exited with $exitCode")
@@ -73,6 +74,17 @@ class PluginBuildTest {
     ): Int {
       commands += Triple(command, directory, environment)
       return exitCode
+    }
+
+    val captured = mutableListOf<List<String>>()
+
+    override fun runGatheredWith(
+      command: List<String>,
+      directory: Path,
+      environment: Map<String, String>,
+    ): com.progmasoft.tazel.driver.GatheredRun {
+      captured += command
+      return com.progmasoft.tazel.driver.GatheredRun(0, "fixture compiler 1.0\n")
     }
 
     override fun capture(command: List<String>) = "talac 0.1.0\n"
@@ -101,7 +113,10 @@ class PluginBuildTest {
     }
   }
 
-  private fun fixture(block: Fixture.() -> Unit) {
+  private fun fixture(
+    pluginClass: String = FixtureBuildPlugin::class.java.name,
+    block: Fixture.() -> Unit,
+  ) {
     val root = Files.createTempDirectory("tazel-plugin-build-")
     try {
       val fixture = Fixture(root)
@@ -120,7 +135,7 @@ class PluginBuildTest {
         )
         jar.closeEntry()
         jar.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
-        jar.write(FixtureBuildPlugin::class.java.name.toByteArray())
+        jar.write(pluginClass.toByteArray())
         jar.closeEntry()
       }
       fixture.block()
@@ -137,16 +152,21 @@ class PluginBuildTest {
       plugins {
         localPlugin { path = "native.jar" }
       }
+      project { name = "Demo" }
       fixtureCompile("cc", "main.c")
       """,
     )
 
     assertEquals(ExitCode.SUCCESS, build(), recorder.stderr())
 
+    // The probe ran through capture: gathered, not on the output of Tazel.
+    assertEquals(listOf(listOf(root.resolve("cc").toString(), "--version")), captured)
+    assertTrue("fixture compiler" !in recorder.stdout())
+
     val (command, directory, environment) = commands.single()
     assertEquals(root.resolve("cc").toString(), command.first())
     assertEquals(
-      listOf("main.c", "-o", root.resolve("build/debug/program").toString()),
+      listOf("main.c", "-o", root.resolve("build/debug/Demo").toString()),
       command.drop(1),
     )
     assertEquals(root, directory)
@@ -154,6 +174,43 @@ class PluginBuildTest {
     assertTrue(Files.isRegularFile(root.resolve(".tazel/build/Publisher.Native/compile/done")))
     assertTrue("Compiling" in recorder.stdout())
   }
+
+  @Test
+  fun aServiceEntryThatNamesNoClassOfTheJarIsReported() =
+    fixture(pluginClass = "com.example.Missing") {
+      write(
+        "BUILD.kts",
+        """
+        plugins {
+          localPlugin { path = "native.jar" }
+        }
+        fixtureCompile("cc", "main.c")
+        """,
+      )
+
+      assertEquals(ExitCode.FAILURE, build())
+      assertTrue(
+        "plugin 'Publisher.Native' names com.example.Missing, which its JAR does not hold" in
+          recorder.stderr(),
+        recorder.stderr(),
+      )
+    }
+
+  @Test
+  fun aServiceThatIsNoPluginIsReported() =
+    fixture(pluginClass = "java.lang.Object") {
+      write(
+        "BUILD.kts",
+        """
+        plugins {
+          localPlugin { path = "native.jar" }
+        }
+        """,
+      )
+
+      assertEquals(ExitCode.FAILURE, build())
+      assertTrue("java.lang.Object does not implement ProjectPlugin" in recorder.stderr())
+    }
 
   @Test
   fun aFailedProgramStopsTheBuild() = fixture {

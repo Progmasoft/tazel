@@ -8,7 +8,6 @@ package com.progmasoft.tazel.dsl.plugin
 import com.progmasoft.api.tazel.dsl.plugin.PROJECT_PLUGIN_API_VERSION
 import com.progmasoft.api.tazel.dsl.plugin.PluginExtensions
 import com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
-import com.progmasoft.api.tazel.dsl.plugin.ProjectPluginContext
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectRuntime
 import com.progmasoft.tazel.dsl.detectHost
@@ -159,6 +158,35 @@ class PluginBuildAndRegistryTest {
   }
 
   @Test
+  fun aServiceEntryNamesExactlyOneClass() {
+    val root = Files.createTempDirectory("tazel-plugin-service-")
+    try {
+      val jar = root.resolve("two.jar")
+      JarOutputStream(Files.newOutputStream(jar)).use { output ->
+        output.putNextEntry(JarEntry("META-INF/tazel-plugin.properties"))
+        output.write(
+          "publisher=Publisher\nname=Two\nversion=1.0.0\napiVersion=$PROJECT_PLUGIN_API_VERSION\n"
+            .toByteArray()
+        )
+        output.closeEntry()
+        output.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
+        output.write("com.example.First\ncom.example.Second\n".toByteArray())
+        output.closeEntry()
+      }
+      val error =
+        assertFailsWith<ProjectConfigurationException> {
+          PluginResolver.resolve(root, listOf(localPluginRequest("two.jar")))
+        }
+      assertTrue(
+        "must name exactly one class; it names 2" in error.message.orEmpty(),
+        error.message,
+      )
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
   fun saysWhenAPluginIsNotPublished() {
     withRegistry { root, server, _ ->
       server.index = null
@@ -220,14 +248,7 @@ class PluginBuildAndRegistryTest {
         emptyList(),
         Path.of("Native.jar"),
       )
-    val implementation =
-      object : ProjectPlugin {
-        override val publisher = "Publisher"
-        override val name = "Native"
-        override val version = "1.0.0"
-
-        override fun apply(context: ProjectPluginContext) = context.registerExtension(extension)
-      }
+    val implementation = ProjectPlugin { context -> context.registerExtension(extension) }
     PluginRuntime.activate(listOf(plugin), listOf(implementation), Path.of("."), detectHost())
   }
 
@@ -300,6 +321,9 @@ class PluginBuildAndRegistryTest {
           .trimIndent()
           .toByteArray()
       )
+      jar.closeEntry()
+      jar.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
+      jar.write("com.example.FixturePlugin\n".toByteArray())
       jar.closeEntry()
     }
     return bytes.toByteArray()

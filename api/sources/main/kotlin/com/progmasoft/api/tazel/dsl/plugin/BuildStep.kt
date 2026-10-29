@@ -16,6 +16,9 @@ fun interface BuildStep {
 interface BuildContext {
   val projectRoot: Path
 
+  /** The project the step builds. */
+  val project: ProjectSummary
+
   /** The absolute directory the build mode of the project writes artifacts to. */
   val outputDirectory: Path
 
@@ -46,12 +49,29 @@ interface BuildContext {
     environment: Map<String, String> = emptyMap(),
   ): Int
 
+  /**
+   * Runs a program like [run], but gathers what it prints, output and errors in the order written,
+   * instead of showing it: for a probe whose failure is an answer, or a program whose output the
+   * step reads.
+   */
+  fun capture(
+    command: List<String>,
+    directory: Path = projectRoot,
+    environment: Map<String, String> = emptyMap(),
+  ): CapturedRun
+
   /** The program [name] found on `PATH`, with the executable extension of the host, or `null`. */
   fun findProgram(name: String): Path?
 
   /** Stops the build with [message]. */
   fun fail(message: String): Nothing
 }
+
+/** The exit code of a program [BuildContext.capture] ran, and what it printed. */
+data class CapturedRun(
+  val exitCode: Int,
+  val output: String,
+)
 
 /** Thrown by [BuildContext.fail]; Tazel reports its message and stops the build. */
 class BuildStepException(message: String) : RuntimeException(message)
