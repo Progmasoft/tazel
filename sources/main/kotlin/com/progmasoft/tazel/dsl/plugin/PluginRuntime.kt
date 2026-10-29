@@ -38,6 +38,15 @@ internal fun Host.toPluginHost() =
 
 internal fun BuildMode.toPluginBuildMode() = PluginBuildMode.valueOf(name)
 
+/** The project as the API of plugins describes it. */
+fun ProjectPlan.toPluginSummary(): ProjectSummary =
+  object : ProjectSummary {
+    override val name = identity?.name
+    override val version = identity?.version
+    override val buildMode = compiler.buildMode.toPluginBuildMode()
+    override val outputDirectory = this@toPluginSummary.outputDirectory
+  }
+
 /**
  * The plugins of one project: those resolved for it, the ones its project file declared, and what
  * each registered, contributed, added to the build and asked to run when the plan is finished. Each
@@ -173,7 +182,7 @@ class PluginState internal constructor() {
       )
     }
     phase = Phase.FINALIZING
-    val summary = Summary(plan)
+    val summary = plan.toPluginSummary()
     finalizers.forEach { (owner, action) ->
       try {
         action(summary)
@@ -203,13 +212,6 @@ class PluginState internal constructor() {
     message: String,
   ) {
     if (phase != expected) throw ProjectConfigurationException(message)
-  }
-
-  private class Summary(plan: ProjectPlan) : ProjectSummary {
-    override val name = plan.identity?.name
-    override val version = plan.identity?.version
-    override val buildMode = plan.compiler.buildMode.toPluginBuildMode()
-    override val outputDirectory = plan.outputDirectory
   }
 
   private inner class Scope(

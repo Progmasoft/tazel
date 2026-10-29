@@ -43,11 +43,16 @@ fun fixtureCompile(
 ) {
   PluginExtensions.require("native").buildStep("compile") { context ->
     if (failWith != null) context.fail(failWith)
-    val output = context.outputDirectory.resolve("program${context.host.executableExtension}")
+    val program = context.projectRoot.resolve(compiler).toString()
+    // A probe whose output is read and not shown.
+    val probe = context.capture(listOf(program, "--version"))
+    if (probe.exitCode != 0 || "fixture compiler" !in probe.output) context.fail("the probe failed")
+    val name = context.project.name ?: "program"
+    val output = context.outputDirectory.resolve("$name${context.host.executableExtension}")
     context.status("Compiling", source)
     val exitCode =
       context.run(
-        listOf(context.projectRoot.resolve(compiler).toString(), source, "-o", output.toString()),
+        listOf(program, source, "-o", output.toString()),
         environment = mapOf("NATIVE_MODE" to context.buildMode.name),
       )
     if (exitCode != 0) context.fail("$compiler exited with $exitCode")
@@ -73,6 +78,17 @@ class PluginBuildTest {
     ): Int {
       commands += Triple(command, directory, environment)
       return exitCode
+    }
+
+    val captured = mutableListOf<List<String>>()
+
+    override fun runGatheredWith(
+      command: List<String>,
+      directory: Path,
+      environment: Map<String, String>,
+    ): com.progmasoft.tazel.driver.GatheredRun {
+      captured += command
+      return com.progmasoft.tazel.driver.GatheredRun(0, "fixture compiler 1.0\n")
     }
 
     override fun capture(command: List<String>) = "talac 0.1.0\n"
@@ -137,16 +153,21 @@ class PluginBuildTest {
       plugins {
         localPlugin { path = "native.jar" }
       }
+      project { name = "Demo" }
       fixtureCompile("cc", "main.c")
       """,
     )
 
     assertEquals(ExitCode.SUCCESS, build(), recorder.stderr())
 
+    // The probe ran through capture: gathered, not on the output of Tazel.
+    assertEquals(listOf(listOf(root.resolve("cc").toString(), "--version")), captured)
+    assertTrue("fixture compiler" !in recorder.stdout())
+
     val (command, directory, environment) = commands.single()
     assertEquals(root.resolve("cc").toString(), command.first())
     assertEquals(
-      listOf("main.c", "-o", root.resolve("build/debug/program").toString()),
+      listOf("main.c", "-o", root.resolve("build/debug/Demo").toString()),
       command.drop(1),
     )
     assertEquals(root, directory)
