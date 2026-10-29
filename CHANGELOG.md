@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-29
+
 - Compiled project files are cached per user; a later run only evaluates them.
 - Every project evaluation has its own context, so project files can be
   evaluated on several threads at once.
