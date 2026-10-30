@@ -169,6 +169,26 @@ class TestCommandTest {
   }
 
   @Test
+  fun whatFailedLastRunsFirst() = fixture {
+    suites("First", "Second")
+    programOutput["Second"] = listOf("1 test, 0 passed, 1 failed")
+    run("test")
+    assertEquals(
+      listOf("First", "Second"),
+      commands.map { Path.of(it.first.first()).fileName.toString() }.filter { it in programOutput },
+    )
+
+    commands.clear()
+    programOutput["Second"] = listOf("1 test, 1 passed, 0 failed")
+    write("Sources/Helper.tala", "changed")
+    run("test")
+    assertEquals(
+      listOf("Second", "First"),
+      commands.map { Path.of(it.first.first()).fileName.toString() }.filter { it in programOutput },
+    )
+  }
+
+  @Test
   fun noCacheRunsASuiteThatPassed() = fixture {
     suites("Unit")
     run("test")

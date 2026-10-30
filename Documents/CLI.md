@@ -65,6 +65,18 @@ nothing. A program that was deleted or changed comes back the same way. The warn
 shown again every time it is used. A run that failed leaves no result. The steps of plugins are not skipped: they run in
 every build, before the sources are read, so what they generate counts.
 
+A run says why it runs, which is the first thing to ask about a build that took long:
+
+```text
+   Compiling Demo (Demo, 12 sources) Sources/Math.tala changed
+   Compiling Demo (Demo, 13 sources) Sources/New.tala added
+   Compiling Demo (Demo, 12 sources) Sources/Math.tala changed, and 2 more
+   Compiling Demo (Demo, 12 sources) the settings changed
+   Compiling Demo (Demo, 12 sources) the compiler changed
+```
+
+The last line of a command counts what the cache saved: `Finished build, 3 of 4 from the cache in 2.10s`.
+
 `--no-cache` does the work anyway and still records the result. `.tazel/cache` can be deleted at any time.
 
 ## Test suites
@@ -93,7 +105,8 @@ code is `1` when a test failed, and also when a runner stopped before it wrote i
 
 A suite that passed is not run again while everything it can see stays the same: its sources, the settings, the compiler
 and every file below its `testDir`, data files included. It then shows `Cached` and counts in the totals. A suite that
-failed always runs again. A test that reads anything else, such as a file outside the project or the network, needs
+failed always runs again, and it runs first, so the answer to what is being worked on comes before the rest. A test that
+reads anything else, such as a file outside the project or the network, needs
 `--no-cache`; so does a run in CI that has to prove the tests pass.
 
 ## Selecting targets

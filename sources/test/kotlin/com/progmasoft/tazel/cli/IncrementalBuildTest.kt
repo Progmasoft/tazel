@@ -94,6 +94,44 @@ class IncrementalBuildTest {
   }
 
   @Test
+  fun aRunSaysWhatMadeItNecessary() = fixture {
+    demo()
+    builds("build")
+    demo(extra = "compiler { warnings = Warnings.ALL }")
+    builds("build")
+    assertTrue(recorder.stdout().contains("the settings changed"))
+
+    write("Sources/Helper.tala", "changed")
+    builds("build")
+    assertTrue(recorder.stdout().contains("Sources/Helper.tala changed"))
+
+    write("Sources/Added.tala")
+    builds("build")
+    assertTrue(recorder.stdout().contains("Sources/Added.tala added"))
+
+    Files.delete(root.resolve("Sources/Added.tala"))
+    write("Sources/Helper.tala", "changed again")
+    builds("build")
+    assertTrue(recorder.stdout().contains("Sources/Helper.tala changed, and 1 more"))
+
+    compilerVersion = "talac 0.5.3\n"
+    builds("build")
+    assertTrue(recorder.stdout().contains("the compiler changed"))
+
+    builds("build", "--no-cache")
+    assertTrue(recorder.stdout().contains("--no-cache"))
+  }
+
+  @Test
+  fun theLastLineSaysHowMuchTheCacheSaved() = fixture {
+    demo()
+    builds("build")
+    assertFalse(recorder.stdout().contains("from the cache"))
+    builds("build")
+    assertTrue(recorder.stdout().contains("1 of 1 from the cache"))
+  }
+
+  @Test
   fun anotherCompilerCompilesAgain() = fixture {
     demo()
     builds("build")

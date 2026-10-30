@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- A compiler run says why it runs: `Sources/Math.tala changed`, `the settings
+  changed`, `the compiler changed`. The last line of a command counts what the
+  cache saved, and a test suite that failed last time runs first.
 - `buildCache { local { enabled, maxEntries } remote { url, read, write, token } }`
   chooses where results are kept. The local cache is asked first; a remote cache
   shares results between machines over `GET` and `PUT`, needs `https` except on

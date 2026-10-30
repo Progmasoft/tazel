@@ -20,40 +20,102 @@ import java.time.Instant
 /** The names TalaRT may have beside a program; each is moved and kept together with the program. */
 val RUNTIME_LIBRARIES = listOf("talart.dll", "libtalart.so", "libtalart.dylib")
 
+private fun sha256(text: String) =
+  MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).toHex()
+
+private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
+
 /**
- * The key of one compiler run: everything that decides what it writes.
+ * Everything that decides what one compiler run writes.
  *
  * Talac compiles all sources of a target as one program, so a target is the smallest thing that can
- * be skipped. [arguments] hold the settings and the names of the inputs; [files], paths relative to
- * [root], add their contents. Times do not count, so a checkout that touches a file and changes
- * nothing still finds its results. [tool] identifies the compiler.
+ * be skipped. [arguments] are a digest of the settings and the names of the inputs, and [files] the
+ * digests of the contents by path. Times do not count, so a checkout that touches a file and
+ * changes nothing still finds its results. [tool] is a digest of what identifies the compiler.
+ *
+ * The parts stay apart so that a new run can say which of them differ from the last one.
  */
+data class BuildInputs(
+  val tool: String,
+  val arguments: String,
+  val files: Map<String, String>,
+) {
+  val text: String
+    get() =
+      (listOf(tool, arguments) + files.map { (file, digest) -> "$digest $file" }).joinToString("\n")
+
+  /** The key of a result in the cache. */
+  val key: String
+    get() = sha256("tazel build key 2\n$text")
+
+  /**
+   * Why a run with these inputs cannot use the result of one with [previous]: the first change that
+   * matters to the person waiting for it.
+   */
+  fun changeFrom(previous: BuildInputs): String? {
+    if (tool != previous.tool) return "the compiler changed"
+    val changes =
+      files.keys
+        .filter { it in previous.files && files[it] != previous.files[it] }
+        .map { "$it changed" } +
+        (files.keys - previous.files.keys).map { "$it added" } +
+        (previous.files.keys - files.keys).map { "$it removed" }
+    return when {
+      changes.size == 1 -> changes.single()
+      changes.size > 1 -> "${changes.first()}, and ${changes.size - 1} more"
+      arguments != previous.arguments -> "the settings changed"
+      else -> null
+    }
+  }
+
+  companion object {
+    /** The inputs of a run of [tool] with [arguments] on [files], paths relative to [root]. */
+    fun of(
+      tool: String,
+      arguments: List<String>,
+      root: Path,
+      files: List<String>,
+    ) =
+      BuildInputs(
+        sha256(tool),
+        sha256(arguments.joinToString("") { "${it.length}:$it" }),
+        files.associateWith { contentsDigest(root.resolve(it)) },
+      )
+
+    /** The inputs [text] stands for; null when it is not what [BuildInputs.text] writes. */
+    fun parse(text: String): BuildInputs? {
+      val lines = text.lines()
+      if (lines.size < 2) return null
+      val files = lines.drop(2).map { it.substringAfter(' ') to it.substringBefore(' ') }
+      return BuildInputs(lines[0], lines[1], files.toMap())
+    }
+  }
+}
+
+/** The key of a compiler run; see [BuildInputs]. */
 fun buildKey(
   tool: String,
   arguments: List<String>,
   root: Path,
   files: List<String>,
-): String {
+): String = BuildInputs.of(tool, arguments, root, files).key
+
+private fun contentsDigest(file: Path): String {
   val digest = MessageDigest.getInstance("SHA-256")
-  fun line(text: String) {
-    val bytes = text.toByteArray()
-    digest.update("${bytes.size}:".toByteArray())
-    digest.update(bytes)
+  updateWith(digest, file)
+  return digest.digest().toHex()
+}
+
+private fun updateWith(
+  digest: MessageDigest,
+  file: Path,
+) {
+  val buffer = ByteArray(BUFFER_SIZE)
+  Files.newInputStream(file).use { stream ->
+    generateSequence { stream.read(buffer) }
+      .takeWhile { it >= 0 }
+      .forEach { digest.update(buffer, 0, it) }
   }
-  line("tazel build key 1")
-  line(tool)
-  arguments.forEach(::line)
-  files.forEach { file ->
-    line(file)
-    Files.newInputStream(root.resolve(file)).use { stream ->
-      val buffer = ByteArray(BUFFER_SIZE)
-      generateSequence { stream.read(buffer) }
-        .takeWhile { it >= 0 }
-        .forEach { digest.update(buffer, 0, it) }
-    }
-    line("end of file")
-  }
-  return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 /**
@@ -95,17 +157,12 @@ private fun contentsDigest(
   programName: String,
 ): String {
   val digest = MessageDigest.getInstance("SHA-256")
-  val buffer = ByteArray(BUFFER_SIZE)
   for (file in files) {
     val name = file.fileName.toString()
     digest.update((if (name == programName) "compiler" else name).toByteArray())
-    Files.newInputStream(file).use { stream ->
-      generateSequence { stream.read(buffer) }
-        .takeWhile { it >= 0 }
-        .forEach { digest.update(buffer, 0, it) }
-    }
+    updateWith(digest, file)
   }
-  return digest.digest().joinToString("") { "%02x".format(it) }
+  return digest.digest().toHex()
 }
 
 /** The other files that take part in a compiler run, beside the program of the compiler. */
@@ -233,6 +290,47 @@ class BuildCache(
     }
   }
 
+  /** The inputs of the last run of [slug] that left a result, to tell what is new. */
+  fun latest(slug: String): BuildInputs? =
+    try {
+      BuildInputs.parse(Files.readString(directory.resolve(slug).resolve(LATEST_FILE)))
+    } catch (_: IOException) {
+      null
+    }
+
+  /** Records [inputs] as the last run of [slug]; losing that loses only an explanation. */
+  fun remember(
+    slug: String,
+    inputs: BuildInputs,
+  ) {
+    if (!settings.local.enabled) return
+    try {
+      Files.createDirectories(directory.resolve(slug))
+      Files.writeString(directory.resolve(slug).resolve(LATEST_FILE), inputs.text)
+    } catch (_: IOException) {
+      // The next run says less about why it runs.
+    }
+  }
+
+  /** The test suites that failed in the last run. */
+  fun failedSuites(): Set<String> =
+    try {
+      Files.readAllLines(directory.resolve(FAILED_SUITES_FILE)).toSet()
+    } catch (_: IOException) {
+      emptySet()
+    }
+
+  /** Records [suites] for [failedSuites]; losing that loses only their turn at the front. */
+  fun rememberFailedSuites(suites: List<String>) {
+    if (!settings.local.enabled) return
+    try {
+      Files.createDirectories(directory)
+      Files.write(directory.resolve(FAILED_SUITES_FILE), suites)
+    } catch (_: IOException) {
+      // The next run keeps the declared order.
+    }
+  }
+
   private fun unpacked(
     archive: Path,
     fetched: Path,
@@ -340,6 +438,8 @@ class BuildCache(
     const val COMPILER_MEMO = ".compiler"
 
     private const val LOG_FILE = ".log"
+    private const val LATEST_FILE = ".latest"
+    private const val FAILED_SUITES_FILE = ".failed-suites"
   }
 }
 
