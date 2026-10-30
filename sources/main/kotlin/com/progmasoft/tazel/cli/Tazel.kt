@@ -16,6 +16,7 @@ import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
 import com.progmasoft.tazel.driver.BuildCache
 import com.progmasoft.tazel.driver.Emit
+import com.progmasoft.tazel.driver.HttpRemoteStore
 import com.progmasoft.tazel.driver.LoadedWorkspace
 import com.progmasoft.tazel.driver.Processes
 import com.progmasoft.tazel.driver.RUNTIME_LIBRARIES
@@ -122,9 +123,20 @@ class Tazel(
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
-  /** The compiler as the keys of the build cache see it; asked for once per command. */
-  private val compilerIdentity by lazy {
-    toolIdentity(toolchain.require(Tool.TALAC), compilerVersion())
+  /** What the compiler reports; asked for once per command. */
+  private val talacVersion by lazy { compilerVersion() }
+
+  /** The caches of the projects at hand: a remote one that failed stays failed for the command. */
+  private val caches = mutableMapOf<Path, BuildCache>()
+
+  /**
+   * The compiler and the host as the keys of the build cache see them. The host counts because a
+   * result can come from another machine, and a program only suits its own kind.
+   */
+  private fun compilerIdentity(project: LoadedProject): String {
+    val memo = project.location.root.resolve(BuildCache.DIRECTORY).resolve(BuildCache.COMPILER_MEMO)
+    val compiler = toolIdentity(toolchain.require(Tool.TALAC), talacVersion, memo)
+    return listOf(compiler, os, detectHost().architecture).joinToString("\n")
   }
 
   fun run(command: Command): Int =
@@ -393,7 +405,15 @@ class Tazel(
   }
 
   private fun cacheOf(project: LoadedProject) =
-    BuildCache(project.location.root.resolve(BuildCache.DIRECTORY), ::warn)
+    caches.getOrPut(project.location.root) {
+      val settings = project.plan.buildCache
+      BuildCache(
+        project.location.root.resolve(BuildCache.DIRECTORY),
+        settings,
+        settings.remote?.let(::HttpRemoteStore),
+        ::warn,
+      )
+    }
 
   /**
    * Runs the compiler, or brings back what an earlier run with the same key left, warnings
@@ -411,15 +431,13 @@ class Tazel(
   ): String {
     val root = project.location.root
     val cache = cacheOf(project)
-    val key = buildKey(compilerIdentity, run.arguments, root, run.inputs)
-    val log = cache.log(run.slug, key)
-    val restored =
-      if (noCache || log == null) null else cache.restore(run.slug, key, run.output.parent)
+    val key = buildKey(compilerIdentity(project), run.arguments, root, run.inputs)
+    val hit = if (noCache) null else cache.load(run.slug, key, run.output.parent)
     val description = brightBlue("(${project.displayName}, ${run.inputs.size} sources)")
     val name = run.output.fileName.toString().removeSuffix(extension)
-    if (log != null && restored != null) {
-      if (log.isNotBlank()) terminal.println(log.trimEnd(), stderr = true)
-      val state = if (restored == BuildCache.Restored.FRESH) "Fresh" else "Restored"
+    if (hit != null) {
+      if (hit.log.isNotBlank()) terminal.println(hit.log.trimEnd(), stderr = true)
+      val state = if (hit.restored == BuildCache.Restored.FRESH) "Fresh" else "Restored"
       status(state, "$name $description")
       return key
     }
@@ -568,9 +586,9 @@ class Tazel(
     val arguments = compilerArguments(project.plan.compiler, null, Emit.EXECUTABLE, inputs)
     val passedSlug = "passed-${suite.name}"
     val passedKey =
-      buildKey(compilerIdentity, arguments, root, inputs + filesBelow(root, suite.testDir))
+      buildKey(compilerIdentity(project), arguments, root, inputs + filesBelow(root, suite.testDir))
     if (!noCache) {
-      val totals = cache.log(passedSlug, passedKey)?.let(TestTotals::parse)
+      val totals = cache.load(passedSlug, passedKey, null)?.log?.let(TestTotals::parse)
       if (totals != null) {
         status("Cached", "${suite.name} " + brightBlue("(${project.displayName}, $totals)"))
         return SuiteResult(suite.name, ExitCode.SUCCESS, totals)

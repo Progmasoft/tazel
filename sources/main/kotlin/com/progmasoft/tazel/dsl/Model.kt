@@ -214,6 +214,7 @@ data class ProjectPlan(
   val testSuites: List<TestSuite>,
   val compiler: CompilerSettings,
   val plugins: List<PluginPlanEntry>,
+  val buildCache: BuildCacheSettings = BuildCacheSettings(),
 ) {
   /** The directory the build mode of the project writes its artifacts to. */
   val outputDirectory: String

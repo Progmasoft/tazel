@@ -56,8 +56,11 @@ program, so a target is the unit: one changed source compiles the whole target, 
     Finished build in 0.31s
 ```
 
-Contents count and times do not, so a file that was only touched changes nothing. Results stay in `.tazel/cache` of the
-project, the last eight of each target, so going back to an earlier branch or build mode shows `Restored` and compiles
+Contents count and times do not, so a file that was only touched changes nothing. The compiler is known by its version
+and the contents of its files, and the system and architecture of the host count too, so two machines with the same
+compiler, the same sources and the same settings have the same results; the [`buildCache`](PROJECT_FILES.md#buildcache)
+block of the project file can share them through a server. Results stay in `.tazel/cache` of the project, by default the
+last eight of each target, so going back to an earlier branch or build mode shows `Restored` and compiles
 nothing. A program that was deleted or changed comes back the same way. The warnings of the run that made a result are
 shown again every time it is used. A run that failed leaves no result. The steps of plugins are not skipped: they run in
 every build, before the sources are read, so what they generate counts.

@@ -86,6 +86,14 @@ class IncrementalBuildTest {
   }
 
   @Test
+  fun aProjectFileChoosesItsCache() = fixture {
+    demo(extra = "buildCache { local { enabled = false } }")
+    assertEquals(1, builds("build"))
+    assertEquals(1, builds("build"))
+    assertFalse(Files.exists(root.resolve(".tazel/cache/executable-Demo")))
+  }
+
+  @Test
   fun anotherCompilerCompilesAgain() = fixture {
     demo()
     builds("build")

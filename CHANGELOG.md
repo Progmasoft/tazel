@@ -5,6 +5,12 @@
 
 ## Unreleased
 
+- `buildCache { local { enabled, maxEntries } remote { url, read, write, token } }`
+  chooses where results are kept. The local cache is asked first; a remote cache
+  shares results between machines over `GET` and `PUT`, needs `https` except on
+  this machine, and is a warning rather than a failure when it does not answer.
+- Build cache keys follow the contents of the compiler and include the host, so
+  they are the same on every machine with that compiler.
 - `compiler { staticTalaRTLibrary = true }` links TalaRT into the output and
   `false` keeps it beside the output; `null`, the default, writes no option and
   leaves the choice to Talac.

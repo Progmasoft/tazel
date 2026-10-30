@@ -112,6 +112,48 @@ No warning level turns `wshadow` on. `wshadow = true` with `Warnings.NONE` is a 
 
 `compiler.version` is the version of the compiler that will build the project. A project file reads it and cannot set it.
 
+## `buildCache`
+
+```kotlin
+buildCache {
+  local {
+    enabled = true
+    maxEntries = 8
+  }
+
+  remote {
+    url = "https://cache.example.com"
+    read = true
+    write = false
+    token = System.getenv("TAZEL_CACHE_TOKEN")
+  }
+}
+```
+
+| Setting | Values | Default | Meaning |
+| --- | --- | --- | --- |
+| `local.enabled` | `true`, `false` | `true` | keeps results in `.tazel/cache` |
+| `local.maxEntries` | 1 or more | `8` | how many results of each target stay |
+| `remote.url` | an `https` address; `http` for this machine only | required | where the shared results are |
+| `remote.read` | `true`, `false` | `true` | asks the server for results |
+| `remote.write` | `true`, `false` | `false` | sends results to the server |
+| `remote.token` | text or `null` | `null` | sent as `Authorization: Bearer`; empty counts as none |
+
+The block is optional, and without it a project has the local cache alone. The local cache has priority: the server is
+asked only for what is not there, and what it gives is kept locally unless `local.enabled` is `false`. See
+[incremental builds](CLI.md#incremental-builds) for what makes a result the same.
+
+Write the token as a variable, never into the project file. Under the daemon `System.getenv` reads the environment of the
+daemon, so after a change of the variable run `tazel jvm restart-daemon`.
+
+A result is a program. Whoever can write to the server can put code on the machines that read from it, so give the write
+token only to what builds trustworthy sources, such as CI on the main branch, and leave `write = false` everywhere else.
+
+The server answers two requests, each with the token if there is one. `GET <url>/<slug>/<key>` gives the result as a ZIP
+archive, or `404` when it is not there. `PUT <url>/<slug>/<key>` stores one and answers `200`, `201` or `204`. Redirects are
+not followed. A server that fails or cannot be reached is a warning: the build goes on and the server is not asked again
+during that command.
+
 ## `outdirs`, `targets` and `pml`
 
 ```kotlin

@@ -142,6 +142,7 @@ internal constructor(
   private val executables = mutableListOf<ExecutableSourceTarget>()
   private val libraries = mutableListOf<LibrarySourceTarget>()
   private val testSuites = mutableListOf<TestSuite>()
+  private var buildCache: BuildCacheSettings? = null
   internal val compilerSettings = CompilerSettings().apply { version = compilerVersion }
 
   val projectName: String?
@@ -226,6 +227,13 @@ internal constructor(
     CompilerScope(compilerSettings).apply(block)
   }
 
+  fun buildCache(block: BuildCacheScope.() -> Unit) {
+    if (buildCache != null) {
+      throw ProjectConfigurationException("buildCache may be configured only once")
+    }
+    buildCache = BuildCacheScope().apply(block).build()
+  }
+
   fun build(): ProjectPlan {
     // A project that only gathers the members of a workspace has no sources of its own, and one
     // whose plugins build it, such as a C project, needs no Tala target.
@@ -277,6 +285,7 @@ internal constructor(
         testSuites.toList(),
         compilerSettings.copy(),
         emptyList(),
+        buildCache ?: BuildCacheSettings(),
       )
     return plugins.finish(plan)
   }
@@ -389,6 +398,8 @@ internal object ProjectRuntime {
 
   fun compiler(block: CompilerScope.() -> Unit) = current().compiler(block)
 
+  fun buildCache(block: BuildCacheScope.() -> Unit) = current().buildCache(block)
+
   fun build() = current().build()
 
   val compilerScope
@@ -418,6 +429,9 @@ fun eprint(message: Any?) = System.err.print(message)
 fun dependencies(block: DependenciesScope.() -> Unit) = ProjectRuntime.dependencies(block)
 
 fun compiler(block: CompilerScope.() -> Unit) = ProjectRuntime.compiler(block)
+
+/** Where results of earlier runs are kept: `local`, which is asked first, and `remote`. */
+fun buildCache(block: BuildCacheScope.() -> Unit) = ProjectRuntime.buildCache(block)
 
 /**
  * The compiler settings as they stand, so a project file can read them after its `compiler` block:
