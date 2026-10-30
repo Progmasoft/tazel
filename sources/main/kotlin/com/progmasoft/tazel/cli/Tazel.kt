@@ -7,26 +7,32 @@ package com.progmasoft.tazel.cli
 
 import com.github.ajalt.mordant.rendering.TextColors.brightBlue
 import com.github.ajalt.mordant.rendering.TextColors.brightGreen
+import com.github.ajalt.mordant.rendering.TextColors.brightRed
 import com.github.ajalt.mordant.rendering.TextColors.brightYellow
 import com.github.ajalt.mordant.rendering.TextStyles.bold
 import com.github.ajalt.mordant.rendering.TextStyles.dim
 import com.github.ajalt.mordant.terminal.Terminal
 import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
+import com.progmasoft.tazel.driver.BuildCache
 import com.progmasoft.tazel.driver.Emit
 import com.progmasoft.tazel.driver.LoadedWorkspace
 import com.progmasoft.tazel.driver.Processes
+import com.progmasoft.tazel.driver.RUNTIME_LIBRARIES
 import com.progmasoft.tazel.driver.SelectedTargets
 import com.progmasoft.tazel.driver.SourceFiles
+import com.progmasoft.tazel.driver.TestTotals
 import com.progmasoft.tazel.driver.Tool
 import com.progmasoft.tazel.driver.Toolchain
 import com.progmasoft.tazel.driver.UnknownTargetException
+import com.progmasoft.tazel.driver.buildKey
 import com.progmasoft.tazel.driver.compilerArguments
 import com.progmasoft.tazel.driver.displayName
 import com.progmasoft.tazel.driver.executableExtension
 import com.progmasoft.tazel.driver.hasTargets
 import com.progmasoft.tazel.driver.loadWorkspace
 import com.progmasoft.tazel.driver.select
+import com.progmasoft.tazel.driver.toolIdentity
 import com.progmasoft.tazel.dsl.DependencyScope
 import com.progmasoft.tazel.dsl.ExecutableSourceTarget
 import com.progmasoft.tazel.dsl.Host
@@ -36,6 +42,7 @@ import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectLoader
 import com.progmasoft.tazel.dsl.ProjectLocation
 import com.progmasoft.tazel.dsl.ScriptCache
+import com.progmasoft.tazel.dsl.TestSuite
 import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.coordinate
 import com.progmasoft.tazel.dsl.detectHost
@@ -73,6 +80,28 @@ private class Stop(
 ) : Exception(message)
 
 /**
+ * One compiler run as Tazel plans it. [slug] names its results in the build cache; [output] is
+ * where the program lands.
+ */
+private class CompilerRun(
+  val what: String,
+  val slug: String,
+  val inputs: List<String>,
+  val arguments: List<String>,
+  val output: Path,
+)
+
+/** The end of one test suite: its [totals], unless the runner stopped before it wrote them. */
+private class SuiteResult(
+  val name: String,
+  val exitCode: Int,
+  val totals: TestTotals?,
+) {
+  val passed: Boolean
+    get() = exitCode == 0 && totals != null && totals.failed == 0
+}
+
+/**
  * Runs one command of Tazel.
  *
  * Tazel compiles nothing itself. It reads the project file, finds the sources and starts the
@@ -93,13 +122,20 @@ class Tazel(
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
+  /** The compiler as the keys of the build cache see it; asked for once per command. */
+  private val compilerIdentity by lazy {
+    toolIdentity(toolchain.require(Tool.TALAC), compilerVersion())
+  }
+
   fun run(command: Command): Int =
     try {
       when (command) {
-        is Command.Check -> compile(command.targets, Emit.METADATA).let { ExitCode.SUCCESS }
-        is Command.Build -> compile(command.targets, Emit.EXECUTABLE).let { ExitCode.SUCCESS }
+        is Command.Check ->
+          compile(command.targets, Emit.METADATA, command.noCache).let { ExitCode.SUCCESS }
+        is Command.Build ->
+          compile(command.targets, Emit.EXECUTABLE, command.noCache).let { ExitCode.SUCCESS }
         is Command.Run -> runPrograms(command)
-        is Command.Test -> test(command.targets)
+        is Command.Test -> test(command)
         Command.LockResolve -> lockResolve()
         is Command.LockCreateDump -> lockCreateDump(command.path)
         is Command.LockGraph -> lockGraph(command)
@@ -217,6 +253,7 @@ class Tazel(
   private fun compile(
     selection: TargetSelection,
     emit: Emit,
+    noCache: Boolean,
   ): List<Path> {
     val started = TimeSource.Monotonic.markNow()
     load(forBuild = true).use { workspace ->
@@ -240,7 +277,7 @@ class Tazel(
           if (runSteps) stepsRun += runBuildSteps(project, progress)
           for (executable in targets.executables) {
             progress.working(executable.name)
-            outputs.add(compile(compiler!!, project, executable, emit, progress))
+            outputs.add(compile(compiler!!, project, executable, emit, noCache, progress))
             progress.done()
           }
         }
@@ -327,6 +364,7 @@ class Tazel(
     project: LoadedProject,
     target: ExecutableSourceTarget,
     emit: Emit,
+    noCache: Boolean,
     progress: StepProgress,
   ): Path {
     val root = project.location.root
@@ -341,24 +379,76 @@ class Tazel(
       throw Stop("executable '${target.name}' has no .tala source in ${target.srcDir}")
     }
     val extension = emit.extension ?: executableExtension(os)
-    status(
-      if (emit == Emit.METADATA) "Checking" else "Compiling",
-      "${target.name} " + brightBlue("(${project.displayName}, ${inputs.size} sources)"),
-    )
-    val arguments = compilerArguments(project.plan.compiler, target.entry, emit, inputs)
-    val exitCode = execute(listOf(compiler.toString()) + arguments, root, progress)
-    if (exitCode != 0)
-      throw Stop("talac rejected executable '${target.name}' (exit code $exitCode)")
-    // The compiler writes beside its first input, under that input's name; the project decides
-    // where artifacts live and what they are called, so the file is moved there.
-    val written = root.resolve(inputs.first().removeSuffix(".tala") + extension)
+    val run =
+      CompilerRun(
+        "executable '${target.name}'",
+        "${emit.value}-${target.name}",
+        inputs,
+        compilerArguments(project.plan.compiler, target.entry, emit, inputs),
+        root.resolve(project.plan.outputDirectory).resolve(target.name + extension),
+      )
+    val verb = if (emit == Emit.METADATA) "Checking" else "Compiling"
+    compile(compiler, project, run, verb, extension, noCache, progress)
+    return run.output
+  }
+
+  private fun cacheOf(project: LoadedProject) =
+    BuildCache(project.location.root.resolve(BuildCache.DIRECTORY), ::warn)
+
+  /**
+   * Runs the compiler, or brings back what an earlier run with the same key left, warnings
+   * included. A run that fails leaves no result, so it is repeated and shows its errors every time.
+   * The key is returned for what follows from this result.
+   */
+  private fun compile(
+    compiler: Path,
+    project: LoadedProject,
+    run: CompilerRun,
+    verb: String,
+    extension: String,
+    noCache: Boolean,
+    progress: StepProgress,
+  ): String {
+    val root = project.location.root
+    val cache = cacheOf(project)
+    val key = buildKey(compilerIdentity, run.arguments, root, run.inputs)
+    val log = cache.log(run.slug, key)
+    val restored =
+      if (noCache || log == null) null else cache.restore(run.slug, key, run.output.parent)
+    val description = brightBlue("(${project.displayName}, ${run.inputs.size} sources)")
+    val name = run.output.fileName.toString().removeSuffix(extension)
+    if (log != null && restored != null) {
+      if (log.isNotBlank()) terminal.println(log.trimEnd(), stderr = true)
+      val state = if (restored == BuildCache.Restored.FRESH) "Fresh" else "Restored"
+      status(state, "$name $description")
+      return key
+    }
+    status(verb, "$name $description")
+    val result = processes.runGathered(listOf(compiler.toString()) + run.arguments, root)
+    // Talac names the place it linked to, which Tazel is about to leave; the rest is diagnostics.
+    val diagnostics =
+      result.output.lineSequence().filterNot { it.startsWith(LINKED_LINE) }.joinToString("\n")
+    if (diagnostics.isNotBlank()) terminal.println(diagnostics.trimEnd(), stderr = true)
+    if (result.exitCode != 0) {
+      throw Stop("talac rejected ${run.what} (exit code ${result.exitCode})")
+    }
+    // The compiler writes beside its first input, under that input's name, with TalaRT beside it;
+    // the project decides where artifacts live and what they are called, so they are moved there.
+    val written = root.resolve(run.inputs.first().removeSuffix(".tala") + extension)
     if (!Files.isRegularFile(written)) {
       throw Stop("talac reported success and left no $written")
     }
-    val output = root.resolve(project.plan.outputDirectory).resolve(target.name + extension)
-    Files.createDirectories(output.parent)
-    Files.move(written, output, REPLACE_EXISTING)
-    return output
+    Files.createDirectories(run.output.parent)
+    Files.move(written, run.output, REPLACE_EXISTING)
+    val outputs =
+      listOf(run.output) +
+        RUNTIME_LIBRARIES.map(written::resolveSibling).filter(Files::isRegularFile).map { library ->
+          run.output.resolveSibling(library.fileName).also {
+            Files.move(library, it, REPLACE_EXISTING)
+          }
+        }
+    cache.store(run.slug, key, outputs, diagnostics)
+    return key
   }
 
   private fun requireNoDependencies(
@@ -393,7 +483,7 @@ class Tazel(
   }
 
   private fun runPrograms(command: Command.Run): Int {
-    val programs = compile(command.targets, Emit.EXECUTABLE)
+    val programs = compile(command.targets, Emit.EXECUTABLE, command.noCache)
     for (program in programs) {
       status("Running", program.toString())
       val exitCode = processes.run(listOf(program.toString()) + command.programArguments, directory)
@@ -402,21 +492,148 @@ class Tazel(
     return ExitCode.SUCCESS
   }
 
-  private fun test(selection: TargetSelection): Int {
-    val workspace = load()
-    val suites =
-      select(workspace.all, selection).flatMap { targets ->
-        targets.project.plan.testSuites.map { "${targets.project.displayName}.${it.name}" }
+  /**
+   * Builds and runs every test suite of the selection. A failing test does not stop the suites
+   * after it, so one run shows all that is wrong; only a suite that does not compile ends the
+   * command.
+   */
+  private fun test(command: Command.Test): Int {
+    val started = TimeSource.Monotonic.markNow()
+    load(forBuild = true).use { workspace ->
+      val selected = select(workspace.all, command.targets)
+      val count = selected.sumOf { it.project.plan.testSuites.size }
+      if (count == 0) {
+        status("Finished", "test: the selection declares no test suite")
+        return ExitCode.SUCCESS
       }
-    if (suites.isEmpty()) {
-      status("Finished", "test: the selection declares no test suite")
+      val compiler = toolchain.require(Tool.TALAC)
+      val results = mutableListOf<SuiteResult>()
+      val work = selected.sumOf { it.project.plan.testSuites.size + it.project.buildSteps.size }
+      StepProgress.start(terminal, "Testing", work, output.effectiveProgress).use { progress ->
+        for (targets in selected) {
+          val project = targets.project
+          keepLockCurrent(project)
+          requireNoDependencies(project, DependencyScope.BUILD)
+          requireNoDependencies(project, DependencyScope.TEST)
+          runBuildSteps(project, progress)
+          for (suite in project.plan.testSuites) {
+            progress.working(suite.name)
+            results += runSuite(compiler, targets, suite, command.noCache, progress)
+            progress.done()
+          }
+        }
+      }
+      return reportTests(results, started)
+    }
+  }
+
+  /**
+   * The inputs of a test build: what the selection compiles, then the sources of [suite]. The first
+   * part leaves out what lies in the directory of any suite, so a suite never sees another one.
+   */
+  private fun testInputs(
+    targets: SelectedTargets,
+    suite: TestSuite,
+  ): List<String> {
+    val root = targets.project.location.root
+    val suites = targets.project.plan.testSuites
+    val tested =
+      sourcesOf(targets, includeTests = false).filter { file ->
+        suites.none { sources.matches("${it.testDir}/**", file) }
+      }
+    val inputs =
+      tested +
+        sources.discover(root, suite.testDir, suite.exclude.orEmpty(), "test '${suite.name}'")
+    if (inputs.size == tested.size) {
+      throw Stop("test suite '${suite.name}' has no .tala source in ${suite.testDir}")
+    }
+    return inputs
+  }
+
+  /**
+   * Builds and runs one suite. A suite that passed is not run again while nothing it can see
+   * changed: its sources, the settings, the compiler and every file of its test directory.
+   */
+  private fun runSuite(
+    compiler: Path,
+    targets: SelectedTargets,
+    suite: TestSuite,
+    noCache: Boolean,
+    progress: StepProgress,
+  ): SuiteResult {
+    val project = targets.project
+    val root = project.location.root
+    val cache = cacheOf(project)
+    val inputs = testInputs(targets, suite)
+    val arguments = compilerArguments(project.plan.compiler, null, Emit.EXECUTABLE, inputs)
+    val passedSlug = "passed-${suite.name}"
+    val passedKey =
+      buildKey(compilerIdentity, arguments, root, inputs + filesBelow(root, suite.testDir))
+    if (!noCache) {
+      val totals = cache.log(passedSlug, passedKey)?.let(TestTotals::parse)
+      if (totals != null) {
+        status("Cached", "${suite.name} " + brightBlue("(${project.displayName}, $totals)"))
+        return SuiteResult(suite.name, ExitCode.SUCCESS, totals)
+      }
+    }
+    val extension = executableExtension(os)
+    val program = root.resolve(".tazel/tests").resolve(suite.name).resolve(suite.name + extension)
+    val run =
+      CompilerRun("test suite '${suite.name}'", "test-${suite.name}", inputs, arguments, program)
+    compile(compiler, project, run, "Compiling", extension, noCache, progress)
+    status("Testing", "${suite.name} " + brightBlue("(${project.displayName})"))
+    var totals: TestTotals? = null
+    val exitCode =
+      processes.runLines(listOf(program.toString()), root) { line ->
+        TestTotals.parse(line)?.let { totals = it }
+        terminal.println(colored(line))
+      }
+    val result = SuiteResult(suite.name, exitCode, totals)
+    if (result.passed) cache.store(passedSlug, passedKey, emptyList(), totals.toString())
+    return result
+  }
+
+  /** Every file below [directory] of [root], data files included, in a stable order. */
+  private fun filesBelow(
+    root: Path,
+    directory: String,
+  ): List<String> =
+    Files.walk(root.resolve(directory)).use { paths ->
+      paths
+        .filter(Files::isRegularFile)
+        .map { root.relativize(it).joinToString("/") }
+        .sorted()
+        .toList()
+    }
+
+  private fun colored(line: String): String =
+    when {
+      line.startsWith("PASS ") -> brightGreen("PASS") + line.removePrefix("PASS")
+      line.startsWith("FAIL ") -> (bold + brightRed)("FAIL") + line.removePrefix("FAIL")
+      else -> line
+    }
+
+  private fun reportTests(
+    results: List<SuiteResult>,
+    started: TimeSource.Monotonic.ValueTimeMark,
+  ): Int {
+    val totals = results.mapNotNull { it.totals }.fold(TestTotals(0, 0), TestTotals::plus)
+    val suites = "${results.size} ${if (results.size == 1) "suite" else "suites"}"
+    val failed = results.filterNot { it.passed }
+    if (failed.isEmpty()) {
+      finished("test: $suites, $totals", started)
       return ExitCode.SUCCESS
     }
-    throw Stop(
-      "test suites cannot run yet: Talac does not compile [Fact] tests and #expect yet, so " +
-        suites.joinToString() +
-        " cannot be built"
-    )
+    failed
+      .filter { it.totals == null }
+      .forEach {
+        reportError(
+          terminal,
+          "test suite '${it.name}' stopped before it finished (exit code ${it.exitCode})",
+          null,
+        )
+      }
+    return fail("$suites, $totals: ${failed.joinToString { "'${it.name}'" }} failed")
   }
 
   private fun lockResolve(): Int {
@@ -670,5 +887,6 @@ class Tazel(
 
   private companion object {
     const val STATUS_WIDTH = 12
+    const val LINKED_LINE = "talac: linked native executable"
   }
 }

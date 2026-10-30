@@ -91,7 +91,16 @@ follows from the project file alone, not from the defaults of whichever `talac` 
 `--`, so a file named like an option is still read as a file.
 
 Talac writes its output beside the first input. Tazel moves it into the output directory of the build mode, under the
-name of the target, and fails if the compiler reported success and left nothing.
+name of the target, with TalaRT when Talac left it there, and fails if the compiler reported success and left nothing.
+
+Before it starts Talac, Tazel hashes the arguments, the contents of the inputs, the version of the compiler and the size
+and time of the files that make it up. The result of a run lives in `.tazel/cache/<slug>/<key>`, a directory that is staged
+aside and moved into place, so it is there whole or not at all. A cache that cannot be read or written is a warning: the
+compiler runs and the build goes on. The output of the compiler is gathered rather than handed to the terminal, so the
+warnings of a run can be shown again when its result is used.
+
+`tazel test` follows the same path with `--test` instead of `--entry`, and adds a second result per suite, keyed also on
+every file of the test directory, that records the totals of a run that passed.
 
 ### 6. Formatting and linting
 

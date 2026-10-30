@@ -45,6 +45,16 @@ interface Processes {
     command: List<String>,
     directory: Path,
   ): GatheredRun = GatheredRun(run(command, directory), "")
+
+  /**
+   * Runs [command] in [directory] and hands each line it writes, output and errors in the order
+   * written, to [line] as soon as the line is complete.
+   */
+  fun runLines(
+    command: List<String>,
+    directory: Path,
+    line: (String) -> Unit,
+  ): Int = runGathered(command, directory).also { it.output.lines().forEach(line) }.exitCode
 }
 
 /** The exit code of a program and everything it wrote, output and errors in the order written. */
@@ -97,6 +107,26 @@ object SystemProcesses : Processes {
           .start()
       val output = process.inputStream.bufferedReader().readText()
       GatheredRun(process.waitFor(), output)
+    } catch (error: java.io.IOException) {
+      throw ProjectConfigurationException(
+        "${command.first()} could not be started: ${error.message}"
+      )
+    }
+
+  override fun runLines(
+    command: List<String>,
+    directory: Path,
+    line: (String) -> Unit,
+  ): Int =
+    try {
+      val process =
+        ProcessBuilder(command)
+          .directory(directory.toFile())
+          .redirectErrorStream(true)
+          .redirectInput(ProcessBuilder.Redirect.from(nullDevice()))
+          .start()
+      process.inputStream.bufferedReader().forEachLine(line)
+      process.waitFor()
     } catch (error: java.io.IOException) {
       throw ProjectConfigurationException(
         "${command.first()} could not be started: ${error.message}"

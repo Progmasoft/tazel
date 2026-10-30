@@ -366,6 +366,31 @@ internal class ForwardingProcesses(
     }
   }
 
+  override fun runLines(
+    command: List<String>,
+    directory: Path,
+    line: (String) -> Unit,
+  ): Int {
+    val process =
+      started(
+        command,
+        builder(command, directory)
+          .redirectErrorStream(true)
+          .redirectInput(ProcessBuilder.Redirect.from(nullDevice())),
+      )
+    val stop = {
+      process.destroyForcibly()
+      Unit
+    }
+    sink.onDisconnect(stop)
+    try {
+      process.inputStream.bufferedReader().forEachLine(line)
+      return process.waitFor()
+    } finally {
+      sink.forget(stop)
+    }
+  }
+
   override fun capture(command: List<String>): String? =
     try {
       val process =

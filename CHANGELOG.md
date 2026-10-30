@@ -5,6 +5,21 @@
 
 ## Unreleased
 
+- `tazel test` builds and runs the test suites. Each suite is compiled with
+  `talac --test` from the sources of the selection and the sources of the suite,
+  and its runner starts in the project directory. A failing test does not stop
+  the suites after it; the command ends with the totals and exit code `1`. This
+  needs a Talac that has `--test`, the release after 0.1.0.
+- `check`, `build`, `run` and `test` skip a compiler run when the sources, the
+  settings and the compiler are those of an earlier run, and bring its files back
+  from `.tazel/cache`, so going back to an earlier branch or build mode compiles
+  nothing. Warnings of the earlier run are shown again.
+- A test suite that passed is not run again until its sources, the settings, the
+  compiler or a file of its test directory change.
+- `--no-cache` on `check`, `build`, `run` and `test` does the work anyway.
+- TalaRT moves into the output directory with the program, so a program built
+  with the shared TalaRT starts from there.
+
 ## 0.3.0 - 2026-10-29
 
 - Options take their value after a space, `=` or `:`, and short options also

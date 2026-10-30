@@ -42,10 +42,10 @@ internal fun tazelVersion(): String =
 /** What each command takes after its name; shared by the help of one command. */
 private val usage =
   mapOf(
-    CommandName.CHECK to "[selection]",
-    CommandName.BUILD to "[selection]",
-    CommandName.RUN to "[selection] [-- program arguments]",
-    CommandName.TEST to "[selection]",
+    CommandName.CHECK to "[selection] [--no-cache]",
+    CommandName.BUILD to "[selection] [--no-cache]",
+    CommandName.RUN to "[selection] [--no-cache] [-- program arguments]",
+    CommandName.TEST to "[selection] [--no-cache]",
     CommandName.LOCK_CREATE_DUMP to "[--path File]",
     CommandName.LOCK_GRAPH to
       "[--locked] [--all-features] [--duplicates | -d] [--invert | -i Package] [--depth Levels]",
@@ -63,7 +63,10 @@ private const val SELECTION_HELP =
     "  --library, -l Name      only the library of this name\n" +
     "Each flag may be written several times. The name follows the flag, or comes after = or :\n" +
     "(--executable=Name, -e:Name), or, for a short flag, is joined to it (-eName). After = or :\n" +
-    "a flag takes a list: -e=First,Second."
+    "a flag takes a list: -e=First,Second.\n" +
+    "Work whose inputs did not change is not done again, and a test suite that passed is not run\n" +
+    "again.\n" +
+    "  --no-cache              do the work anyway"
 
 private const val GRAPH_HELP =
   "Every project of the workspace is a root of the graph. A dependency that a feature of the\n" +
