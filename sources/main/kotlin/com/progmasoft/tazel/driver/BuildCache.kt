@@ -214,6 +214,7 @@ class BuildCache(
   )
 
   private var remoteFailed = false
+  private var warnedUnsigned = false
 
   private val readsRemote
     get() = remote != null && settings.remote?.read == true && !remoteFailed
@@ -272,7 +273,9 @@ class BuildCache(
       try {
         val found =
           remotely("read a result") {
-            remote!!.fetch(slug, key, archive) && unpacked(archive, fetched)
+            remote!!.fetch(slug, key, archive) &&
+              genuine(slug, key, archive) &&
+              unpacked(archive, fetched)
           } == true
         when {
           !found -> null
@@ -328,6 +331,41 @@ class BuildCache(
       Files.write(directory.resolve(FAILED_SUITES_FILE), suites)
     } catch (_: IOException) {
       // The next run keeps the declared order.
+    }
+  }
+
+  /**
+   * Whether the result in [archive] may be used. With a public key it needs its signature, and a
+   * result without one is simply not there yet, or never was; a wrong one is an attack or a
+   * mistake, and the server is not trusted further. Without a key the project has chosen to trust
+   * the server, which it is told once.
+   */
+  private fun genuine(
+    slug: String,
+    key: String,
+    archive: Path,
+  ): Boolean {
+    val configured = settings.remote ?: return false
+    val publicKey = configured.publicKey
+    if (publicKey == null) {
+      if (!warnedUnsigned) {
+        warnedUnsigned = true
+        failure(
+          "results of ${configured.url} are used without a signature check; " +
+            "tazel cache keygen makes the buildCache.remote.publicKey that turns it on"
+        )
+      }
+      return true
+    }
+    val signature = Files.createTempFile(archive.parent, ".signature-", "")
+    try {
+      if (!remote!!.fetch(slug, "$key$SIGNATURE_SUFFIX", signature)) return false
+      if (!isSignedResult(publicKey, slug, key, archive, Files.readAllBytes(signature))) {
+        throw IOException("the signature of a result is wrong")
+      }
+      return true
+    } finally {
+      Files.deleteIfExists(signature)
     }
   }
 
@@ -399,7 +437,19 @@ class BuildCache(
     val archive = Files.createTempFile(parent, ".publishing-", ".zip")
     try {
       packResult(staged, archive)
-      remotely("store a result") { remote!!.publish(slug, key, archive) }
+      remotely("store a result") {
+        remote!!.publish(slug, key, archive)
+        settings.remote?.signingKey?.let { signingKey ->
+          // The signature goes second: a reader that comes between finds no result, not a bad one.
+          val signature = Files.createTempFile(parent, ".signature-", "")
+          try {
+            Files.write(signature, signResult(signingKey, slug, key, archive))
+            remote.publish(slug, "$key$SIGNATURE_SUFFIX", signature)
+          } finally {
+            Files.deleteIfExists(signature)
+          }
+        }
+      }
     } finally {
       Files.deleteIfExists(archive)
     }
@@ -438,6 +488,7 @@ class BuildCache(
     const val COMPILER_MEMO = ".compiler"
 
     private const val LOG_FILE = ".log"
+    private const val SIGNATURE_SUFFIX = ".sig"
     private const val LATEST_FILE = ".latest"
     private const val FAILED_SUITES_FILE = ".failed-suites"
   }

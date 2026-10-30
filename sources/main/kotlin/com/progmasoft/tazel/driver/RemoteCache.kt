@@ -6,6 +6,7 @@
 package com.progmasoft.tazel.driver
 
 import com.progmasoft.tazel.dsl.RemoteCacheSettings
+import com.progmasoft.tazel.dsl.ResultKeys
 import java.io.IOException
 import java.io.InputStream
 import java.net.URI
@@ -14,13 +15,16 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
+import java.security.Signature
+import java.security.SignatureException
 import java.time.Duration
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /** The most a result of a remote cache may hold, packed or unpacked. */
-private const val MAXIMUM_ARCHIVE_BYTES = 1L shl 30
+internal const val MAXIMUM_ARCHIVE_BYTES = 1L shl 30
 
 /** Where results are shared between machines. Every failure is an [IOException]. */
 interface RemoteStore {
@@ -40,8 +44,9 @@ interface RemoteStore {
 
 /**
  * A remote cache over HTTP: `GET` and `PUT` of `<url>/<slug>/<key>`, with `200`, or `201` and `204`
- * for a `PUT`, for success and `404` for a result that is not there. Redirects are not followed, so
- * the token goes only to the address the project names.
+ * for a `PUT`, for success and `404` for a result that is not there. A signature is a result of its
+ * own, `<key>.sig`. Redirects are not followed, so the token goes only to the address the project
+ * names.
  */
 class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
   private val client =
@@ -108,7 +113,7 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
 }
 
 /** [stream], failing once it has given more than a result may hold. */
-private fun limited(stream: InputStream) =
+internal fun limited(stream: InputStream) =
   object : InputStream() {
     private var left = MAXIMUM_ARCHIVE_BYTES
 
@@ -126,6 +131,57 @@ private fun limited(stream: InputStream) =
       length: Int,
     ): Int = counted(stream.read(buffer, offset, length))
   }
+
+/**
+ * What a signature of a result covers: the archive and the place it belongs, so that a signed
+ * result cannot be served under the key of another one.
+ */
+private fun signedBytes(
+  slug: String,
+  key: String,
+  archive: Path,
+): ByteArray {
+  val digest = MessageDigest.getInstance("SHA-256")
+  Files.newInputStream(archive).use { stream ->
+    val buffer = ByteArray(64 * 1024)
+    generateSequence { stream.read(buffer) }
+      .takeWhile { it >= 0 }
+      .forEach { digest.update(buffer, 0, it) }
+  }
+  val contents = digest.digest().joinToString("") { "%02x".format(it) }
+  return "tazel result 1\n$slug\n$key\n$contents".toByteArray()
+}
+
+/** The signature of a result as the text a store keeps beside it. */
+internal fun signResult(
+  signingKey: String,
+  slug: String,
+  key: String,
+  archive: Path,
+): ByteArray {
+  val signature = Signature.getInstance("Ed25519")
+  signature.initSign(ResultKeys.signingOf(signingKey))
+  signature.update(signedBytes(slug, key, archive))
+  return signature.sign()
+}
+
+/** Whether [signature] was made by the key behind [publicKey] for this very result. */
+internal fun isSignedResult(
+  publicKey: String,
+  slug: String,
+  key: String,
+  archive: Path,
+  signature: ByteArray,
+): Boolean {
+  val verifier = Signature.getInstance("Ed25519")
+  verifier.initVerify(ResultKeys.publicOf(publicKey))
+  verifier.update(signedBytes(slug, key, archive))
+  return try {
+    verifier.verify(signature)
+  } catch (_: SignatureException) {
+    false
+  }
+}
 
 /** Packs the files directly in [directory] into [archive]. */
 internal fun packResult(

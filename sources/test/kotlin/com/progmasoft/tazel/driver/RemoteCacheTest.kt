@@ -183,7 +183,7 @@ class RemoteCacheTest {
       val cache = cache("first", RemoteCacheSettings(url), problems = problems)
 
       assertNull(cache.load("build-Demo", "key", root), name)
-      assertEquals(1, problems.size, name)
+      assertTrue(problems.any { "names the file" in it }, name)
       assertFalse(Files.exists(root.resolve("escaped")), name)
     }
   }

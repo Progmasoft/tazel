@@ -5,6 +5,13 @@
 
 ## Unreleased
 
+- `tazel cache serve` is a server for the remote build cache, and `tazel cache
+  keygen` makes the keys that sign its results. A project with
+  `buildCache.remote.publicKey` uses only results signed for that key, that
+  target and that cache key.
+- A project file that reads a variable with `System.getenv` gets the value of the
+  command under the daemon too: when it differs, the command runs without the
+  daemon and the next one starts a new daemon.
 - A compiler run says why it runs: `Sources/Math.tala changed`, `the settings
   changed`, `the compiler changed`. The last line of a command counts what the
   cache saved, and a test suite that failed last time runs first.

@@ -16,6 +16,8 @@ import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
 import com.progmasoft.tazel.driver.BuildCache
 import com.progmasoft.tazel.driver.BuildInputs
+import com.progmasoft.tazel.driver.CacheServer
+import com.progmasoft.tazel.driver.CacheServerSettings
 import com.progmasoft.tazel.driver.Emit
 import com.progmasoft.tazel.driver.HttpRemoteStore
 import com.progmasoft.tazel.driver.LoadedWorkspace
@@ -43,6 +45,7 @@ import com.progmasoft.tazel.dsl.OperatingSystem
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectLoader
 import com.progmasoft.tazel.dsl.ProjectLocation
+import com.progmasoft.tazel.dsl.ResultKeys
 import com.progmasoft.tazel.dsl.ScriptCache
 import com.progmasoft.tazel.dsl.TestSuite
 import com.progmasoft.tazel.dsl.Timings
@@ -121,6 +124,8 @@ class Tazel(
   private val timings: Timings = Timings.disabled,
   /** --color, --progress and --quiet; the terminal already has the colors they ask for. */
   private val output: OutputOptions = OutputOptions(),
+  /** The environment of the command when this JVM does not have it, as in the daemon. */
+  private val commandEnvironment: Map<String, String>? = null,
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
@@ -169,6 +174,8 @@ class Tazel(
           throw Stop(
             "tazel ${command.name.words} needs ViGet, and the ViGet client is not implemented yet"
           )
+        Command.CacheKeygen -> cacheKeygen()
+        is Command.CacheServe -> cacheServe(command)
         is Command.Daemon ->
           throw Stop("tazel ${command.name.words} manages the daemon from the command line itself")
         Command.ViPkgCreate ->
@@ -239,7 +246,14 @@ class Tazel(
     terminal.println((bold + brightYellow)("warning") + ": " + message, stderr = true)
 
   private fun projectLoader(forBuild: Boolean = false) =
-    ProjectLoader(compilerVersion(), scriptCache, timings, version, keepBuildSteps = forBuild)
+    ProjectLoader(
+      compilerVersion(),
+      scriptCache,
+      timings,
+      version,
+      keepBuildSteps = forBuild,
+      commandEnvironment = commandEnvironment,
+    )
 
   private fun compilerVersion(): String =
     toolchain
@@ -674,6 +688,36 @@ class Tazel(
         )
       }
     return fail("$suites, $totals: ${failed.joinToString { "'${it.name}'" }} failed")
+  }
+
+  /** Prints a new pair of keys; the signing key is shown here and kept nowhere. */
+  private fun cacheKeygen(): Int {
+    val (public, signing) = ResultKeys.generate()
+    terminal.println("publicKey = \"$public\"")
+    terminal.println("signingKey = \"$signing\"")
+    return ExitCode.SUCCESS
+  }
+
+  private fun cacheServe(command: Command.CacheServe): Int {
+    fun token(name: String) = System.getenv(name)?.takeIf(String::isNotBlank)
+    val settings =
+      CacheServerSettings(
+        directory.resolve(command.directory).toAbsolutePath().normalize(),
+        command.host,
+        command.port,
+        command.maxGigabytes * (1L shl 30),
+        token("TAZEL_CACHE_TOKEN"),
+        token("TAZEL_CACHE_READ_TOKEN"),
+      )
+    CacheServer(settings).use { server ->
+      server.start()
+      status("Serving", "${settings.directory} on http://${settings.host}:${server.port}")
+      if (settings.writeToken == null) {
+        warn("TAZEL_CACHE_TOKEN is not set, so this cache takes no results")
+      }
+      Thread.currentThread().join()
+    }
+    return ExitCode.SUCCESS
   }
 
   private fun lockResolve(): Int {

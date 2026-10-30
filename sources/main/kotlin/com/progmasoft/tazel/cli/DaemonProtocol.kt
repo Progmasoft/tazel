@@ -5,6 +5,7 @@
 
 package com.progmasoft.tazel.cli
 
+import com.progmasoft.tazel.dsl.StaleEnvironmentException
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -15,7 +16,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /** Bumped whenever a frame changes; a client and a daemon of different protocols do not talk. */
-internal const val DAEMON_PROTOCOL = 1
+internal const val DAEMON_PROTOCOL = 2
 
 /**
  * The largest frame either side accepts, so a confused peer cannot make the other allocate
@@ -44,7 +45,12 @@ internal enum class FrameKind(val code: Int) {
   STDERR(19),
   EXIT(20),
   PONG(21),
-  STOPPING(22);
+  STOPPING(22),
+
+  /**
+   * The command needs an environment this daemon cannot give it; see [StaleEnvironmentException].
+   */
+  STALE(23);
 
   companion object {
     private val byCode = entries.associateBy(FrameKind::code)
@@ -199,6 +205,8 @@ internal data class RunRequest(
 internal data class RunExit(
   val exitCode: Int,
   val phases: Map<String, Long>,
+  /** The daemon could not run the command: its environment is not the one the command has. */
+  val stale: Boolean = false,
 ) {
   fun frame() =
     Frame(

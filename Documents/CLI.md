@@ -79,6 +79,30 @@ The last line of a command counts what the cache saved: `Finished build, 3 of 4 
 
 `--no-cache` does the work anyway and still records the result. `.tazel/cache` can be deleted at any time.
 
+## A remote cache server
+
+`tazel cache serve` keeps the results of a [remote cache](PROJECT_FILES.md#buildcache) in a directory:
+
+```text
+tazel cache serve --directory /var/cache/tazel --port 7723 --max-size 50
+```
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `--directory` | required | where the results are kept |
+| `--host` | `127.0.0.1` | the address it listens on |
+| `--port` | `7723` | the port it listens on |
+| `--max-size` | `10` | gigabytes it keeps; the results used longest ago go first |
+
+`TAZEL_CACHE_TOKEN` is the token a `PUT` needs; without it the server takes no results. `TAZEL_CACHE_READ_TOKEN`, when set, is
+the token a `GET` needs. Tokens stay out of the command line, where other users could read them.
+
+The server speaks plain HTTP. For other machines it stands behind a proxy with TLS, because Tazel takes `https` for every
+address but this machine. It looks at nothing inside a result; whether a result is genuine is decided by the reader through
+its signature, so the server need not be trusted with that.
+
+`tazel cache keygen` prints a new pair of keys for a project file.
+
 ## Test suites
 
 `tazel test` builds and runs every test suite of the selection, one after the other:

@@ -60,6 +60,8 @@ enum class CommandName(val words: String, val summary: String) {
   VIGET_PUSH("viget push", "build, test and publish the package to ViGet for the first time"),
   VIGET_UPDATE("viget update", "build, test and publish a new version of the package"),
   VIGET_VIPKG_DESC("viget vipkg-desc", "print the description of a package of ViGet"),
+  CACHE_KEYGEN("cache keygen", "print a new pair of keys that sign the results of a remote cache"),
+  CACHE_SERVE("cache serve", "serve a remote build cache from a directory"),
   VERSION("version", "print the version of Tazel"),
   HELP("help", "print this help, or the help of one command"),
   FMT("fmt", "format the sources of the project with talafmt"),
@@ -169,6 +171,20 @@ sealed interface Command {
   /** Prints the `project.description` of [coordinate] as ViGet holds it. */
   data class ViGetVipkgDesc(val coordinate: PackageCoordinate) : Command {
     override val name = CommandName.VIGET_VIPKG_DESC
+  }
+
+  data object CacheKeygen : Command {
+    override val name = CommandName.CACHE_KEYGEN
+  }
+
+  /** Serves results from [directory] on [host] and [port], at most [maxGigabytes] of them. */
+  data class CacheServe(
+    val directory: String,
+    val host: String = "127.0.0.1",
+    val port: Int = 7723,
+    val maxGigabytes: Long = 10,
+  ) : Command {
+    override val name = CommandName.CACHE_SERVE
   }
 
   data object Version : Command {
@@ -378,6 +394,8 @@ private val selectionFlags = listOf("--vipkg", "-p", "--executable", "-e", "--li
 
 private const val NO_CACHE = "--no-cache"
 
+private val cacheServeFlags = listOf("--directory", "--host", "--port", "--max-size")
+
 /** The flags that select targets, shared by every command that takes them. */
 private class SelectionBuilder {
   val viPkgs = mutableListOf<String>()
@@ -489,6 +507,11 @@ private class ArgumentReader(private val arguments: List<String>) {
           "update" -> Command.ViGetUpdate.also { finish(CommandName.VIGET_UPDATE) }
           else -> vipkgDesc()
         }
+      "cache" ->
+        when (action("cache", "keygen", "serve")) {
+          "keygen" -> Command.CacheKeygen.also { finish(CommandName.CACHE_KEYGEN) }
+          else -> cacheServe()
+        }
       "version" -> Command.Version.also { finish(CommandName.VERSION) }
       "help" -> help()
       "fmt" -> fmt()
@@ -528,6 +551,55 @@ private class ArgumentReader(private val arguments: List<String>) {
       }
     }
     return Command.LockCreateDump(path)
+  }
+
+  private fun cacheServe(): Command {
+    var directory: String? = null
+    var host: String? = null
+    var port: Int? = null
+    var size: Long? = null
+    fun number(
+      word: OptionWord,
+      range: LongRange,
+      what: String,
+    ): Long {
+      val text = value(word)
+      return text.toLongOrNull()?.takeIf { it in range }
+        ?: reject("${word.flag} takes $what, and '$text' is not one")
+    }
+    while (hasNext()) {
+      val (argument, word) = nextOption()
+      when (word?.flag) {
+        "--directory" -> {
+          if (directory != null) reject("--directory is written twice")
+          directory = value(word)
+        }
+        "--host" -> {
+          if (host != null) reject("--host is written twice")
+          host = value(word)
+        }
+        "--port" -> {
+          if (port != null) reject("--port is written twice")
+          port = number(word, 0L..65535L, "a port").toInt()
+        }
+        "--max-size" -> {
+          if (size != null) reject("--max-size is written twice")
+          size = number(word, 1L..1_000_000L, "a number of gigabytes")
+        }
+        else ->
+          reject(
+            "'$argument' is not an argument of tazel cache serve",
+            hint(word?.flag ?: argument, cacheServeFlags + outputFlags),
+          )
+      }
+    }
+    val defaults = Command.CacheServe("")
+    return Command.CacheServe(
+      directory ?: reject("tazel cache serve needs --directory: where the results are kept"),
+      host ?: defaults.host,
+      port ?: defaults.port,
+      size ?: defaults.maxGigabytes,
+    )
   }
 
   private fun vipkgDesc(): Command {

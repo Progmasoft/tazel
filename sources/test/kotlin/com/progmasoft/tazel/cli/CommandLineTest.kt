@@ -110,6 +110,8 @@ class CommandLineTest {
         CommandName.BUILD to parsed("build"),
         CommandName.RUN to parsed("run"),
         CommandName.TEST to parsed("test"),
+        CommandName.CACHE_KEYGEN to parsed("cache", "keygen"),
+        CommandName.CACHE_SERVE to parsed("cache", "serve", "--directory", "Results"),
         CommandName.LOCK_RESOLVE to parsed("lock", "resolve"),
         CommandName.LOCK_CREATE_DUMP to parsed("lock", "create-dump"),
         CommandName.LOCK_GRAPH to parsed("lock", "graph"),
@@ -153,6 +155,37 @@ class CommandLineTest {
       Command.Check(TargetSelection(executables = listOf("Tool"))),
       parsed("check", "-e", "Tool"),
     )
+  }
+
+  @Test
+  fun aCacheServerNeedsADirectoryAndTakesItsAddress() {
+    assertEquals(
+      Command.CacheServe("Results", "127.0.0.1", 7723, 10),
+      parsed("cache", "serve", "--directory", "Results"),
+    )
+    assertEquals(
+      Command.CacheServe("Results", "0.0.0.0", 80, 2),
+      parsed(
+        "cache",
+        "serve",
+        "--directory=Results",
+        "--host=0.0.0.0",
+        "--port",
+        "80",
+        "--max-size:2",
+      ),
+    )
+    for (line in
+      listOf(
+        listOf("cache", "serve"),
+        listOf("cache", "serve", "--directory", "R", "--port", "70000"),
+        listOf("cache", "serve", "--directory", "R", "--max-size", "0"),
+        listOf("cache", "serve", "--directory", "R", "--directory", "S"),
+        listOf("cache", "keygen", "--port", "1"),
+        listOf("cache"),
+      )) {
+      assertTrue(parseCommandLine(line) is ParseResult.Rejected, line.toString())
+    }
   }
 
   @Test

@@ -126,6 +126,8 @@ buildCache {
     read = true
     write = false
     token = System.getenv("TAZEL_CACHE_TOKEN")
+    publicKey = "MCowBQYDK2VwAyEA..."
+    signingKey = System.getenv("TAZEL_CACHE_SIGNING_KEY")
   }
 }
 ```
@@ -138,21 +140,29 @@ buildCache {
 | `remote.read` | `true`, `false` | `true` | asks the server for results |
 | `remote.write` | `true`, `false` | `false` | sends results to the server |
 | `remote.token` | text or `null` | `null` | sent as `Authorization: Bearer`; empty counts as none |
+| `remote.publicKey` | an Ed25519 key or `null` | `null` | only results signed for this key are used |
+| `remote.signingKey` | an Ed25519 key or `null` | `null` | signs what this machine writes; a secret |
 
 The block is optional, and without it a project has the local cache alone. The local cache has priority: the server is
 asked only for what is not there, and what it gives is kept locally unless `local.enabled` is `false`. See
 [incremental builds](CLI.md#incremental-builds) for what makes a result the same.
 
-Write the token as a variable, never into the project file. Under the daemon `System.getenv` reads the environment of the
-daemon, so after a change of the variable run `tazel jvm restart-daemon`.
+Write tokens and the signing key as variables, never into the project file. A project file that reads a variable with
+`System.getenv("NAME")` gets the value of the command, also under the daemon: when the value differs from the one the daemon
+started with, the command runs without the daemon and stops it, and the next command starts one that sees the new value. The
+name has to be written as text for that; a name computed at run time is not noticed.
 
-A result is a program. Whoever can write to the server can put code on the machines that read from it, so give the write
-token only to what builds trustworthy sources, such as CI on the main branch, and leave `write = false` everywhere else.
+A result is a program, so a result from a server is code that this machine will run. `tazel cache keygen` prints a pair of
+Ed25519 keys. Give every project the `publicKey`, and the `signingKey` only to what builds trustworthy sources, such as CI on
+the main branch. A reader with a `publicKey` then uses a result only with a signature for that key, for that target and that
+key of the cache, so neither a token that leaked nor a server that was broken into can plant a program. A result without a
+signature counts as missing, and a wrong signature is a warning; either way the compiler runs. A reader without a
+`publicKey` trusts the server, and is warned when it uses a result.
 
 The server answers two requests, each with the token if there is one. `GET <url>/<slug>/<key>` gives the result as a ZIP
-archive, or `404` when it is not there. `PUT <url>/<slug>/<key>` stores one and answers `200`, `201` or `204`. Redirects are
-not followed. A server that fails or cannot be reached is a warning: the build goes on and the server is not asked again
-during that command.
+archive, or `404` when it is not there, and `<key>.sig` its signature. `PUT` of the same paths stores them and answers `200`,
+`201` or `204`. Redirects are not followed. A server that fails or cannot be reached is a warning: the build goes on and the
+server is not asked again during that command. [`tazel cache serve`](CLI.md#a-remote-cache-server) is such a server.
 
 ## `outdirs`, `targets` and `pml`
 

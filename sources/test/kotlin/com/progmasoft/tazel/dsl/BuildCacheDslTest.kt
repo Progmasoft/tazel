@@ -92,6 +92,67 @@ class BuildCacheDslTest {
   }
 
   @Test
+  fun signingKeysAreCheckedAndNotPrinted() {
+    val (public, signing) = ResultKeys.generate()
+    val remote =
+      settings {
+          remote {
+            url = "https://a.example"
+            write = true
+            publicKey = public
+            signingKey = signing
+          }
+        }
+        .remote
+    assertEquals(public, remote?.publicKey)
+    assertFalse(signing in remote.toString())
+
+    assertFailsWith<ProjectConfigurationException> {
+      settings {
+        remote {
+          url = "https://a.example"
+          publicKey = "not a key"
+        }
+      }
+    }
+    assertFailsWith<ProjectConfigurationException> {
+      settings {
+        remote {
+          url = "https://a.example"
+          signingKey = "bm90IGEga2V5"
+        }
+      }
+    }
+    assertFailsWith<ProjectConfigurationException> {
+      settings {
+        remote {
+          url = "https://a.example"
+          write = true
+          publicKey = public
+        }
+      }
+    }
+  }
+
+  @Test
+  fun aProjectFileThatReadsAChangedVariableStopsTheDaemon() {
+    val source = """token = System.getenv("TOKEN")"""
+    requireSameEnvironment(source, mapOf("TOKEN" to "a"), { "a" })
+    requireSameEnvironment("token = other", mapOf("TOKEN" to "a"), { "b" })
+    requireSameEnvironment(source, emptyMap(), { null })
+    requireSameEnvironment(source, mapOf("token" to "a"), { "a" }, ignoreCase = true)
+    assertFailsWith<StaleEnvironmentException> {
+      requireSameEnvironment(source, mapOf("TOKEN" to "new"), { "old" })
+    }
+    assertFailsWith<StaleEnvironmentException> {
+      requireSameEnvironment(source, mapOf("TOKEN" to "new"), { null })
+    }
+    assertFailsWith<StaleEnvironmentException> {
+      requireSameEnvironment(source, emptyMap(), { "old" })
+    }
+  }
+
+  @Test
   fun whatCannotWorkIsRefused() {
     assertFailsWith<ProjectConfigurationException> { settings { remote {} } }
     assertFailsWith<ProjectConfigurationException> { settings { local { maxEntries = 0 } } }

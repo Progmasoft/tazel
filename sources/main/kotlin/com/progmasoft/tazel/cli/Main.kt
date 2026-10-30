@@ -42,6 +42,8 @@ internal fun tazelVersion(): String =
 /** What each command takes after its name; shared by the help of one command. */
 private val usage =
   mapOf(
+    CommandName.CACHE_SERVE to
+      "--directory Folder [--host Address] [--port Number] [--max-size Gigabytes]",
     CommandName.CHECK to "[selection] [--no-cache]",
     CommandName.BUILD to "[selection] [--no-cache]",
     CommandName.RUN to "[selection] [--no-cache] [-- program arguments]",
@@ -190,9 +192,13 @@ fun main(arguments: Array<String>) {
           exitProcess(runDaemonCommand(terminal, command.action, client, environment))
         }
         val mode = DaemonMode.of(environment::get)
-        forwardToDaemon(terminal, arguments.toList(), client, mode, environment, timings)?.let {
-          timings.report().forEach { line -> terminal.println(dim(line), stderr = true) }
-          exitProcess(it)
+        // A server stays for as long as it runs, and a signing key has no business in the daemon.
+        val here = command is Command.CacheServe || command == Command.CacheKeygen
+        if (!here) {
+          forwardToDaemon(terminal, arguments.toList(), client, mode, environment, timings)?.let {
+            timings.report().forEach { line -> terminal.println(dim(line), stderr = true) }
+            exitProcess(it)
+          }
         }
         val host = detectHost()
         Tazel(
