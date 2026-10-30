@@ -24,7 +24,8 @@ enum class Emit(
  *
  * Every setting of the project is written out, the ones at their default too: what the compiler
  * does then follows from the project file alone and not from the defaults of the compiler that
- * happens to be installed.
+ * happens to be installed. The exception is `staticTalaRTLibrary`, which has no default of its own:
+ * while it is null the choice is the compiler's, and no option is written.
  */
 fun compilerArguments(
   settings: CompilerSettings,
@@ -45,6 +46,7 @@ fun compilerArguments(
   add("--xmm-optimization-passes=${settings.xmmOptimizationPasses}")
   add("--llvm-compiler=${settings.llvmCompiler.name.lowercase()}")
   add("--llvm-lto=${settings.llvmLto.name.lowercase()}")
+  settings.staticTalaRTLibrary?.let { add("--static-talart-library=$it") }
   if (settings.llvmArguments.isNotEmpty()) {
     add("--llvm-args=${settings.llvmArguments.joinToString(",")}")
   }

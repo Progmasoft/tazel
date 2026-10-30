@@ -159,6 +159,22 @@ class SourceFilesTest {
   }
 
   @Test
+  fun theLinkageOfTalaRtIsWrittenOnlyWhenTheProjectChoseOne() {
+    fun option(value: Boolean?) =
+      compilerArguments(
+          CompilerSettings(staticTalaRTLibrary = value),
+          "A.B",
+          Emit.EXECUTABLE,
+          emptyList(),
+        )
+        .filter { it.startsWith("--static-talart-library") }
+
+    assertEquals(emptyList(), option(null))
+    assertEquals(listOf("--static-talart-library=false"), option(false))
+    assertEquals(listOf("--static-talart-library=true"), option(true))
+  }
+
+  @Test
   fun findsAToolByItsVariableThenItsInstallationThenThePath() =
     inTree("home/bin/talac", "elsewhere/talac", "elsewhere/talafmt", "custom/my-talac") { root ->
       val path = root.resolve("elsewhere").toString()

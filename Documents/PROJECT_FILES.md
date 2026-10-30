@@ -74,6 +74,7 @@ compiler {
   xppOptimizationPasses = true
   xmmOptimizationPasses = true
   optLevel = OptLevel.O3
+  staticTalaRTLibrary = true
 
   llvm {
     compiler = LlvmCompiler.AOT
@@ -94,6 +95,7 @@ compiler {
 | `xppOptimizationPasses` | `true`, `false` | `true` | `--xpp-optimization-passes` |
 | `xmmOptimizationPasses` | `true`, `false` | `true` | `--xmm-optimization-passes` |
 | `optLevel` | `OptLevel.O0`, `O1`, `O2`, `O3`, `OG` | `O0` for `DEBUG`, `O3` for `RELEASE` | `--opt-level` |
+| `staticTalaRTLibrary` | `true`, `false`, `null` | `null` | `--static-talart-library` |
 | `llvm.compiler` | `LlvmCompiler.AOT`, `ORC` | `AOT` | `--llvm-compiler` |
 | `llvm.lto` | `LlvmLto.FAT`, `THIN`, `NONE` | `NONE` | `--llvm-lto` |
 | `llvm.args(...)` | arguments for LLVM | none | `--llvm-args` |
@@ -101,6 +103,10 @@ compiler {
 Tazel writes every setting onto the compiler's command line, the ones at their default too, so a build follows from the
 project file and not from the defaults of whichever compiler is installed. A setting the compiler cannot carry out yet is
 refused by the compiler, by name; see the [compiler reference](CLI.md#not-implemented-yet).
+
+`staticTalaRTLibrary` is the exception. `null`, or leaving it out, writes no option and leaves the choice to the compiler;
+`true` writes `--static-talart-library=true`, which links TalaRT into the output, and `false` writes
+`--static-talart-library=false`, which keeps it in a shared library beside the output.
 
 No warning level turns `wshadow` on. `wshadow = true` with `Warnings.NONE` is a contradiction and is rejected.
 

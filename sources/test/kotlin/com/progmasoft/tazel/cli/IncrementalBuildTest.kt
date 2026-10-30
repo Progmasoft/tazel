@@ -68,6 +68,24 @@ class IncrementalBuildTest {
   }
 
   @Test
+  fun aChosenLinkageOfTalaRtReachesTheCompilerAndCompilesAgain() = fixture {
+    demo()
+    builds("build")
+    assertTrue(callsOf("talac").last().none { it.startsWith("--static-talart-library") })
+
+    demo(extra = "compiler { staticTalaRTLibrary = null }")
+    assertEquals(0, builds("build"))
+
+    demo(extra = "compiler { staticTalaRTLibrary = false }")
+    assertEquals(1, builds("build"))
+    assertTrue("--static-talart-library=false" in callsOf("talac").last())
+
+    demo(extra = "compiler { staticTalaRTLibrary = true }")
+    assertEquals(1, builds("build"))
+    assertTrue("--static-talart-library=true" in callsOf("talac").last())
+  }
+
+  @Test
   fun anotherCompilerCompilesAgain() = fixture {
     demo()
     builds("build")
