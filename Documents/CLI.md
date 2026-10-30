@@ -39,11 +39,64 @@ tazel [output options] <command> [arguments]
 | `tazel help [command]` | prints the help, or the help of one command |
 
 `tazel check` starts Talac with `--emit=metadata` and the compiler options of the project file. `tazel build` starts it
-with `--emit=executable` and moves the result into the output directory of the build mode, under the name of the target.
+with `--emit=executable` and moves the result into the output directory of the build mode, under the name of the target,
+with TalaRT beside it when Talac left the shared library.
+
+## Incremental builds
+
+`check`, `build`, `run` and `test` start Talac only when something that decides its output changed: the contents or the
+names of the sources, the settings of the project file, or the compiler. Talac compiles the sources of a target as one
+program, so a target is the unit: one changed source compiles the whole target, and the other targets are left alone.
+
+```text
+   Compiling Demo (Demo, 12 sources)
+    Finished build in 4.21s
+
+       Fresh Demo (Demo, 12 sources)
+    Finished build in 0.31s
+```
+
+Contents count and times do not, so a file that was only touched changes nothing. Results stay in `.tazel/cache` of the
+project, the last eight of each target, so going back to an earlier branch or build mode shows `Restored` and compiles
+nothing. A program that was deleted or changed comes back the same way. The warnings of the run that made a result are
+shown again every time it is used. A run that failed leaves no result. The steps of plugins are not skipped: they run in
+every build, before the sources are read, so what they generate counts.
+
+`--no-cache` does the work anyway and still records the result. `.tazel/cache` can be deleted at any time.
+
+## Test suites
+
+`tazel test` builds and runs every test suite of the selection, one after the other:
+
+```text
+   Compiling Unit (Demo, 14 sources)
+     Testing Unit (Demo)
+PASS Math.Adds
+Tests/Unit/MathTests.tala:9:9: expectation failed: Math.Clamp(50, 0, 10) == 9
+    Math.Clamp(50, 0, 10) is 10
+FAIL Math.Clamps (1 failed expectation)
+2 tests, 1 passed, 1 failed
+error: 1 suite, 2 tests, 1 passed, 1 failed: 'Unit' failed
+```
+
+A suite is compiled by `talac --test` from what the selection compiles, the executables and the libraries, followed by the
+sources of its `testDir`. Sources that lie in the `testDir` of any suite are left out of the first part, so a suite never
+sees the tests of another. The runner is written to `.tazel/tests/<suite>/` and starts in the project directory, where a
+test finds its files by paths relative to the project.
+
+`tazel test` needs a Talac that has `--test`. A suite without a `.tala` source is an error, so a mistyped `testDir` cannot
+pass silently. A failing test does not stop the suites after it; a suite that does not compile ends the command. The exit
+code is `1` when a test failed, and also when a runner stopped before it wrote its totals, whatever its exit code was.
+
+A suite that passed is not run again while everything it can see stays the same: its sources, the settings, the compiler
+and every file below its `testDir`, data files included. It then shows `Cached` and counts in the totals. A suite that
+failed always runs again. A test that reads anything else, such as a file outside the project or the network, needs
+`--no-cache`; so does a run in CI that has to prove the tests pass.
 
 ## Selecting targets
 
-`check`, `build`, `run`, `test` and `lint` take a selection. Without one they work on everything.
+`check`, `build`, `run`, `test` and `lint` take a selection. Without one they work on everything. For `test`, a selection
+chooses the projects and the sources the suites are compiled with; every suite of a selected project runs.
 
 ```text
 tazel build --vipkg Name          tazel build -p Name
@@ -258,8 +311,6 @@ These are refused by name with exit code `1`:
   warning; a library selected by name is an error.
 - projects with dependencies: nothing fetches a dependency or hands it to the compiler yet. `tazel lock resolve` still
   records what the project declares.
-- `tazel test` when the selection declares a test suite. Tala writes tests with the built-in `[Fact]` attribute and
-  `#expect`, but Talac does not compile them yet.
 - `tazel vipkg create`, `tazel update`, `tazel install`, `tazel viget push`, `tazel viget update` and
   `tazel viget vipkg-desc`.
 

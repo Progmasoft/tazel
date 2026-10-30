@@ -156,6 +156,23 @@ class CommandLineTest {
   }
 
   @Test
+  fun aCommandThatCompilesMayAskForNoCache() {
+    val everything = TargetSelection()
+    assertEquals(Command.Check(everything, noCache = true), parsed("check", "--no-cache"))
+    assertEquals(Command.Build(everything, noCache = true), parsed("build", "--no-cache"))
+    assertEquals(Command.Test(everything, noCache = true), parsed("test", "--no-cache"))
+    assertEquals(
+      Command.Run(everything, listOf("--no-cache"), noCache = true),
+      parsed("run", "--no-cache", "--", "--no-cache"),
+    )
+    assertTrue(
+      parseCommandLine(listOf("build", "--no-cache", "--no-cache")) is ParseResult.Rejected
+    )
+    assertTrue(parseCommandLine(listOf("build", "--no-cache=yes")) is ParseResult.Rejected)
+    assertTrue(parseCommandLine(listOf("lint", "--no-cache")) is ParseResult.Rejected)
+  }
+
+  @Test
   fun aSelectionFlagNeedsANameItHasNotSeen() {
     assertContains(rejected("build", "--vipkg"), "--vipkg requires a value")
     assertContains(rejected("build", "-p", "-e"), "'-e' is an option")

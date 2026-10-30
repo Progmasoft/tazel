@@ -83,11 +83,18 @@ enum class DaemonAction(val commandName: CommandName) {
 sealed interface Command {
   val name: CommandName
 
-  data class Check(val targets: TargetSelection) : Command {
+  /** [noCache] does the work even when an earlier run left its result; so do the commands below. */
+  data class Check(
+    val targets: TargetSelection,
+    val noCache: Boolean = false,
+  ) : Command {
     override val name = CommandName.CHECK
   }
 
-  data class Build(val targets: TargetSelection) : Command {
+  data class Build(
+    val targets: TargetSelection,
+    val noCache: Boolean = false,
+  ) : Command {
     override val name = CommandName.BUILD
   }
 
@@ -95,11 +102,15 @@ sealed interface Command {
   data class Run(
     val targets: TargetSelection,
     val programArguments: List<String>,
+    val noCache: Boolean = false,
   ) : Command {
     override val name = CommandName.RUN
   }
 
-  data class Test(val targets: TargetSelection) : Command {
+  data class Test(
+    val targets: TargetSelection,
+    val noCache: Boolean = false,
+  ) : Command {
     override val name = CommandName.TEST
   }
 
@@ -365,6 +376,8 @@ private val graphFlags =
 
 private val selectionFlags = listOf("--vipkg", "-p", "--executable", "-e", "--library", "-l")
 
+private const val NO_CACHE = "--no-cache"
+
 /** The flags that select targets, shared by every command that takes them. */
 private class SelectionBuilder {
   val viPkgs = mutableListOf<String>()
@@ -454,10 +467,10 @@ private class ArgumentReader(private val arguments: List<String>) {
 
   fun command(): Command =
     when (val word = next()) {
-      "check" -> Command.Check(selection(CommandName.CHECK))
-      "build" -> Command.Build(selection(CommandName.BUILD))
+      "check" -> compiling(CommandName.CHECK).let { (it, noCache) -> Command.Check(it, noCache) }
+      "build" -> compiling(CommandName.BUILD).let { (it, noCache) -> Command.Build(it, noCache) }
       "run" -> run()
-      "test" -> Command.Test(selection(CommandName.TEST))
+      "test" -> compiling(CommandName.TEST).let { (it, noCache) -> Command.Test(it, noCache) }
       "lock" ->
         when (action("lock", "resolve", "create-dump", "graph")) {
           "resolve" -> Command.LockResolve.also { finish(CommandName.LOCK_RESOLVE) }
@@ -578,34 +591,51 @@ private class ArgumentReader(private val arguments: List<String>) {
     return graph
   }
 
-  /** A command whose only arguments select targets. */
-  private fun selection(command: CommandName): TargetSelection {
+  /** Takes --no-cache when [word] is that option; [seen] tells that it was written before. */
+  private fun noCache(
+    word: OptionWord?,
+    seen: Boolean,
+  ): Boolean {
+    if (word?.flag != NO_CACHE) return false
+    word.noValue()
+    if (seen) reject("$NO_CACHE is written twice")
+    return true
+  }
+
+  /** A command that compiles: its arguments select targets and may ask for no cache. */
+  private fun compiling(command: CommandName): Pair<TargetSelection, Boolean> {
     val selection = SelectionBuilder()
+    var noCache = false
     while (hasNext()) {
       val (argument, word) = nextOption()
-      if (!selection.take(word, this)) {
+      if (noCache(word, noCache)) {
+        noCache = true
+      } else if (!selection.take(word, this)) {
         reject(
           "'$argument' is not an argument of tazel ${command.words}",
-          hint(word?.flag ?: argument, selectionFlags + outputFlags),
+          hint(word?.flag ?: argument, selectionFlags + NO_CACHE + outputFlags),
         )
       }
     }
-    return selection.build()
+    return selection.build() to noCache
   }
 
   private fun run(): Command {
     val selection = SelectionBuilder()
+    var noCache = false
     while (hasNext()) {
       val (argument, word) = nextOption()
-      if (argument == "--") return Command.Run(selection.build(), passThrough())
-      if (!selection.take(word, this)) {
+      if (argument == "--") return Command.Run(selection.build(), passThrough(), noCache)
+      if (noCache(word, noCache)) {
+        noCache = true
+      } else if (!selection.take(word, this)) {
         reject(
           "'$argument' is not an argument of tazel run; program arguments follow '--'",
-          hint(word?.flag ?: argument, selectionFlags + outputFlags),
+          hint(word?.flag ?: argument, selectionFlags + NO_CACHE + outputFlags),
         )
       }
     }
-    return Command.Run(selection.build(), emptyList())
+    return Command.Run(selection.build(), emptyList(), noCache)
   }
 
   private fun install(): Command {

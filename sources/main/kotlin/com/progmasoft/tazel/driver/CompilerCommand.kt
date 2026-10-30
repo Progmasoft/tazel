@@ -28,11 +28,12 @@ enum class Emit(
  */
 fun compilerArguments(
   settings: CompilerSettings,
-  entry: String,
+  entry: String?,
   emit: Emit,
   inputs: List<String>,
 ): List<String> = buildList {
-  add("--entry=$entry")
+  // A test build has no entry: Talac writes the runner, and the runner is the entry.
+  if (entry != null) add("--entry=$entry") else add("--test")
   add("--emit=${emit.value}")
   add("--standard=${settings.standard}")
   add("--codegen-backend=${settings.backend.name.lowercase()}")

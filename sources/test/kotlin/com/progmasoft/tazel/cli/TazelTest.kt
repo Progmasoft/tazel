@@ -8,119 +8,16 @@ package com.progmasoft.tazel.cli
 import com.github.ajalt.mordant.rendering.AnsiLevel
 import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.terminal.TerminalRecorder
-import com.progmasoft.tazel.driver.Processes
-import com.progmasoft.tazel.driver.Toolchain
-import com.progmasoft.tazel.dsl.OperatingSystem
 import com.progmasoft.tazel.lock.ProjectLockFile
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * Runs whole commands against projects on disk. The tools are stand-ins: they record the command
- * line they were started with and leave the file the real tool would leave.
- */
+/** Runs whole commands against projects on disk. */
 class TazelTest {
-  private class Fixture(
-    val root: Path,
-    val recorder: TerminalRecorder = TerminalRecorder(),
-  ) : Processes {
-    val commands = mutableListOf<Pair<List<String>, Path>>()
-    var compilerExitCode = 0
-    var programExitCode = 0
-
-    init {
-      listOf("talac", "talafmt", "talalint").forEach { tool ->
-        Files.createDirectories(root.resolve("tools"))
-        Files.writeString(root.resolve("tools/$tool"), "")
-      }
-    }
-
-    fun write(
-      file: String,
-      text: String = "",
-    ) {
-      val path = root.resolve(file)
-      Files.createDirectories(path.parent)
-      Files.writeString(path, text.trimIndent())
-    }
-
-    fun tazel(directory: String = "."): Tazel =
-      Tazel(
-        Terminal(terminalInterface = recorder),
-        root.resolve(directory).normalize(),
-        OperatingSystem.LINUX,
-        Toolchain(OperatingSystem.LINUX, mapOf("PATH" to root.resolve("tools").toString()), null),
-        this,
-        "1.2.3",
-      )
-
-    fun run(
-      vararg arguments: String,
-      directory: String = ".",
-    ): Int {
-      val parsed = parseCommandLine(arguments.toList())
-      check(parsed is ParseResult.Parsed) { "not a command line: ${arguments.toList()}" }
-      return tazel(directory).run(parsed.command)
-    }
-
-    /** The recorded command lines of one tool, without the path of the tool. */
-    fun callsOf(tool: String) =
-      commands.map { it.first }.filter { it.first().endsWith(tool) }.map { it.drop(1) }
-
-    override fun run(
-      command: List<String>,
-      directory: Path,
-    ): Int {
-      commands += command to directory
-      if (!command.first().endsWith("talac")) {
-        return if (command.first().contains("tools")) 0 else programExitCode
-      }
-      if (compilerExitCode != 0) return compilerExitCode
-      val first = command[command.indexOf("--") + 1].removeSuffix(".tala")
-      val extension = if ("--emit=metadata" in command) ".talameta" else ""
-      Files.writeString(directory.resolve(first + extension), "artifact of $first")
-      return 0
-    }
-
-    override fun capture(command: List<String>) = "talac 0.5.2\n"
-  }
-
-  private fun fixture(
-    recorder: TerminalRecorder = TerminalRecorder(),
-    block: Fixture.() -> Unit,
-  ) {
-    val root = Files.createTempDirectory("tazel-command-").toRealPath()
-    try {
-      Fixture(root, recorder).block()
-    } finally {
-      root.toFile().deleteRecursively()
-    }
-  }
-
-  private fun Fixture.demo(directory: String = ".", name: String = "Demo", extra: String = "") {
-    write(
-      "$directory/BUILD.kts",
-      """
-      project { name = "$name" }
-      sources {
-        executable {
-          entry = "$name.Program"
-          exclude("Sources/Generated")
-        }
-      }
-      $extra
-      """,
-    )
-    write("$directory/Sources/Main.tala")
-    write("$directory/Sources/Helper.tala")
-    write("$directory/Sources/Generated/Skipped.tala")
-  }
-
   @Test
   fun buildsAnExecutableIntoTheOutputDirectoryOfTheProject() = fixture {
     demo()
@@ -223,9 +120,6 @@ class TazelTest {
     assertTrue(recorder.stderr().contains("no ViPkg is named Absent"))
     assertEquals(ExitCode.FAILURE, run("build", "-p", "Kti"))
     assertTrue(recorder.stderr().contains("did you mean --vipkg Kit?"))
-    assertEquals(ExitCode.FAILURE, run("test"))
-    assertTrue(recorder.stderr().contains("Kit.Unit"))
-
     listOf(
         listOf("update"),
         listOf("install", "Publisher.Name"),
@@ -567,7 +461,7 @@ class TazelTest {
     )
     assertTrue(Files.isRegularFile(root.resolve("Client/build/debug/Client")))
 
-    assertEquals(ExitCode.SUCCESS, run("build", "--vipkg", "Server"))
+    assertEquals(ExitCode.SUCCESS, run("build", "--vipkg", "Server", "--no-cache"))
     assertEquals(3, callsOf("talac").size)
 
     assertEquals(ExitCode.SUCCESS, run("lint"))
