@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- `compiler { staticTalaRTLibrary = true }` links TalaRT into the output and
+  `false` keeps it beside the output; `null`, the default, writes no option and
+  leaves the choice to Talac.
 - `tazel test` builds and runs the test suites. Each suite is compiled with
   `talac --test` from the sources of the selection and the sources of the suite,
   and its runner starts in the project directory. A failing test does not stop

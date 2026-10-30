@@ -57,6 +57,13 @@ class CompilerScope internal constructor(private val settings: CompilerSettings)
       settings.xppOptimizationPasses = value
     }
 
+  /** Links TalaRT into the output (`true`) or beside it (`false`); `null` leaves it to Talac. */
+  var staticTalaRTLibrary: Boolean?
+    get() = settings.staticTalaRTLibrary
+    set(value) {
+      settings.staticTalaRTLibrary = value
+    }
+
   var xmmOptimizationPasses: Boolean
     get() = settings.xmmOptimizationPasses
     set(value) {

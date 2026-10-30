@@ -144,6 +144,7 @@ data class CompilerSettings(
   var xppOptimizationPasses: Boolean = true,
   var xmmOptimizationPasses: Boolean = true,
   var optLevel: OptLevel? = null,
+  var staticTalaRTLibrary: Boolean? = null,
   var llvmCompiler: LlvmCompiler = LlvmCompiler.AOT,
   var llvmLto: LlvmLto = LlvmLto.NONE,
   var llvmArguments: List<String> = emptyList(),
