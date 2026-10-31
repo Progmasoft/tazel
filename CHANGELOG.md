@@ -5,6 +5,13 @@
 
 ## Unreleased
 
+- Compiler runs and test suites run in parallel, one job per processor unless
+  `--jobs`, `--cpus`, `--memory` or the `execution` block says otherwise.
+- `--keep-going`, `--profile`, and `--no-incremental` for debug builds, which now
+  keep an object per source when talac can.
+- `--remote-executor` and `execution.remote` compile on another machine, and
+  `tazel remote serve` is the server.
+- `tazel jvm start-daemon --max-heap` limits the heap of the daemon.
 - `tazel custom` runs the commands of `tazel_custom.txt`.
 - `project.name` is always required. A project file without it, such as the root
   of a workspace with no `project` block, has to add it.

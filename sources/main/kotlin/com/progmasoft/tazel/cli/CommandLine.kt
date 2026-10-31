@@ -5,6 +5,9 @@
 
 package com.progmasoft.tazel.cli
 
+import com.progmasoft.tazel.dsl.ProjectConfigurationException
+import com.progmasoft.tazel.dsl.byteSize
+
 /**
  * The targets a command works on. Empty lists mean every target of that kind; a command line that
  * names any target works on the named ones only.
@@ -68,6 +71,7 @@ enum class CommandName(val words: String, val summary: String) {
   CACHE_PULL("cache pull", "fetch the results of the current sources from the remote build cache"),
   CACHE_KEYGEN("cache keygen", "print a new pair of keys that sign the results of a remote cache"),
   CACHE_SERVE("cache serve", "serve a remote build cache from a directory"),
+  REMOTE_SERVE("remote serve", "compile for other machines"),
   VERSION("version", "print the version of Tazel"),
   HELP("help", "print this help, or the help of one command"),
   FMT("fmt", "format the sources of the project with talafmt"),
@@ -87,6 +91,22 @@ enum class DaemonAction(val commandName: CommandName) {
   STOP(CommandName.JVM_STOP_DAEMON),
 }
 
+/**
+ * What a command line says about how a build spends the machine; it goes before the project file,
+ * and what is null here is left to the project file.
+ */
+data class ExecutionOptions(
+  val jobs: Int? = null,
+  val cpus: Int? = null,
+  val memory: Long? = null,
+  val memoryPerJob: Long? = null,
+  val keepGoing: Boolean = false,
+  val incremental: Boolean? = null,
+  val profile: String? = null,
+  val remoteExecutor: String? = null,
+  val noRemoteExecutor: Boolean = false,
+)
+
 /** One invocation of Tazel after its words became values. */
 sealed interface Command {
   val name: CommandName
@@ -95,6 +115,7 @@ sealed interface Command {
   data class Check(
     val targets: TargetSelection,
     val noCache: Boolean = false,
+    val execution: ExecutionOptions = ExecutionOptions(),
   ) : Command {
     override val name = CommandName.CHECK
   }
@@ -102,6 +123,7 @@ sealed interface Command {
   data class Build(
     val targets: TargetSelection,
     val noCache: Boolean = false,
+    val execution: ExecutionOptions = ExecutionOptions(),
   ) : Command {
     override val name = CommandName.BUILD
   }
@@ -111,6 +133,7 @@ sealed interface Command {
     val targets: TargetSelection,
     val programArguments: List<String>,
     val noCache: Boolean = false,
+    val execution: ExecutionOptions = ExecutionOptions(),
   ) : Command {
     override val name = CommandName.RUN
   }
@@ -118,6 +141,7 @@ sealed interface Command {
   data class Test(
     val targets: TargetSelection,
     val noCache: Boolean = false,
+    val execution: ExecutionOptions = ExecutionOptions(),
   ) : Command {
     override val name = CommandName.TEST
   }
@@ -218,6 +242,15 @@ sealed interface Command {
     override val name = CommandName.CACHE_SERVE
   }
 
+  /** Compiles for other machines on [host] and [port], [jobs] at a time. */
+  data class RemoteServe(
+    val host: String = "127.0.0.1",
+    val port: Int = 7724,
+    val jobs: Int? = null,
+  ) : Command {
+    override val name = CommandName.REMOTE_SERVE
+  }
+
   data object Version : Command {
     override val name = CommandName.VERSION
   }
@@ -236,7 +269,11 @@ sealed interface Command {
    * Starts, restarts or stops the JVM daemon. These commands always run in the process that read
    * them; they are never handed to a daemon.
    */
-  data class Daemon(val action: DaemonAction) : Command {
+  data class Daemon(
+    val action: DaemonAction,
+    /** The most memory a daemon this command starts may hold, such as `2g`. */
+    val maxHeap: String? = null,
+  ) : Command {
     override val name = action.commandName
   }
 
@@ -427,6 +464,114 @@ private const val NO_CACHE = "--no-cache"
 
 private val cacheServeFlags = listOf("--directory", "--host", "--port", "--max-size")
 
+private val remoteServeFlags = listOf("--host", "--port", "--jobs", "-j")
+
+private val executionFlags =
+  listOf(
+    "--jobs",
+    "-j",
+    "--cpus",
+    "--memory",
+    "--memory-per-job",
+    "--keep-going",
+    "-k",
+    "--incremental",
+    "--no-incremental",
+    "--profile",
+    "--remote-executor",
+    "--no-remote-executor",
+  )
+
+/** The flags of [ExecutionOptions], which every command that builds takes. */
+private class ExecutionBuilder {
+  private var options = ExecutionOptions()
+  private val seen = mutableSetOf<String>()
+
+  private fun once(word: OptionWord) {
+    if (!seen.add(word.flag.removePrefix("--no-").removePrefix("--"))) {
+      reject("${word.flag} is written twice")
+    }
+  }
+
+  private fun positive(
+    word: OptionWord,
+    reader: ArgumentReader,
+  ): Int =
+    reader.value(word).let { text ->
+      text.toIntOrNull()?.takeIf { it >= 1 }
+        ?: reject("${word.flag} takes a whole number from 1, and '$text' is none")
+    }
+
+  private fun size(
+    word: OptionWord,
+    reader: ArgumentReader,
+  ): Long =
+    reader.value(word).let { text ->
+      try {
+        byteSize(text, word.flag)
+      } catch (problem: ProjectConfigurationException) {
+        reject(problem.message.orEmpty())
+      }
+    }
+
+  /** True when [word] was one of the flags and its value was taken from [reader]. */
+  fun take(
+    word: OptionWord?,
+    reader: ArgumentReader,
+  ): Boolean {
+    when (word?.flag) {
+      "--jobs",
+      "-j" -> {
+        if (!seen.add("jobs")) reject("${word.flag} is written twice")
+        options = options.copy(jobs = positive(word, reader))
+      }
+      "--cpus" -> {
+        once(word)
+        options = options.copy(cpus = positive(word, reader))
+      }
+      "--memory" -> {
+        once(word)
+        options = options.copy(memory = size(word, reader))
+      }
+      "--memory-per-job" -> {
+        once(word)
+        options = options.copy(memoryPerJob = size(word, reader))
+      }
+      "--keep-going",
+      "-k" -> {
+        word.noValue()
+        if (!seen.add("keep-going")) reject("${word.flag} is written twice")
+        options = options.copy(keepGoing = true)
+      }
+      "--incremental",
+      "--no-incremental" -> {
+        word.noValue()
+        once(word)
+        options = options.copy(incremental = word.flag == "--incremental")
+      }
+      "--profile" -> {
+        once(word)
+        options = options.copy(profile = reader.value(word))
+      }
+      "--remote-executor",
+      "--no-remote-executor" -> {
+        once(word)
+        options =
+          if (word.flag == "--no-remote-executor") {
+            word.noValue()
+            options.copy(noRemoteExecutor = true)
+          } else {
+            options.copy(remoteExecutor = reader.value(word))
+          }
+      }
+      else -> return false
+    }
+    return true
+  }
+
+  fun build() = options
+}
+
 /** The flags that select targets, shared by every command that takes them. */
 private class SelectionBuilder {
   val viPkgs = mutableListOf<String>()
@@ -516,10 +661,13 @@ private class ArgumentReader(private val arguments: List<String>) {
 
   fun command(): Command =
     when (val word = next()) {
-      "check" -> compiling(CommandName.CHECK).let { (it, noCache) -> Command.Check(it, noCache) }
-      "build" -> compiling(CommandName.BUILD).let { (it, noCache) -> Command.Build(it, noCache) }
+      "check" ->
+        compiling(CommandName.CHECK).let { Command.Check(it.targets, it.noCache, it.execution) }
+      "build" ->
+        compiling(CommandName.BUILD).let { Command.Build(it.targets, it.noCache, it.execution) }
       "run" -> run()
-      "test" -> compiling(CommandName.TEST).let { (it, noCache) -> Command.Test(it, noCache) }
+      "test" ->
+        compiling(CommandName.TEST).let { Command.Test(it.targets, it.noCache, it.execution) }
       "fetch" -> Command.Fetch.also { finish(CommandName.FETCH) }
       "custom" ->
         Command.Custom(if (hasNext()) next() else null).also { finish(CommandName.CUSTOM) }
@@ -535,6 +683,10 @@ private class ArgumentReader(private val arguments: List<String>) {
         action("vipkg", "create")
         Command.ViPkgCreate.also { finish(CommandName.VIPKG_CREATE) }
       }
+      "remote" ->
+        when (action("remote", "serve")) {
+          else -> remoteServe()
+        }
       "viget" ->
         when (action("viget", "push", "update", "vipkg-desc")) {
           "push" -> Command.ViGetPush.also { finish(CommandName.VIGET_PUSH) }
@@ -546,7 +698,7 @@ private class ArgumentReader(private val arguments: List<String>) {
           "status" -> Command.CacheStatus.also { finish(CommandName.CACHE_STATUS) }
           "clean" -> Command.CacheClean.also { finish(CommandName.CACHE_CLEAN) }
           "push" -> Command.CachePush.also { finish(CommandName.CACHE_PUSH) }
-          "pull" -> Command.CachePull(compiling(CommandName.CACHE_PULL).first)
+          "pull" -> Command.CachePull(compiling(CommandName.CACHE_PULL).targets)
           "keygen" -> Command.CacheKeygen.also { finish(CommandName.CACHE_KEYGEN) }
           else -> cacheServe()
         }
@@ -561,7 +713,7 @@ private class ArgumentReader(private val arguments: List<String>) {
             "restart-daemon" -> DaemonAction.RESTART
             else -> DaemonAction.STOP
           }
-        Command.Daemon(action).also { finish(action.commandName) }
+        daemon(action)
       }
       else ->
         reject(
@@ -712,40 +864,102 @@ private class ArgumentReader(private val arguments: List<String>) {
     return true
   }
 
-  /** A command that compiles: its arguments select targets and may ask for no cache. */
-  private fun compiling(command: CommandName): Pair<TargetSelection, Boolean> {
+  private fun daemon(action: DaemonAction): Command {
+    var maxHeap: String? = null
+    while (hasNext()) {
+      val (argument, word) = nextOption()
+      when (word?.flag) {
+        "--max-heap" -> {
+          if (action == DaemonAction.STOP) reject("--max-heap is for a daemon that starts")
+          if (maxHeap != null) reject("--max-heap is written twice")
+          val text = value(word)
+          if (text.none(Char::isDigit)) {
+            reject("--max-heap takes a size such as 2g, and '$text' is none")
+          }
+          maxHeap = text
+        }
+        else -> reject("'$argument' is not an argument of tazel ${action.commandName.words}")
+      }
+    }
+    return Command.Daemon(action, maxHeap)
+  }
+
+  private fun remoteServe(): Command {
+    var host: String? = null
+    var port: Int? = null
+    var jobs: Int? = null
+    while (hasNext()) {
+      val (argument, word) = nextOption()
+      when (word?.flag) {
+        "--host" -> host = value(word)
+        "--port" ->
+          port =
+            value(word).let { text ->
+              text.toIntOrNull()?.takeIf { it in 0..65535 }
+                ?: reject("--port takes a number up to 65535, and '$text' is none")
+            }
+        "--jobs",
+        "-j" ->
+          jobs =
+            value(word).let { text ->
+              text.toIntOrNull()?.takeIf { it >= 1 }
+                ?: reject("${word.flag} takes a whole number from 1, and '$text' is none")
+            }
+        else ->
+          reject(
+            "'$argument' is not an argument of tazel remote serve",
+            hint(word?.flag ?: argument, remoteServeFlags + outputFlags),
+          )
+      }
+    }
+    val defaults = Command.RemoteServe()
+    return Command.RemoteServe(host ?: defaults.host, port ?: defaults.port, jobs)
+  }
+
+  private class Compiling(
+    val targets: TargetSelection,
+    val noCache: Boolean,
+    val execution: ExecutionOptions,
+  )
+
+  /** A command that compiles: its arguments select targets and say how to spend the machine. */
+  private fun compiling(command: CommandName): Compiling {
     val selection = SelectionBuilder()
+    val execution = ExecutionBuilder()
     var noCache = false
     while (hasNext()) {
       val (argument, word) = nextOption()
       if (noCache(word, noCache)) {
         noCache = true
-      } else if (!selection.take(word, this)) {
+      } else if (!selection.take(word, this) && !execution.take(word, this)) {
         reject(
           "'$argument' is not an argument of tazel ${command.words}",
-          hint(word?.flag ?: argument, selectionFlags + NO_CACHE + outputFlags),
+          hint(word?.flag ?: argument, selectionFlags + NO_CACHE + executionFlags + outputFlags),
         )
       }
     }
-    return selection.build() to noCache
+    return Compiling(selection.build(), noCache, execution.build())
   }
 
   private fun run(): Command {
     val selection = SelectionBuilder()
+    val execution = ExecutionBuilder()
     var noCache = false
     while (hasNext()) {
       val (argument, word) = nextOption()
-      if (argument == "--") return Command.Run(selection.build(), passThrough(), noCache)
+      if (argument == "--") {
+        return Command.Run(selection.build(), passThrough(), noCache, execution.build())
+      }
       if (noCache(word, noCache)) {
         noCache = true
-      } else if (!selection.take(word, this)) {
+      } else if (!selection.take(word, this) && !execution.take(word, this)) {
         reject(
           "'$argument' is not an argument of tazel run; program arguments follow '--'",
-          hint(word?.flag ?: argument, selectionFlags + NO_CACHE + outputFlags),
+          hint(word?.flag ?: argument, selectionFlags + NO_CACHE + executionFlags + outputFlags),
         )
       }
     }
-    return Command.Run(selection.build(), emptyList(), noCache)
+    return Command.Run(selection.build(), emptyList(), noCache, execution.build())
   }
 
   private fun install(): Command {

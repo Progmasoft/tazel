@@ -359,6 +359,48 @@ Kotlin scripting host, plugin resolution and class loading, script compilation o
 evaluation, and the whole command. A command that ran in the daemon also shows IPC: the time between sending the
 command and its end that the daemon did not spend on the command. JVM startup is then the startup of the client.
 
+## Spending the machine
+
+`check`, `build`, `run` and `test` take these flags. They go before the [`execution` block](PROJECT_FILES.md#execution) of
+the project file, and the block of the root of a workspace counts for the whole workspace.
+
+| Flag | What it does | Default |
+| --- | --- | --- |
+| `--jobs`, `-j Number` | how many compiler runs and test suites run at once | the processors, or `--cpus` |
+| `--cpus Number` | how many processors the command may keep busy; jobs never go above it | every processor |
+| `--memory Size` | how much the jobs may hold together, such as `8g` | no limit |
+| `--memory-per-job Size` | what one job is reckoned to hold; `--memory` divided by this limits the jobs | `1g` |
+| `--keep-going`, `-k` | go on with the other jobs after one failed, and report every failure | stop |
+| `--incremental`, `--no-incremental` | in a debug build, keep an object per source below `.tazel/incremental` | on, if talac has it |
+| `--profile File` | write a Chrome trace of the jobs, for `chrome://tracing` or Perfetto | none |
+| `--remote-executor URL` | compile on another machine; `TAZEL_REMOTE_TOKEN` is its token | none |
+| `--no-remote-executor` | compile here, whatever the project file says | |
+
+Memory and processors are budgets for how many jobs start. Tazel does not measure a compiler or stop one that holds more
+than `--memory-per-job`, and one job always runs. Talac runs that write beside the same source directory take turns,
+because talac leaves its output beside its first input, so test suites of one project compile one at a time and then run
+at once. A test suite that runs beside others prints its report when it ends.
+
+`tazel jvm start-daemon --max-heap 2g` and `restart-daemon --max-heap 2g` limit the heap of the daemon, as
+`TAZEL_DAEMON_MAX_HEAP` does.
+
+### Remote execution
+
+`tazel remote serve` compiles for other machines:
+
+```text
+TAZEL_REMOTE_TOKEN=... tazel remote serve --host 127.0.0.1 --port 7724 --jobs 8
+```
+
+The token is required. The server speaks plain HTTP, so for other machines it stands behind a proxy with TLS, which is also
+what Tazel asks of such an address. It only starts talac, on the sources it was sent, in a directory of their own, and it
+refuses a request whose options name a place on its machine.
+
+The client sends the sources and the options of a compiler run and gets back what talac said and wrote. Results enter the
+build cache like local ones, and programs and test suites always run on this machine. A server with another talac version
+or another kind of host answers that it cannot help. In that case, or when the server fails, Tazel warns once and compiles
+here for the rest of the command. Whoever holds the server decides what programs you get, so use only one you trust.
+
 ## Custom commands
 
 `tazel custom` runs commands written in `tazel_custom.txt`, found in the current directory or the nearest one above it. A

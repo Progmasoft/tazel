@@ -279,6 +279,28 @@ suites only. A package may be declared once per kind; two declarations of one pa
 Tazel records the declarations and does not fetch them yet, so `check`, `build` and `run` refuse a project that declares a
 dependency of the build. The namespaces of the standard library are not dependencies and are never declared.
 
+## `execution`
+
+```kotlin
+execution {
+  jobs = 8
+  cpus = 6
+  memory = "16g"
+  memoryPerJob = "1g"
+  keepGoing = true
+  incremental = true
+  profile = "build/trace.json"
+
+  remote {
+    url = "https://build.example.com"
+    token = System.getenv("TAZEL_REMOTE_TOKEN")
+  }
+}
+```
+
+The whole block is optional, and [the flags](CLI.md#spending-the-machine) of a command go before it. In a workspace, the block
+of the root counts. `profile` is relative to the project file. `url` takes `https`, or `http` for this machine only.
+
 ## `workspace`
 
 ```kotlin

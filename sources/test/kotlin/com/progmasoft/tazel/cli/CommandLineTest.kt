@@ -117,6 +117,7 @@ class CommandLineTest {
         CommandName.CACHE_KEYGEN to parsed("cache", "keygen"),
         CommandName.CACHE_SERVE to parsed("cache", "serve", "--directory", "Results"),
         CommandName.FETCH to parsed("fetch"),
+        CommandName.REMOTE_SERVE to parsed("remote", "serve"),
         CommandName.CUSTOM to parsed("custom", "dev"),
         CommandName.LOCK_RESOLVE to parsed("lock", "resolve"),
         CommandName.LOCK_CREATE_DUMP to parsed("lock", "create-dump"),
