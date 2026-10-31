@@ -1,9 +1,12 @@
 <!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
-<!-- SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1 -->
+<!-- SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-2.0 -->
 
 # Changelog
 
 ## Unreleased
+
+- Project files move to the Progmasoft Linking Exception, Version 2.0. Earlier
+  releases can rely on Version 2.0 too.
 
 - `tazel cache status`, `clean`, `push` and `pull` look after the build caches.
 - `tazel cache serve` is a server for the remote build cache, and `tazel cache

@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
- * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1
+ * SPDX-License-Identifier: MPL-2.0 WITH AdditionRef-Progmasoft-Exception-2.0
  */
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -63,7 +63,7 @@ publishing {
         url = "https://tazel.tala.run/"
         licenses {
           license {
-            name = "MPL-2.0 WITH AdditionRef-Progmasoft-Exception-1.1"
+            name = "MPL-2.0 WITH AdditionRef-Progmasoft-Exception-2.0"
             url = "https://github.com/Progmasoft/tazel/blob/main/LICENSE.txt"
           }
         }
