@@ -22,6 +22,7 @@ tazel [output options] <command> [arguments]
 | `tazel run [-- arguments]` | builds the executables and runs them |
 | `tazel test` | builds and runs the test suites |
 | `tazel fetch` | fetches the dependencies ahead of time: plugins of ViGet into `.tazel/plugins`, and it fails if a local package is missing or a ViGet package is declared, because ViGet does not serve Tala packages yet |
+| `tazel custom [name]` | runs a command of `tazel_custom.txt`, or lists them; see [custom commands](#custom-commands) |
 | `tazel lock resolve` | resolves the dependencies and renews `LOCK.sqlite3` |
 | `tazel lock create-dump [--path File]` | writes the lockfile as text, to `LOCK.dump` or to the file `--path` names |
 | `tazel lock graph [options]` | prints the dependency graph; renews `LOCK.sqlite3` unless `--locked` |
@@ -357,6 +358,46 @@ With `TAZEL_TIMINGS=1`, Tazel prints how long each phase of the run took, on the
 Kotlin scripting host, plugin resolution and class loading, script compilation or loading it from the cache, script
 evaluation, and the whole command. A command that ran in the daemon also shows IPC: the time between sending the
 command and its end that the daemon did not spend on the command. JVM startup is then the startup of the client.
+
+## Custom commands
+
+`tazel custom` runs commands written in `tazel_custom.txt`, found in the current directory or the nearest one above it. A
+project file is not needed, the commands do not have to involve Tazel, and they run in the directory of the file.
+
+```text
+# A comment to the end of the line.
+<# A comment
+   of several lines. #>
+
+build-no-cache: ("tazel" 'build' `--no-cache`);
+npm-dev: ('npm' 'dev');
+
+# Several steps run in order; line breaks mean nothing.
+fetch:
+    ("cargo" "fetch")
+    ("tazel" "fetch");
+
+# s(...) is one command line for the shell of the host.
+npm-dev-sh: s('npm dev');
+
+fetch-sh:
+    s("cargo fetch")
+    ("tazel" "fetch");
+
+# Another shell is a program like any other.
+npm-dev-zsh: ("zsh" "-lc" "npm dev");
+```
+
+```text
+tazel custom fetch
+```
+
+A string is written with `"`, `'` or `` ` `` and has no escapes, so it cannot hold its own quote. `(...)` starts the program
+directly with these arguments: there is no shell, so a word like `|` means nothing special and each string stays one
+argument. On Windows the program may be a script such as `npm.cmd`. `s(...)` takes exactly one string and hands it to CMD
+on Windows and to `sh` elsewhere.
+
+A step that fails ends the command, and `tazel custom` exits with its exit code. Without a name it lists the commands.
 
 ## Not implemented yet
 

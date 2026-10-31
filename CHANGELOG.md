@@ -5,6 +5,7 @@
 
 ## Unreleased
 
+- `tazel custom` runs the commands of `tazel_custom.txt`.
 - `project.name` is always required. A project file without it, such as the root
   of a workspace with no `project` block, has to add it.
 - `compiler.version` is gone from project files. Loading a project no longer starts

@@ -49,6 +49,7 @@ enum class CommandName(val words: String, val summary: String) {
   RUN("run", "build the executables of the project and run them"),
   TEST("test", "build and run the test suites of the project"),
   FETCH("fetch", "fetch the dependencies of the project ahead of time"),
+  CUSTOM("custom", "run a command of tazel_custom.txt, or list them"),
   LOCK_RESOLVE("lock resolve", "resolve the dependencies and renew LOCK.sqlite3"),
   LOCK_CREATE_DUMP(
     "lock create-dump",
@@ -123,6 +124,11 @@ sealed interface Command {
 
   data object Fetch : Command {
     override val name = CommandName.FETCH
+  }
+
+  /** Runs the command [commandName] of `tazel_custom.txt`; lists the commands when absent. */
+  data class Custom(val commandName: String?) : Command {
+    override val name = CommandName.CUSTOM
   }
 
   data object LockResolve : Command {
@@ -515,6 +521,8 @@ private class ArgumentReader(private val arguments: List<String>) {
       "run" -> run()
       "test" -> compiling(CommandName.TEST).let { (it, noCache) -> Command.Test(it, noCache) }
       "fetch" -> Command.Fetch.also { finish(CommandName.FETCH) }
+      "custom" ->
+        Command.Custom(if (hasNext()) next() else null).also { finish(CommandName.CUSTOM) }
       "lock" ->
         when (action("lock", "resolve", "create-dump", "graph")) {
           "resolve" -> Command.LockResolve.also { finish(CommandName.LOCK_RESOLVE) }

@@ -48,19 +48,23 @@ class Toolchain(
   }
 
   /**
-   * The program [name] on `PATH`, for the build steps of plugins: with the executable extension of
-   * the host unless [name] has it already.
+   * The program [name] on `PATH`, for the build steps of plugins and custom commands. On Windows a
+   * program may also be a script, like `npm.cmd`, and a name without an extension finds any of
+   * them.
    */
   fun findProgram(name: String): Path? {
-    val extension = executableExtension(os)
-    val fileName =
-      if (extension.isEmpty() || name.endsWith(extension, ignoreCase = true)) name
-      else name + extension
+    val extensions = if (os == OperatingSystem.WINDOWS) WINDOWS_PROGRAMS else emptyList()
+    val fileNames =
+      if (extensions.isEmpty() || extensions.any { name.endsWith(it, ignoreCase = true) }) {
+        listOf(name)
+      } else {
+        extensions.map { name + it }
+      }
     return variable("PATH")
       .orEmpty()
       .split(File.pathSeparatorChar)
       .filter(String::isNotEmpty)
-      .map { Path.of(it).resolve(fileName) }
+      .flatMap { directory -> fileNames.map { Path.of(directory).resolve(it) } }
       .firstOrNull(Files::isRegularFile)
   }
 
@@ -71,6 +75,11 @@ class Toolchain(
           ?: "${tool.command} was not found beside tazel or on PATH; " +
             "set ${tool.environment} to its path"
       )
+
+  private companion object {
+    /** What Windows runs by itself, in the order a directory is searched. */
+    val WINDOWS_PROGRAMS = listOf(".exe", ".cmd", ".bat", ".com")
+  }
 
   // Windows spells the same variable "Path" or "PATH".
   private fun variable(name: String) =
