@@ -111,7 +111,6 @@ fun discoverProject(start: Path): ProjectLocation {
  * [scriptCacheKey] for what decides that. [timings] receives the duration of each phase.
  */
 class ProjectLoader(
-  private val compilerVersion: String = "unknown",
   private val cache: ScriptCache? = null,
   private val timings: Timings = Timings.disabled,
   private val tazelVersion: String = "development",
@@ -151,7 +150,7 @@ class ProjectLoader(
         ProjectLoader::class.java.classLoader,
       )
     // Each evaluation fills its own project, so project files can be evaluated on several threads.
-    val context = ProjectContext(compilerVersion)
+    val context = ProjectContext()
     return ProjectRuntime.evaluate(context) {
       var loaded: LoadedProject? = null
       try {

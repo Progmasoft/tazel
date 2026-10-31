@@ -32,13 +32,11 @@ class ProjectDslTest {
 
   @Test
   fun acceptsAnyNamespaceQualifiedEntryClassName() {
+    project { name = "Demo" }
     demo()
     val plan = ProjectRuntime.build()
 
-    assertEquals(
-      ProjectIdentity(null, null, null),
-      plan.identity ?: ProjectIdentity(null, null, null),
-    )
+    assertEquals(ProjectIdentity("Demo", null, null), plan.identity)
     assertEquals(listOf("Sources"), plan.executables.map { it.srcDir })
     assertEquals("Demo.Main", plan.executables.single().entry)
     assertEquals(BuildMode.DEBUG, plan.compiler.buildMode)
@@ -49,6 +47,7 @@ class ProjectDslTest {
     listOf("Namespace.Program", "Namespace.Namespace.Program", "Company.Tool.Bootstrap").forEach {
       entry ->
       ProjectRuntime.reset()
+      project { name = "Demo" }
       demo(entry)
       assertEquals(entry, ProjectRuntime.build().executables.single().entry)
     }
@@ -79,7 +78,7 @@ class ProjectDslTest {
       assertFailsWith<ProjectConfigurationException> {
         sources { executable { entry = "Nameless.Main" } }
       }
-    assertTrue(problem.message.orEmpty().contains("sources.executable.name is required"))
+    assertTrue(problem.message.orEmpty().contains("project requires name"))
   }
 
   @Test
@@ -90,11 +89,15 @@ class ProjectDslTest {
 
     ProjectRuntime.reset()
     project {
+      name = "PrivateCompiler"
       version = "0.3.1"
       stability = Stability.DEV
     }
     demo()
-    assertEquals(ProjectIdentity(null, Stability.DEV, "0.3.1"), ProjectRuntime.build().identity)
+    assertEquals(
+      ProjectIdentity("PrivateCompiler", Stability.DEV, "0.3.1"),
+      ProjectRuntime.build().identity,
+    )
   }
 
   @Test
@@ -112,9 +115,7 @@ class ProjectDslTest {
       return assertFailsWith { ProjectRuntime.build() }
     }
 
-    assertTrue(
-      rejectionFor {}.message.orEmpty().contains("name, version, stability, description, authors")
-    )
+    assertEquals("project requires name", rejectionFor {}.message)
     assertTrue(rejectionFor { name = "Published" }.message.orEmpty().contains("version, stability"))
   }
 
@@ -217,7 +218,7 @@ class ProjectDslTest {
 
   @Test
   fun aProjectFileReadsBackWhatItWrote() {
-    ProjectRuntime.reset("0.5.2")
+    ProjectRuntime.reset()
     project {
       name = "Echo"
       version = "1.0.0"
@@ -226,17 +227,18 @@ class ProjectDslTest {
 
     assertEquals("Echo", project.name)
     assertEquals("1.0.0", project.version)
-    assertEquals("0.5.2", compiler.version)
     assertEquals("26", compiler.standard.toString())
     assertEquals(OptLevel.O3, compiler.optLevel)
   }
 
   @Test
   fun derivesTheOptimizationLevelFromTheBuildMode() {
+    project { name = "Demo" }
     demo()
     assertEquals(OptLevel.O0, ProjectRuntime.build().compiler.effectiveOptLevel)
 
     ProjectRuntime.reset()
+    project { name = "Demo" }
     compiler { buildMode = BuildMode.RELEASE }
     demo()
     assertEquals(OptLevel.O3, ProjectRuntime.build().compiler.effectiveOptLevel)
@@ -257,6 +259,7 @@ class ProjectDslTest {
 
   @Test
   fun aWorkspaceRootNeedsNoSourcesOfItsOwn() {
+    project { name = "Demo" }
     workspace { members("Server", "Client") }
     val plan = ProjectRuntime.build()
     assertTrue(plan.executables.isEmpty())
@@ -274,6 +277,7 @@ class ProjectDslTest {
 
   @Test
   fun excludeDefaultsRemainNullAcrossEverySourceSection() {
+    project { name = "Demo" }
     demo()
     val plan = ProjectRuntime.build()
 

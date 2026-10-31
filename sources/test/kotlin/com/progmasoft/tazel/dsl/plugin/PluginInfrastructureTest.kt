@@ -12,6 +12,7 @@ import com.progmasoft.tazel.dsl.DependencyManifest
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectRuntime
 import com.progmasoft.tazel.dsl.detectHost
+import com.progmasoft.tazel.dsl.project
 import com.progmasoft.tazel.dsl.sources
 import com.progmasoft.tazel.lock.LockedPlugin
 import com.progmasoft.tazel.lock.LockedProject
@@ -174,6 +175,7 @@ class PluginInfrastructureTest {
 
   @Test
   fun activatesLifecycleAndRejectsExtensionCollisions() {
+    project { name = "Demo" }
     val root = Files.createTempDirectory("tala-plugin-runtime-")
     try {
       val first = resolved(root, "First")
@@ -195,6 +197,7 @@ class PluginInfrastructureTest {
       }
 
       ProjectRuntime.reset()
+      project { name = "Demo" }
       PluginRuntime.activate(listOf(first), listOf(firstPlugin), root, detectHost())
       PluginRuntime.declare(PluginRequest("Publisher", "First", "1.0.0"))
       sources {

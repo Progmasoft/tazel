@@ -12,6 +12,10 @@
 - `--remote-executor` and `execution.remote` compile on another machine, and
   `tazel remote serve` is the server.
 - `tazel jvm start-daemon --max-heap` limits the heap of the daemon.
+- `project.name` is always required. A project file without it, such as the root
+  of a workspace with no `project` block, has to add it.
+- `compiler.version` is gone from project files. Loading a project no longer starts
+  talac to ask for its version.
 - Project files move to the Progmasoft Linking Exception, Version 2.0. Earlier
   releases can rely on Version 2.0 too.
 

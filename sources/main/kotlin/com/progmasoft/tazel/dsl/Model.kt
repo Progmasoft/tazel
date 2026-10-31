@@ -134,7 +134,6 @@ data class TestSuite(
 )
 
 data class CompilerSettings(
-  var version: String = "unknown",
   var standard: TalaStandard = TalaStandard(26),
   var backend: Backend = Backend.LLVM,
   var buildMode: BuildMode = BuildMode.DEBUG,
