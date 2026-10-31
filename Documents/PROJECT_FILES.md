@@ -57,8 +57,9 @@ project {
 }
 ```
 
-Every field is optional on its own. With `sources.viget.push = true`, `name`, `version`, `stability`, `description` and at
-least one author are required; this is checked once the whole file has run, so the order of the blocks does not matter.
+`name` is always required, so every project file has a `project` block. Every other field is optional on its own. With
+`sources.viget.push = true`, `version`, `stability`, `description` and at least one author are required too; this is checked
+once the whole file has run, so the order of the blocks does not matter.
 `name` is one identifier and `version` is an exact semantic version.
 
 ## `compiler`
@@ -109,8 +110,6 @@ refused by the compiler, by name; see the [compiler reference](CLI.md#not-implem
 `--static-talart-library=false`, which keeps it in a shared library beside the output.
 
 No warning level turns `wshadow` on. `wshadow = true` with `Warnings.NONE` is a contradiction and is rejected.
-
-`compiler.version` is the version of the compiler that will build the project. A project file reads it and cannot set it.
 
 ## `buildCache`
 
@@ -291,7 +290,7 @@ workspace {
 ```
 
 Each member is a directory with a project file of its own, written relative to this project file. A project that only
-gathers members needs no `sources`. `defaultMembers` are the members `tazel fmt` and `tazel lint` work on at the root;
+gathers members needs a `project.name` and no `sources`. `defaultMembers` are the members `tazel fmt` and `tazel lint` work on at the root;
 `exclude` removes a directory from the members. See [workspaces](CLI.md#workspaces).
 
 ## `plugins`
@@ -336,7 +335,7 @@ if (OS == OperatingSystem.OPENBSD) panic("this project does not build on OpenBSD
 ```
 
 After its `project` and `compiler` blocks a project file can read back what it wrote: `project.name`,
-`compiler.standard`, `compiler.version`.
+`compiler.standard`.
 
 ## Lockfile
 

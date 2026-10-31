@@ -252,7 +252,6 @@ class Tazel(
 
   private fun projectLoader(forBuild: Boolean = false) =
     ProjectLoader(
-      compilerVersion(),
       scriptCache,
       timings,
       version,

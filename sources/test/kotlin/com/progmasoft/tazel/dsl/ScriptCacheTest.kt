@@ -93,13 +93,13 @@ class ScriptCacheTest {
     val location = projectFileIn(project)!!
 
     val first = Timings(true)
-    val compiled = ProjectLoader("1.0.0", cache, first).load(location)
+    val compiled = ProjectLoader(cache, first).load(location)
     assertTrue(Phase.COMPILATION in first.totals())
     val entries = Files.list(cache.directory).use { stream -> stream.toList() }
     assertEquals(1, entries.count { it.name.endsWith(".jar") })
 
     val second = Timings(true)
-    val cached = ProjectLoader("1.0.0", cache, second).load(location)
+    val cached = ProjectLoader(cache, second).load(location)
     assertFalse(Phase.COMPILATION in second.totals(), "the second load compiled again")
     assertTrue(Phase.CACHE_LOAD in second.totals())
     assertEquals(compiled.plan, cached.plan)
@@ -110,7 +110,7 @@ class ScriptCacheTest {
       Files.readString(location.file).replace("Cached\"", "Renamed\""),
     )
     val third = Timings(true)
-    assertEquals("Renamed", ProjectLoader("1.0.0", cache, third).load(location).plan.identity?.name)
+    assertEquals("Renamed", ProjectLoader(cache, third).load(location).plan.identity?.name)
     assertTrue(Phase.COMPILATION in third.totals())
   }
 
@@ -123,14 +123,14 @@ class ScriptCacheTest {
     )
     val cache = ScriptCache(root.resolve("cache"))
     val location = projectFileIn(project)!!
-    ProjectLoader("1.0.0", cache).load(location)
+    ProjectLoader(cache).load(location)
     val entry = Files.list(cache.directory).use { stream -> stream.toList() }.single()
     Files.writeString(entry, "not a jar")
 
     val timings = Timings(true)
     assertEquals(
       "Broken",
-      ProjectLoader("1.0.0", cache, timings).load(location).plan.identity?.name,
+      ProjectLoader(cache, timings).load(location).plan.identity?.name,
     )
     assertTrue(Phase.COMPILATION in timings.totals())
   }

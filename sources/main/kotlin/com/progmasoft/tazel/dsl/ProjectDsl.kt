@@ -53,7 +53,7 @@ class ExecutableSourcesScope internal constructor() {
         name
           ?: defaultName
           ?: throw ProjectConfigurationException(
-            "sources.executable.name is required when the project has no name"
+            "project requires name, written before sources unless sources.executable.name is set"
           ),
         "executable name",
       )
@@ -96,7 +96,7 @@ class LibrarySourcesScope internal constructor() {
         name
           ?: defaultName
           ?: throw ProjectConfigurationException(
-            "sources.library.name is required when the project has no name"
+            "project requires name, written before sources unless sources.library.name is set"
           ),
         "library name",
       )

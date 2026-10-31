@@ -8,6 +8,7 @@ package com.progmasoft.tazel.dsl
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
@@ -81,18 +82,16 @@ class ProjectLoaderTest {
       sources {
         executable { entry = "Loaded.Program" }
       }
-      check(compiler.version == "9.9.9")
       check(project.name == "Loaded")
       """
         .trimIndent(),
     )
 
-    val loaded = ProjectLoader("9.9.9").load(projectFileIn(root)!!)
+    val loaded = ProjectLoader().load(projectFileIn(root)!!)
 
     assertEquals("Loaded", loaded.plan.identity?.name)
     assertEquals("Loaded.Program", loaded.plan.executables.single().entry)
     assertEquals(BuildMode.RELEASE, loaded.plan.compiler.buildMode)
-    assertEquals("9.9.9", loaded.plan.compiler.version)
     assertEquals(
       listOf(LocalPackageDependency("Dependency.vipkg")),
       loaded.plan.dependencies.local,
@@ -120,7 +119,7 @@ class ProjectLoaderTest {
       )
       projectFileIn(directory)!!
     }
-    val loader = ProjectLoader("1.0.0")
+    val loader = ProjectLoader()
     val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
     try {
       val plans =
@@ -142,7 +141,7 @@ class ProjectLoaderTest {
       "project { name = \"Bound\" }\nsources { executable { entry = \"Bound.Program\" } }",
     )
     val thread = Thread {
-      ProjectLoader("1.0.0").load(projectFileIn(root)!!)
+      ProjectLoader().load(projectFileIn(root)!!)
       // Once the evaluation is over, nothing of it stays bound to the thread.
       assertFailsWith<ProjectConfigurationException> { ProjectRuntime.current() }
     }
@@ -156,7 +155,7 @@ class ProjectLoaderTest {
   @Test
   fun theSampleProjectFileOfTazelUsesTheWholeDsl() {
     // Gradle runs the tests in the directory of Tazel, where the sample lives.
-    val plan = ProjectLoader("0.0.0").load(projectFileIn(Path.of(""))!!).plan
+    val plan = ProjectLoader().load(projectFileIn(Path.of(""))!!).plan
 
     assertEquals("Example", plan.identity?.name)
     assertEquals(listOf("Server", "../Shared", "Client"), plan.workspace?.members)
@@ -179,7 +178,7 @@ class ProjectLoaderTest {
 
     assertTrue(problem("this is not Kotlin").startsWith("BUILD.kts:1:"))
     assertEquals("BUILD.kts: no build on this host", problem("panic(\"no build on this host\")"))
-    assertTrue(problem("sources { executable { entry = \"Main\" } }").contains("name is required"))
+    assertTrue(problem("sources { executable { entry = \"Main\" } }").contains("requires name"))
     assertTrue(problem("compiler { wundef = true }").contains("wundef"))
     assertTrue(problem("error(\"boom\")").contains("boom"))
   }
@@ -188,4 +187,39 @@ class ProjectLoaderTest {
 /** Lets the project files of a test wait for each other. */
 object ParallelFixture {
   @Volatile var barrier: java.util.concurrent.CyclicBarrier? = null
+
+  @Test
+  fun aProjectFileNeedsAName() {
+    val root = Files.createTempDirectory("tazel-name")
+    Files.writeString(
+      root.resolve("BUILD.kts"),
+      """
+      sources {
+        executable { entry = "Loaded.Program" }
+      }
+      """
+        .trimIndent(),
+    )
+    val failure =
+      assertFailsWith<ProjectConfigurationException> {
+        ProjectLoader().load(projectFileIn(root)!!)
+      }
+    assertContains(failure.message.orEmpty(), "project requires name")
+  }
+
+  @Test
+  fun aNameIsAllAProjectNeedsWithoutPush() {
+    val root = Files.createTempDirectory("tazel-name")
+    Files.writeString(
+      root.resolve("BUILD.kts"),
+      """
+      project { name = "Named" }
+      sources {
+        executable { entry = "Named.Program" }
+      }
+      """
+        .trimIndent(),
+    )
+    assertEquals("Named", ProjectLoader().load(projectFileIn(root)!!).plan.identity?.name)
+  }
 }
