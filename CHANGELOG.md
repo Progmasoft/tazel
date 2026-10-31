@@ -5,6 +5,7 @@
 
 ## Unreleased
 
+- `tazel custom` runs the commands of `tazel_custom.txt`.
 - Project files move to the Progmasoft Linking Exception, Version 2.0. Earlier
   releases can rely on Version 2.0 too.
 
