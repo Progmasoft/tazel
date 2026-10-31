@@ -158,6 +158,7 @@ class Tazel(
           compile(command.targets, Emit.EXECUTABLE, command.noCache).let { ExitCode.SUCCESS }
         is Command.Run -> runPrograms(command)
         is Command.Test -> test(command)
+        Command.Fetch -> fetch()
         Command.LockResolve -> lockResolve()
         is Command.LockCreateDump -> lockCreateDump(command.path)
         is Command.LockGraph -> lockGraph(command)
@@ -869,6 +870,34 @@ class Tazel(
       }
       Thread.currentThread().join()
     }
+    return ExitCode.SUCCESS
+  }
+
+  /**
+   * Brings what the projects depend on to this machine, so that later commands need no network.
+   * Loading a project fetches its plugins of ViGet. A package that cannot be had is an error, since
+   * success here means nothing is left to fetch.
+   */
+  private fun fetch(): Int {
+    val workspace = load()
+    val projects = listOf(workspace.root) + workspace.members
+    val missing = projects.flatMap { project ->
+      project.plan.dependencies.local
+        .map { it.path }
+        .filterNot { Files.isRegularFile(project.location.root.resolve(it)) }
+    }
+    if (missing.isNotEmpty()) {
+      throw Stop("no local package at ${missing.joinToString()}")
+    }
+    val remote = projects.flatMap { project ->
+      project.plan.dependencies.declarations.map { it.dependency.coordinate }
+    }
+    if (remote.isNotEmpty()) {
+      throw Stop(
+        "cannot fetch ${remote.distinct().joinToString()}: ViGet does not serve Tala packages yet"
+      )
+    }
+    status("Fetched", "${projects.sumOf { it.plan.plugins.size }} plugins")
     return ExitCode.SUCCESS
   }
 

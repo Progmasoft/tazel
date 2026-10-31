@@ -21,6 +21,7 @@ tazel [output options] <command> [arguments]
 | `tazel build` | builds the targets |
 | `tazel run [-- arguments]` | builds the executables and runs them |
 | `tazel test` | builds and runs the test suites |
+| `tazel fetch` | fetches the dependencies ahead of time: plugins of ViGet into `.tazel/plugins`, and it fails if a local package is missing or a ViGet package is declared, because ViGet does not serve Tala packages yet |
 | `tazel lock resolve` | resolves the dependencies and renews `LOCK.sqlite3` |
 | `tazel lock create-dump [--path File]` | writes the lockfile as text, to `LOCK.dump` or to the file `--path` names |
 | `tazel lock graph [options]` | prints the dependency graph; renews `LOCK.sqlite3` unless `--locked` |
