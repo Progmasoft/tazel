@@ -5,6 +5,7 @@
 
 ## Unreleased
 
+- `tazel cache status`, `clean`, `push` and `pull` look after the build caches.
 - `tazel cache serve` is a server for the remote build cache, and `tazel cache
   keygen` makes the keys that sign its results. A project with
   `buildCache.remote.publicKey` uses only results signed for that key, that

@@ -207,6 +207,20 @@ class BuildCache(
     COPIED,
   }
 
+  /** One result in the local cache. */
+  class Stored(
+    val slug: String,
+    val key: String,
+    val bytes: Long,
+  )
+
+  /** What [push] did: results sent, results the server had, and whether it stopped on a failure. */
+  class Pushed(
+    val sent: Int,
+    val present: Int,
+    val failed: Boolean,
+  )
+
   /** A result that was found: what its run wrote and, when it was asked for, its files. */
   class Hit(
     val log: String,
@@ -292,6 +306,72 @@ class BuildCache(
       }
     }
   }
+
+  private fun directoriesIn(parent: Path): List<Path> =
+    if (!Files.isDirectory(parent)) emptyList()
+    else
+      Files.newDirectoryStream(parent).use { stream ->
+        stream
+          .filter { Files.isDirectory(it) && !it.fileName.toString().startsWith(".") }
+          .sortedBy { it.fileName.toString() }
+      }
+
+  private fun sizeOf(directory: Path): Long =
+    Files.walk(directory).use { paths ->
+      paths.filter(Files::isRegularFile).mapToLong(Files::size).sum()
+    }
+
+  /** The results the local cache holds. */
+  fun results(): List<Stored> =
+    guarded("read its results") {
+        directoriesIn(directory).flatMap { slug ->
+          directoriesIn(slug).map {
+            Stored(slug.fileName.toString(), it.fileName.toString(), sizeOf(it))
+          }
+        }
+      }
+      .orEmpty()
+
+  /** Removes the local cache and returns how many bytes that freed. */
+  fun clean(): Long {
+    if (!Files.isDirectory(directory)) return 0
+    return guarded("clean") {
+      val bytes = sizeOf(directory)
+      if (!directory.toFile().deleteRecursively()) throw IOException("$directory stayed")
+      bytes
+    } ?: 0
+  }
+
+  /** Sends what the local cache holds and the server does not. */
+  fun push(): Pushed {
+    var sent = 0
+    var present = 0
+    for (result in results()) {
+      val there = remotely("say what it holds") { remote!!.contains(result.slug, result.key) }
+      when {
+        there == null -> return Pushed(sent, present, true)
+        there -> present++
+        else -> {
+          guarded("send a result") {
+            val parent = directory.resolve(result.slug)
+            publish(result.slug, result.key, parent.resolve(result.key), parent)
+          }
+          if (remoteFailed) return Pushed(sent, present, true)
+          sent++
+        }
+      }
+    }
+    return Pushed(sent, present, false)
+  }
+
+  /** Whether the server answers; the reason when it does not. */
+  fun remoteProblem(): String? =
+    try {
+      remote?.contains("status", "status")
+      null
+    } catch (problem: IOException) {
+      problem.message ?: problem.javaClass.name
+    }
 
   /** The inputs of the last run of [slug] that left a result, to tell what is new. */
   fun latest(slug: String): BuildInputs? =

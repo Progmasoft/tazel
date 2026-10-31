@@ -28,6 +28,12 @@ internal const val MAXIMUM_ARCHIVE_BYTES = 1L shl 30
 
 /** Where results are shared between machines. Every failure is an [IOException]. */
 interface RemoteStore {
+  /** Whether the store has the result, without fetching it. */
+  fun contains(
+    slug: String,
+    key: String,
+  ): Boolean
+
   /** Writes the archive of a result to [archive]; false when the store does not have it. */
   fun fetch(
     slug: String,
@@ -75,6 +81,19 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
       Thread.currentThread().interrupt()
       throw IOException("the request was interrupted")
     }
+
+  override fun contains(
+    slug: String,
+    key: String,
+  ): Boolean {
+    val request = request(slug, key).method("HEAD", HttpRequest.BodyPublishers.noBody()).build()
+    val response = send(request, HttpResponse.BodyHandlers.discarding())
+    return when (response.statusCode()) {
+      200 -> true
+      404 -> false
+      else -> throw IOException("${settings.url} answered ${response.statusCode()}")
+    }
+  }
 
   override fun fetch(
     slug: String,

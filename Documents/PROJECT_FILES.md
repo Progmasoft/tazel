@@ -161,7 +161,7 @@ signature counts as missing, and a wrong signature is a warning; either way the 
 
 The server answers two requests, each with the token if there is one. `GET <url>/<slug>/<key>` gives the result as a ZIP
 archive, or `404` when it is not there, and `<key>.sig` its signature. `PUT` of the same paths stores them and answers `200`,
-`201` or `204`. Redirects are not followed. A server that fails or cannot be reached is a warning: the build goes on and the
+`201` or `204`, and `HEAD` says whether a result is there, for `tazel cache push`. Redirects are not followed. A server that fails or cannot be reached is a warning: the build goes on and the
 server is not asked again during that command. [`tazel cache serve`](CLI.md#a-remote-cache-server) is such a server.
 
 ## `outdirs`, `targets` and `pml`
