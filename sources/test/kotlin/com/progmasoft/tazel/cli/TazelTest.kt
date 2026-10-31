@@ -175,6 +175,53 @@ class TazelTest {
   }
 
   @Test
+  fun fetchFinishesWhenNothingIsLeftToFetch() = fixture {
+    write("Local.vipkg")
+    demo(
+      extra =
+        """
+        dependencies {
+          localDependency { path = "Local.vipkg" }
+        }
+        """
+    )
+    assertEquals(ExitCode.SUCCESS, run("fetch"))
+    assertTrue(recorder.stderr().contains("0 plugins") || recorder.stdout().contains("0 plugins"))
+  }
+
+  @Test
+  fun fetchRefusesALocalPackageThatIsNotThere() = fixture {
+    demo(
+      extra =
+        """
+        dependencies {
+          localDependency { path = "Local.vipkg" }
+        }
+        """
+    )
+    assertEquals(ExitCode.FAILURE, run("fetch"))
+    assertTrue(recorder.stderr().contains("Local.vipkg"))
+  }
+
+  @Test
+  fun fetchSaysItCannotGetAPackageOfViGet() = fixture {
+    demo(
+      extra =
+        """
+        dependencies {
+          dependency("Publisher") {
+            name = "Name"
+            version = "1.0.0"
+          }
+        }
+        """
+    )
+    assertEquals(ExitCode.FAILURE, run("fetch"))
+    assertTrue(recorder.stderr().contains("Publisher.Name"))
+    assertTrue(recorder.stderr().contains("does not serve"))
+  }
+
+  @Test
   fun aDumpNeedsALockfile() = fixture {
     demo()
     assertEquals(ExitCode.FAILURE, run("lock", "create-dump"))

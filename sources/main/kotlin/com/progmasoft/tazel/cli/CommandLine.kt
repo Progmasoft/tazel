@@ -48,6 +48,7 @@ enum class CommandName(val words: String, val summary: String) {
   BUILD("build", "build the targets of the project"),
   RUN("run", "build the executables of the project and run them"),
   TEST("test", "build and run the test suites of the project"),
+  FETCH("fetch", "fetch the dependencies of the project ahead of time"),
   LOCK_RESOLVE("lock resolve", "resolve the dependencies and renew LOCK.sqlite3"),
   LOCK_CREATE_DUMP(
     "lock create-dump",
@@ -118,6 +119,10 @@ sealed interface Command {
     val noCache: Boolean = false,
   ) : Command {
     override val name = CommandName.TEST
+  }
+
+  data object Fetch : Command {
+    override val name = CommandName.FETCH
   }
 
   data object LockResolve : Command {
@@ -509,6 +514,7 @@ private class ArgumentReader(private val arguments: List<String>) {
       "build" -> compiling(CommandName.BUILD).let { (it, noCache) -> Command.Build(it, noCache) }
       "run" -> run()
       "test" -> compiling(CommandName.TEST).let { (it, noCache) -> Command.Test(it, noCache) }
+      "fetch" -> Command.Fetch.also { finish(CommandName.FETCH) }
       "lock" ->
         when (action("lock", "resolve", "create-dump", "graph")) {
           "resolve" -> Command.LockResolve.also { finish(CommandName.LOCK_RESOLVE) }

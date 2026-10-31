@@ -311,8 +311,8 @@ plugins {
 }
 ```
 
-A plugin of ViGet is found in the cache of the project, `.tazel/plugins`; fetching it from
-`https://viget.progmasoft.com/dslplugins/tazel/<Publisher>/<Name>/` is not connected yet. A local plugin is a JAR inside the
+A plugin of ViGet is found in the cache of the project, `.tazel/plugins`; a plugin the cache lacks is fetched from
+`https://viget.progmasoft.com/dslplugins/tazel/<Publisher>/<Name>/`. A local plugin is a JAR inside the
 project directory. Either way the JAR describes itself in `META-INF/tazel-plugin.properties` (publisher, name, version,
 API version, the imports it adds to the project file) and provides exactly one `ProjectPlugin` service. Tazel checks the
 coordinate, the version, the API version and the SHA-256 digest before it loads the plugin; a `<plugin>.jar.sha256` file
