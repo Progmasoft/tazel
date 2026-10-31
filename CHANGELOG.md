@@ -12,6 +12,7 @@
 - Project files move to the Progmasoft Linking Exception, Version 2.0. Earlier
   releases can rely on Version 2.0 too.
 
+- `tazel fetch` fetches the dependencies of a project ahead of time.
 - `tazel cache status`, `clean`, `push` and `pull` look after the build caches.
 - `tazel cache serve` is a server for the remote build cache, and `tazel cache
   keygen` makes the keys that sign its results. A project with
