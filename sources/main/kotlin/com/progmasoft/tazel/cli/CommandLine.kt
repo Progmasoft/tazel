@@ -60,6 +60,10 @@ enum class CommandName(val words: String, val summary: String) {
   VIGET_PUSH("viget push", "build, test and publish the package to ViGet for the first time"),
   VIGET_UPDATE("viget update", "build, test and publish a new version of the package"),
   VIGET_VIPKG_DESC("viget vipkg-desc", "print the description of a package of ViGet"),
+  CACHE_STATUS("cache status", "show what the build caches of the project hold"),
+  CACHE_CLEAN("cache clean", "remove the local build cache of the project"),
+  CACHE_PUSH("cache push", "send the local results to the remote build cache"),
+  CACHE_PULL("cache pull", "fetch the results of the current sources from the remote build cache"),
   CACHE_KEYGEN("cache keygen", "print a new pair of keys that sign the results of a remote cache"),
   CACHE_SERVE("cache serve", "serve a remote build cache from a directory"),
   VERSION("version", "print the version of Tazel"),
@@ -171,6 +175,22 @@ sealed interface Command {
   /** Prints the `project.description` of [coordinate] as ViGet holds it. */
   data class ViGetVipkgDesc(val coordinate: PackageCoordinate) : Command {
     override val name = CommandName.VIGET_VIPKG_DESC
+  }
+
+  data object CacheStatus : Command {
+    override val name = CommandName.CACHE_STATUS
+  }
+
+  data object CacheClean : Command {
+    override val name = CommandName.CACHE_CLEAN
+  }
+
+  data object CachePush : Command {
+    override val name = CommandName.CACHE_PUSH
+  }
+
+  data class CachePull(val targets: TargetSelection) : Command {
+    override val name = CommandName.CACHE_PULL
   }
 
   data object CacheKeygen : Command {
@@ -508,7 +528,11 @@ private class ArgumentReader(private val arguments: List<String>) {
           else -> vipkgDesc()
         }
       "cache" ->
-        when (action("cache", "keygen", "serve")) {
+        when (action("cache", "status", "clean", "push", "pull", "keygen", "serve")) {
+          "status" -> Command.CacheStatus.also { finish(CommandName.CACHE_STATUS) }
+          "clean" -> Command.CacheClean.also { finish(CommandName.CACHE_CLEAN) }
+          "push" -> Command.CachePush.also { finish(CommandName.CACHE_PUSH) }
+          "pull" -> Command.CachePull(compiling(CommandName.CACHE_PULL).first)
           "keygen" -> Command.CacheKeygen.also { finish(CommandName.CACHE_KEYGEN) }
           else -> cacheServe()
         }

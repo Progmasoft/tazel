@@ -79,13 +79,16 @@ class CacheServer(private val settings: CacheServerSettings) : AutoCloseable {
     val file = fileOf(exchange.requestURI.path)
     val allowed =
       when (exchange.requestMethod) {
-        "GET" -> settings.readToken == null || presents(exchange, settings.readToken)
+        "GET",
+        "HEAD" -> settings.readToken == null || presents(exchange, settings.readToken)
         "PUT" -> settings.writeToken != null && presents(exchange, settings.writeToken)
         else -> return exchange.sendResponseHeaders(405, -1)
       }
     when {
       !allowed -> exchange.sendResponseHeaders(if (hasToken(exchange)) 403 else 401, -1)
       file == null -> exchange.sendResponseHeaders(404, -1)
+      exchange.requestMethod == "HEAD" ->
+        exchange.sendResponseHeaders(if (Files.isRegularFile(file)) 200 else 404, -1)
       exchange.requestMethod == "GET" -> send(exchange, file)
       else -> receive(exchange, file)
     }

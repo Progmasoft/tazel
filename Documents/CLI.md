@@ -79,6 +79,18 @@ The last line of a command counts what the cache saved: `Finished build, 3 of 4 
 
 `--no-cache` does the work anyway and still records the result. `.tazel/cache` can be deleted at any time.
 
+## Looking after the caches
+
+| Command | What it does |
+| --- | --- |
+| `tazel cache status` | shows for every project of the workspace what its local cache holds, by target, and how its remote cache stands: access, signatures, and whether it answers |
+| `tazel cache clean` | removes `.tazel/cache` of every project of the workspace; a remote cache is not touched |
+| `tazel cache push` | sends what the local caches hold and the server does not have; needs `write = true` |
+| `tazel cache pull [selection]` | fetches the results of the sources as they stand: of the builds, the checks, the test suites and of the suites that passed. Nothing is compiled, so the next build finds them, also without a network |
+
+A server keeps no list of its results and `pull` needs none, because the keys follow from the sources. `pull` asks each
+result separately and counts what it found: `Pulled 3 of 6 results`. A result that nobody built yet is not an error.
+
 ## A remote cache server
 
 `tazel cache serve` keeps the results of a [remote cache](PROJECT_FILES.md#buildcache) in a directory:
@@ -102,6 +114,8 @@ address but this machine. It looks at nothing inside a result; whether a result 
 its signature, so the server need not be trusted with that.
 
 `tazel cache keygen` prints a new pair of keys for a project file.
+
+Besides `GET` and `PUT` it answers `HEAD`, which `tazel cache push` uses to find what is there already.
 
 ## Test suites
 

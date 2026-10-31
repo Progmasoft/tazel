@@ -42,6 +42,7 @@ internal fun tazelVersion(): String =
 /** What each command takes after its name; shared by the help of one command. */
 private val usage =
   mapOf(
+    CommandName.CACHE_PULL to "[selection]",
     CommandName.CACHE_SERVE to
       "--directory Folder [--host Address] [--port Number] [--max-size Gigabytes]",
     CommandName.CHECK to "[selection] [--no-cache]",

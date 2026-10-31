@@ -174,6 +174,10 @@ class Tazel(
           throw Stop(
             "tazel ${command.name.words} needs ViGet, and the ViGet client is not implemented yet"
           )
+        Command.CacheStatus -> cacheStatus()
+        Command.CacheClean -> cacheClean()
+        Command.CachePush -> cachePush()
+        is Command.CachePull -> cachePull(command.targets)
         Command.CacheKeygen -> cacheKeygen()
         is Command.CacheServe -> cacheServe(command)
         is Command.Daemon ->
@@ -399,6 +403,18 @@ class Tazel(
     noCache: Boolean,
     progress: StepProgress,
   ): Path {
+    val run = executableRun(project, target, emit)
+    val extension = emit.extension ?: executableExtension(os)
+    val verb = if (emit == Emit.METADATA) "Checking" else "Compiling"
+    compile(compiler, project, run, verb, extension, noCache, progress)
+    return run.output
+  }
+
+  private fun executableRun(
+    project: LoadedProject,
+    target: ExecutableSourceTarget,
+    emit: Emit,
+  ): CompilerRun {
     val root = project.location.root
     val inputs =
       sources.discover(
@@ -411,17 +427,13 @@ class Tazel(
       throw Stop("executable '${target.name}' has no .tala source in ${target.srcDir}")
     }
     val extension = emit.extension ?: executableExtension(os)
-    val run =
-      CompilerRun(
-        "executable '${target.name}'",
-        "${emit.value}-${target.name}",
-        inputs,
-        compilerArguments(project.plan.compiler, target.entry, emit, inputs),
-        root.resolve(project.plan.outputDirectory).resolve(target.name + extension),
-      )
-    val verb = if (emit == Emit.METADATA) "Checking" else "Compiling"
-    compile(compiler, project, run, verb, extension, noCache, progress)
-    return run.output
+    return CompilerRun(
+      "executable '${target.name}'",
+      "${emit.value}-${target.name}",
+      inputs,
+      compilerArguments(project.plan.compiler, target.entry, emit, inputs),
+      root.resolve(project.plan.outputDirectory).resolve(target.name + extension),
+    )
   }
 
   private fun cacheOf(project: LoadedProject) =
@@ -617,11 +629,9 @@ class Tazel(
     val project = targets.project
     val root = project.location.root
     val cache = cacheOf(project)
-    val inputs = testInputs(targets, suite)
-    val arguments = compilerArguments(project.plan.compiler, null, Emit.EXECUTABLE, inputs)
-    val passedSlug = "passed-${suite.name}"
-    val passedKey =
-      buildKey(compilerIdentity(project), arguments, root, inputs + filesBelow(root, suite.testDir))
+    val run = suiteRun(targets, suite)
+    val passedSlug = passedSlugOf(suite)
+    val passedKey = passedKeyOf(project, suite, run)
     if (!noCache) {
       val totals = cache.load(passedSlug, passedKey, null)?.log?.let(TestTotals::parse)
       if (totals != null) {
@@ -631,9 +641,7 @@ class Tazel(
       }
     }
     val extension = executableExtension(os)
-    val program = root.resolve(".tazel/tests").resolve(suite.name).resolve(suite.name + extension)
-    val run =
-      CompilerRun("test suite '${suite.name}'", "test-${suite.name}", inputs, arguments, program)
+    val program = run.output
     compile(compiler, project, run, "Compiling", extension, noCache, progress)
     status("Testing", "${suite.name} " + brightBlue("(${project.displayName})"))
     var totals: TestTotals? = null
@@ -645,6 +653,35 @@ class Tazel(
     val result = SuiteResult(suite.name, exitCode, totals)
     if (result.passed) cache.store(passedSlug, passedKey, emptyList(), totals.toString())
     return result
+  }
+
+  private fun suiteRun(
+    targets: SelectedTargets,
+    suite: TestSuite,
+  ): CompilerRun {
+    val project = targets.project
+    val inputs = testInputs(targets, suite)
+    val runner = suite.name + executableExtension(os)
+    return CompilerRun(
+      "test suite '${suite.name}'",
+      "test-${suite.name}",
+      inputs,
+      compilerArguments(project.plan.compiler, null, Emit.EXECUTABLE, inputs),
+      project.location.root.resolve(".tazel/tests").resolve(suite.name).resolve(runner),
+    )
+  }
+
+  private fun passedSlugOf(suite: TestSuite) = "passed-${suite.name}"
+
+  /** The key of a suite that passed: its build, and every file of its test directory. */
+  private fun passedKeyOf(
+    project: LoadedProject,
+    suite: TestSuite,
+    run: CompilerRun,
+  ): String {
+    val root = project.location.root
+    val files = run.inputs + filesBelow(root, suite.testDir)
+    return buildKey(compilerIdentity(project), run.arguments, root, files)
   }
 
   /** Every file below [directory] of [root], data files included, in a stable order. */
@@ -688,6 +725,121 @@ class Tazel(
         )
       }
     return fail("$suites, $totals: ${failed.joinToString { "'${it.name}'" }} failed")
+  }
+
+  private fun sizeText(bytes: Long): String =
+    when {
+      bytes < 1L shl 10 -> "$bytes B"
+      bytes < 1L shl 20 -> "%.1f KiB".format(java.util.Locale.ROOT, bytes / 1024.0)
+      bytes < 1L shl 30 -> "%.1f MiB".format(java.util.Locale.ROOT, bytes / 1048576.0)
+      else -> "%.1f GiB".format(java.util.Locale.ROOT, bytes / 1073741824.0)
+    }
+
+  /** What the caches of the workspace hold and how they are set up. */
+  private fun cacheStatus(): Int {
+    for (project in load().all) {
+      val settings = project.plan.buildCache
+      val cache = cacheOf(project)
+      val results = cache.results()
+      terminal.println(bold(project.displayName))
+      val local =
+        if (settings.local.enabled) "at most ${settings.local.maxEntries} of each target"
+        else "turned off"
+      terminal.println(
+        "  local   ${results.size} results, ${sizeText(results.sumOf { it.bytes })}, $local"
+      )
+      results
+        .groupBy { it.slug }
+        .forEach { (slug, kept) ->
+          terminal.println("          $slug: ${kept.size}, ${sizeText(kept.sumOf { it.bytes })}")
+        }
+      val remote = settings.remote
+      if (remote == null) {
+        terminal.println("  remote  none")
+        continue
+      }
+      val access =
+        listOfNotNull("read".takeIf { remote.read }, "write".takeIf { remote.write })
+          .ifEmpty { listOf("no access") }
+          .joinToString(" and ")
+      val trust = if (remote.publicKey == null) "results not verified" else "signed results only"
+      val reach = cache.remoteProblem()?.let { "not reachable: $it" } ?: "reachable"
+      terminal.println("  remote  ${remote.url}, $access, $trust, $reach")
+    }
+    return ExitCode.SUCCESS
+  }
+
+  /** Removes the local caches of the workspace. A remote cache is not touched. */
+  private fun cacheClean(): Int {
+    for (project in load().all) {
+      status("Cleaned", "${project.displayName} ${sizeText(cacheOf(project).clean())}")
+    }
+    return ExitCode.SUCCESS
+  }
+
+  /** Sends what the local caches hold and the remote one does not. */
+  private fun cachePush(): Int {
+    var result = ExitCode.SUCCESS
+    for (project in load().all) {
+      val remote =
+        project.plan.buildCache.remote
+          ?: throw Stop("${project.displayName} has no buildCache.remote to push to")
+      if (!remote.write) {
+        throw Stop("${project.displayName} has buildCache.remote.write = false")
+      }
+      val pushed = cacheOf(project).push()
+      status(
+        "Pushed",
+        "${project.displayName} " + "${pushed.sent} sent, ${pushed.present} already there",
+      )
+      if (pushed.failed) result = ExitCode.FAILURE
+    }
+    return result
+  }
+
+  /**
+   * Fetches the results of the sources as they stand into the local caches, so that the work is
+   * ready before a build, or before the network goes away. A server has no list of its results and
+   * needs none: the keys follow from the sources.
+   */
+  private fun cachePull(selection: TargetSelection): Int {
+    var found = 0
+    var wanted = 0
+    for (targets in select(load().all, selection)) {
+      val project = targets.project
+      val settings = project.plan.buildCache
+      if (settings.remote?.read != true) {
+        throw Stop("${project.displayName} has no buildCache.remote to read from")
+      }
+      if (!settings.local.enabled) {
+        throw Stop(
+          "${project.displayName} has buildCache.local.enabled = false: nothing can be kept"
+        )
+      }
+      val root = project.location.root
+      val cache = cacheOf(project)
+      fun fetch(
+        slug: String,
+        key: String,
+      ) {
+        wanted++
+        if (cache.load(slug, key, null) != null) found++
+      }
+      val identity = compilerIdentity(project)
+      fun fetch(run: CompilerRun) =
+        fetch(run.slug, buildKey(identity, run.arguments, root, run.inputs))
+      for (executable in targets.executables) {
+        fetch(executableRun(project, executable, Emit.EXECUTABLE))
+        fetch(executableRun(project, executable, Emit.METADATA))
+      }
+      for (suite in project.plan.testSuites) {
+        val run = suiteRun(targets, suite)
+        fetch(run)
+        fetch(passedSlugOf(suite), passedKeyOf(project, suite, run))
+      }
+    }
+    status("Pulled", "$found of $wanted results")
+    return ExitCode.SUCCESS
   }
 
   /** Prints a new pair of keys; the signing key is shown here and kept nowhere. */
