@@ -83,7 +83,7 @@ gradlePlugin {
       displayName = "Tazel plugin"
       description =
         "Builds a plugin of the Tazel project file: adds the Tazel API from " +
-        "https://maven.progmasoft.com/tazel as tazelApi(), and writes the descriptor and the " +
+        "https://maven.progmasoft.com/tazel/ as tazelApi(), and writes the descriptor and the " +
         "service entry of the plugin from the tazelPlugin { } block."
       // The Portal refuses the tags "gradle" and "plugin".
       tags = listOf("tazel", "tala", "build", "kotlin-dsl")
