@@ -5,6 +5,17 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-31
+
+Two changes need an edit in existing project files:
+
+- `project.name` is always required. A project file without it, such as the root
+  of a workspace with no `project` block, has to add it.
+- `compiler.version` is gone from project files. Loading a project no longer starts
+  talac to ask for its version.
+
+Everything else adds to what was there:
+
 - Compiler runs and test suites run in parallel, one job per processor unless
   `--jobs`, `--cpus`, `--memory` or the `execution` block says otherwise.
 - `--keep-going`, `--profile`, and `--no-incremental` for debug builds, which now
@@ -13,13 +24,8 @@
   `tazel remote serve` is the server.
 - `tazel jvm start-daemon --max-heap` limits the heap of the daemon.
 - `tazel custom` runs the commands of `tazel_custom.txt`.
-- `project.name` is always required. A project file without it, such as the root
-  of a workspace with no `project` block, has to add it.
-- `compiler.version` is gone from project files. Loading a project no longer starts
-  talac to ask for its version.
 - Project files move to the Progmasoft Linking Exception, Version 2.0. Earlier
   releases can rely on Version 2.0 too.
-
 - `tazel fetch` fetches the dependencies of a project ahead of time.
 - `tazel cache status`, `clean`, `push` and `pull` look after the build caches.
 - `tazel cache serve` is a server for the remote build cache, and `tazel cache
