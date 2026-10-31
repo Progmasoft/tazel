@@ -135,12 +135,8 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
   private val libraries = mutableListOf<LibrarySourceTarget>()
   private val testSuites = mutableListOf<TestSuite>()
   private var buildCache: BuildCacheSettings? = null
-<<<<<<< HEAD
   private var execution: ExecutionSettings? = null
-  internal val compilerSettings = CompilerSettings().apply { version = compilerVersion }
-=======
   internal val compilerSettings = CompilerSettings()
->>>>>>> origin/main
 
   val projectName: String?
     get() = identity?.name

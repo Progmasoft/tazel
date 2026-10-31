@@ -208,11 +208,13 @@ fun main(arguments: Array<String>) {
           exitProcess(runDaemonCommand(terminal, command.action, client, started))
         }
         val mode = DaemonMode.of(environment::get)
-        // A server stays for as long as it runs, and a signing key has no business in the daemon.
+        // A server stays for as long as it runs, a signing key has no business in the daemon, and a
+        // custom command has the terminal and may well start tazel itself.
         val here =
           command is Command.CacheServe ||
             command is Command.RemoteServe ||
-            command == Command.CacheKeygen
+            command == Command.CacheKeygen ||
+            command is Command.Custom
         if (!here) {
           forwardToDaemon(terminal, arguments.toList(), client, mode, environment, timings)?.let {
             timings.report().forEach { line -> terminal.println(dim(line), stderr = true) }

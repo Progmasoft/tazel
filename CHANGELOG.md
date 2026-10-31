@@ -12,6 +12,7 @@
 - `--remote-executor` and `execution.remote` compile on another machine, and
   `tazel remote serve` is the server.
 - `tazel jvm start-daemon --max-heap` limits the heap of the daemon.
+- `tazel custom` runs the commands of `tazel_custom.txt`.
 - `project.name` is always required. A project file without it, such as the root
   of a workspace with no `project` block, has to add it.
 - `compiler.version` is gone from project files. Loading a project no longer starts
