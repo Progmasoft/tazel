@@ -122,6 +122,11 @@ class ProjectLoader(
   private val keepBuildSteps: Boolean = false,
   /** Where plugins missing from the plugin cache of a project are fetched from. */
   private val registry: PluginRegistry? = ViGetPlugins(),
+  /**
+   * The environment of the command when it is not the one of this JVM, which is the case in the
+   * daemon. `System.getenv` in a project file reads the JVM's, so a difference stops the load.
+   */
+  private val commandEnvironment: Map<String, String>? = null,
 ) {
   private val host by lazy { timings.measure(Phase.SCRIPT_HOST) { BasicJvmScriptingHost() } }
 
@@ -135,6 +140,7 @@ class ProjectLoader(
           "${location.file} could not be read as UTF-8 text: ${error.message}"
         )
       }
+    commandEnvironment?.let { requireSameEnvironment(source, it) }
     val plugins =
       timings.measure(Phase.PLUGINS) {
         PluginResolver.resolve(location.root, PluginPreamble.parse(source), registry)
@@ -325,3 +331,27 @@ private fun ownClasspath(): List<Path> =
 
 /** Serializes compilations of project files in this JVM. */
 private val compilerLock = Any()
+
+/** A project file reads a variable whose value here is not the one its command has. */
+class StaleEnvironmentException(val name: String) : RuntimeException("$name differs")
+
+private val GETENV = Regex("""getenv\(\s*"([^"$]+)"\s*\)""")
+
+/**
+ * Stops at the first variable [source] names whose value in [environment] is not the one this JVM
+ * sees. Names are compared as the host compares them.
+ */
+internal fun requireSameEnvironment(
+  source: String,
+  environment: Map<String, String>,
+  jvm: (String) -> String? = System::getenv,
+  ignoreCase: Boolean = detectHost().os == OperatingSystem.WINDOWS,
+) {
+  for (match in GETENV.findAll(source)) {
+    val name = match.groupValues[1]
+    val value =
+      environment[name]
+        ?: environment.entries.firstOrNull { it.key.equals(name, ignoreCase) }?.value
+    if (value != jvm(name)) throw StaleEnvironmentException(name)
+  }
+}

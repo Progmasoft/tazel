@@ -5,6 +5,22 @@
 
 ## Unreleased
 
+- `tazel cache serve` is a server for the remote build cache, and `tazel cache
+  keygen` makes the keys that sign its results. A project with
+  `buildCache.remote.publicKey` uses only results signed for that key, that
+  target and that cache key.
+- A project file that reads a variable with `System.getenv` gets the value of the
+  command under the daemon too: when it differs, the command runs without the
+  daemon and the next one starts a new daemon.
+- A compiler run says why it runs: `Sources/Math.tala changed`, `the settings
+  changed`, `the compiler changed`. The last line of a command counts what the
+  cache saved, and a test suite that failed last time runs first.
+- `buildCache { local { enabled, maxEntries } remote { url, read, write, token } }`
+  chooses where results are kept. The local cache is asked first; a remote cache
+  shares results between machines over `GET` and `PUT`, needs `https` except on
+  this machine, and is a warning rather than a failure when it does not answer.
+- Build cache keys follow the contents of the compiler and include the host, so
+  they are the same on every machine with that compiler.
 - `compiler { staticTalaRTLibrary = true }` links TalaRT into the output and
   `false` keeps it beside the output; `null`, the default, writes no option and
   leaves the choice to Talac.

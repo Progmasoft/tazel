@@ -15,7 +15,11 @@ import com.github.ajalt.mordant.terminal.Terminal
 import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
 import com.progmasoft.tazel.driver.BuildCache
+import com.progmasoft.tazel.driver.BuildInputs
+import com.progmasoft.tazel.driver.CacheServer
+import com.progmasoft.tazel.driver.CacheServerSettings
 import com.progmasoft.tazel.driver.Emit
+import com.progmasoft.tazel.driver.HttpRemoteStore
 import com.progmasoft.tazel.driver.LoadedWorkspace
 import com.progmasoft.tazel.driver.Processes
 import com.progmasoft.tazel.driver.RUNTIME_LIBRARIES
@@ -41,6 +45,7 @@ import com.progmasoft.tazel.dsl.OperatingSystem
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectLoader
 import com.progmasoft.tazel.dsl.ProjectLocation
+import com.progmasoft.tazel.dsl.ResultKeys
 import com.progmasoft.tazel.dsl.ScriptCache
 import com.progmasoft.tazel.dsl.TestSuite
 import com.progmasoft.tazel.dsl.Timings
@@ -119,12 +124,29 @@ class Tazel(
   private val timings: Timings = Timings.disabled,
   /** --color, --progress and --quiet; the terminal already has the colors they ask for. */
   private val output: OutputOptions = OutputOptions(),
+  /** The environment of the command when this JVM does not have it, as in the daemon. */
+  private val commandEnvironment: Map<String, String>? = null,
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
-  /** The compiler as the keys of the build cache see it; asked for once per command. */
-  private val compilerIdentity by lazy {
-    toolIdentity(toolchain.require(Tool.TALAC), compilerVersion())
+  /** What the compiler reports; asked for once per command. */
+  private val talacVersion by lazy { compilerVersion() }
+
+  /** The caches of the projects at hand: a remote one that failed stays failed for the command. */
+  private val caches = mutableMapOf<Path, BuildCache>()
+
+  /** Compiler runs and test runs of this command that were done, and those a result saved. */
+  private var workDone = 0
+  private var workSaved = 0
+
+  /**
+   * The compiler and the host as the keys of the build cache see them. The host counts because a
+   * result can come from another machine, and a program only suits its own kind.
+   */
+  private fun compilerIdentity(project: LoadedProject): String {
+    val memo = project.location.root.resolve(BuildCache.DIRECTORY).resolve(BuildCache.COMPILER_MEMO)
+    val compiler = toolIdentity(toolchain.require(Tool.TALAC), talacVersion, memo)
+    return listOf(compiler, os, detectHost().architecture).joinToString("\n")
   }
 
   fun run(command: Command): Int =
@@ -152,6 +174,8 @@ class Tazel(
           throw Stop(
             "tazel ${command.name.words} needs ViGet, and the ViGet client is not implemented yet"
           )
+        Command.CacheKeygen -> cacheKeygen()
+        is Command.CacheServe -> cacheServe(command)
         is Command.Daemon ->
           throw Stop("tazel ${command.name.words} manages the daemon from the command line itself")
         Command.ViPkgCreate ->
@@ -197,7 +221,8 @@ class Tazel(
     started: TimeSource.Monotonic.ValueTimeMark,
   ) {
     val seconds = started.elapsedNow().inWholeMilliseconds / 1000.0
-    status("Finished", "$what " + dim("in ${"%.2f".format(java.util.Locale.ROOT, seconds)}s"))
+    val saved = if (workSaved > 0) ", $workSaved of ${workDone + workSaved} from the cache" else ""
+    status("Finished", "$what$saved " + dim("in ${"%.2f".format(java.util.Locale.ROOT, seconds)}s"))
   }
 
   private fun fail(
@@ -221,7 +246,14 @@ class Tazel(
     terminal.println((bold + brightYellow)("warning") + ": " + message, stderr = true)
 
   private fun projectLoader(forBuild: Boolean = false) =
-    ProjectLoader(compilerVersion(), scriptCache, timings, version, keepBuildSteps = forBuild)
+    ProjectLoader(
+      compilerVersion(),
+      scriptCache,
+      timings,
+      version,
+      keepBuildSteps = forBuild,
+      commandEnvironment = commandEnvironment,
+    )
 
   private fun compilerVersion(): String =
     toolchain
@@ -393,7 +425,15 @@ class Tazel(
   }
 
   private fun cacheOf(project: LoadedProject) =
-    BuildCache(project.location.root.resolve(BuildCache.DIRECTORY), ::warn)
+    caches.getOrPut(project.location.root) {
+      val settings = project.plan.buildCache
+      BuildCache(
+        project.location.root.resolve(BuildCache.DIRECTORY),
+        settings,
+        settings.remote?.let(::HttpRemoteStore),
+        ::warn,
+      )
+    }
 
   /**
    * Runs the compiler, or brings back what an earlier run with the same key left, warnings
@@ -411,19 +451,22 @@ class Tazel(
   ): String {
     val root = project.location.root
     val cache = cacheOf(project)
-    val key = buildKey(compilerIdentity, run.arguments, root, run.inputs)
-    val log = cache.log(run.slug, key)
-    val restored =
-      if (noCache || log == null) null else cache.restore(run.slug, key, run.output.parent)
+    val inputs = BuildInputs.of(compilerIdentity(project), run.arguments, root, run.inputs)
+    val key = inputs.key
+    val hit = if (noCache) null else cache.load(run.slug, key, run.output.parent)
     val description = brightBlue("(${project.displayName}, ${run.inputs.size} sources)")
     val name = run.output.fileName.toString().removeSuffix(extension)
-    if (log != null && restored != null) {
-      if (log.isNotBlank()) terminal.println(log.trimEnd(), stderr = true)
-      val state = if (restored == BuildCache.Restored.FRESH) "Fresh" else "Restored"
+    if (hit != null) {
+      if (hit.log.isNotBlank()) terminal.println(hit.log.trimEnd(), stderr = true)
+      val state = if (hit.restored == BuildCache.Restored.FRESH) "Fresh" else "Restored"
       status(state, "$name $description")
+      cache.remember(run.slug, inputs)
+      workSaved++
       return key
     }
-    status(verb, "$name $description")
+    val reason = if (noCache) "--no-cache" else cache.latest(run.slug)?.let(inputs::changeFrom)
+    status(verb, "$name $description" + (reason?.let { " " + dim(it) } ?: ""))
+    workDone++
     val result = processes.runGathered(listOf(compiler.toString()) + run.arguments, root)
     // Talac names the place it linked to, which Tazel is about to leave; the rest is diagnostics.
     val diagnostics =
@@ -448,6 +491,7 @@ class Tazel(
           }
         }
     cache.store(run.slug, key, outputs, diagnostics)
+    cache.remember(run.slug, inputs)
     return key
   }
 
@@ -516,11 +560,20 @@ class Tazel(
           requireNoDependencies(project, DependencyScope.BUILD)
           requireNoDependencies(project, DependencyScope.TEST)
           runBuildSteps(project, progress)
-          for (suite in project.plan.testSuites) {
-            progress.working(suite.name)
-            results += runSuite(compiler, targets, suite, command.noCache, progress)
-            progress.done()
-          }
+          // What failed last time is what is being worked on, so it answers first.
+          val cache = cacheOf(project)
+          val failed = cache.failedSuites()
+          val ran =
+            project.plan.testSuites
+              .sortedBy { it.name !in failed }
+              .map { suite ->
+                progress.working(suite.name)
+                runSuite(compiler, targets, suite, command.noCache, progress).also {
+                  progress.done()
+                }
+              }
+          cache.rememberFailedSuites(ran.filterNot { it.passed }.map { it.name })
+          results += ran
         }
       }
       return reportTests(results, started)
@@ -568,11 +621,12 @@ class Tazel(
     val arguments = compilerArguments(project.plan.compiler, null, Emit.EXECUTABLE, inputs)
     val passedSlug = "passed-${suite.name}"
     val passedKey =
-      buildKey(compilerIdentity, arguments, root, inputs + filesBelow(root, suite.testDir))
+      buildKey(compilerIdentity(project), arguments, root, inputs + filesBelow(root, suite.testDir))
     if (!noCache) {
-      val totals = cache.log(passedSlug, passedKey)?.let(TestTotals::parse)
+      val totals = cache.load(passedSlug, passedKey, null)?.log?.let(TestTotals::parse)
       if (totals != null) {
         status("Cached", "${suite.name} " + brightBlue("(${project.displayName}, $totals)"))
+        workSaved++
         return SuiteResult(suite.name, ExitCode.SUCCESS, totals)
       }
     }
@@ -634,6 +688,36 @@ class Tazel(
         )
       }
     return fail("$suites, $totals: ${failed.joinToString { "'${it.name}'" }} failed")
+  }
+
+  /** Prints a new pair of keys; the signing key is shown here and kept nowhere. */
+  private fun cacheKeygen(): Int {
+    val (public, signing) = ResultKeys.generate()
+    terminal.println("publicKey = \"$public\"")
+    terminal.println("signingKey = \"$signing\"")
+    return ExitCode.SUCCESS
+  }
+
+  private fun cacheServe(command: Command.CacheServe): Int {
+    fun token(name: String) = System.getenv(name)?.takeIf(String::isNotBlank)
+    val settings =
+      CacheServerSettings(
+        directory.resolve(command.directory).toAbsolutePath().normalize(),
+        command.host,
+        command.port,
+        command.maxGigabytes * (1L shl 30),
+        token("TAZEL_CACHE_TOKEN"),
+        token("TAZEL_CACHE_READ_TOKEN"),
+      )
+    CacheServer(settings).use { server ->
+      server.start()
+      status("Serving", "${settings.directory} on http://${settings.host}:${server.port}")
+      if (settings.writeToken == null) {
+        warn("TAZEL_CACHE_TOKEN is not set, so this cache takes no results")
+      }
+      Thread.currentThread().join()
+    }
+    return ExitCode.SUCCESS
   }
 
   private fun lockResolve(): Int {

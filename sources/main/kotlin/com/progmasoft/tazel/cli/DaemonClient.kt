@@ -218,6 +218,7 @@ internal class DaemonClient(
         FrameKind.STDOUT -> output.write(frame.payload).also { output.flush() }
         FrameKind.STDERR -> errors.write(frame.payload).also { errors.flush() }
         FrameKind.EXIT -> return RunExit.of(frame)
+        FrameKind.STALE -> return RunExit(ExitCode.SUCCESS, emptyMap(), stale = true)
         else -> return null
       }
     }

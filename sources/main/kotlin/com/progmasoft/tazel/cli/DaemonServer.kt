@@ -9,6 +9,7 @@ import com.github.ajalt.mordant.terminal.Terminal
 import com.progmasoft.tazel.driver.Toolchain
 import com.progmasoft.tazel.dsl.Phase
 import com.progmasoft.tazel.dsl.ScriptCache
+import com.progmasoft.tazel.dsl.StaleEnvironmentException
 import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.detectHost
 import java.io.IOException
@@ -197,7 +198,14 @@ internal class DaemonServer(
       val input = RequestInput()
       thread(isDaemon = true, name = "tazel-daemon-input") { listen(reader, sink, input) }
       val timings = Timings.fromEnvironment(request.environment::get)
-      val code = RoutedStream.routedTo(sink) { execute(request, sink, input, timings) }
+      val code =
+        try {
+          RoutedStream.routedTo(sink) { execute(request, sink, input, timings) }
+        } catch (_: StaleEnvironmentException) {
+          // Nothing has happened yet: the first thing a command does is to load the project.
+          if (sink.connected) writer.write(Frame(FrameKind.STALE))
+          return
+        }
       if (sink.connected) {
         val phases = timings.totals().map { (phase, duration) -> phase.name to duration.toNanos() }
         writer.write(RunExit(code, phases.toMap()).frame())
@@ -264,6 +272,7 @@ internal class DaemonServer(
             ScriptCache.forUser(request.environment::get),
             timings,
             parsed.output,
+            request.environment,
           )
         timings.measure(Phase.COMMAND) { tazel.run(parsed.command) }
       }

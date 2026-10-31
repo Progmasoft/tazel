@@ -56,13 +56,52 @@ program, so a target is the unit: one changed source compiles the whole target, 
     Finished build in 0.31s
 ```
 
-Contents count and times do not, so a file that was only touched changes nothing. Results stay in `.tazel/cache` of the
-project, the last eight of each target, so going back to an earlier branch or build mode shows `Restored` and compiles
+Contents count and times do not, so a file that was only touched changes nothing. The compiler is known by its version
+and the contents of its files, and the system and architecture of the host count too, so two machines with the same
+compiler, the same sources and the same settings have the same results; the [`buildCache`](PROJECT_FILES.md#buildcache)
+block of the project file can share them through a server. Results stay in `.tazel/cache` of the project, by default the
+last eight of each target, so going back to an earlier branch or build mode shows `Restored` and compiles
 nothing. A program that was deleted or changed comes back the same way. The warnings of the run that made a result are
 shown again every time it is used. A run that failed leaves no result. The steps of plugins are not skipped: they run in
 every build, before the sources are read, so what they generate counts.
 
+A run says why it runs, which is the first thing to ask about a build that took long:
+
+```text
+   Compiling Demo (Demo, 12 sources) Sources/Math.tala changed
+   Compiling Demo (Demo, 13 sources) Sources/New.tala added
+   Compiling Demo (Demo, 12 sources) Sources/Math.tala changed, and 2 more
+   Compiling Demo (Demo, 12 sources) the settings changed
+   Compiling Demo (Demo, 12 sources) the compiler changed
+```
+
+The last line of a command counts what the cache saved: `Finished build, 3 of 4 from the cache in 2.10s`.
+
 `--no-cache` does the work anyway and still records the result. `.tazel/cache` can be deleted at any time.
+
+## A remote cache server
+
+`tazel cache serve` keeps the results of a [remote cache](PROJECT_FILES.md#buildcache) in a directory:
+
+```text
+tazel cache serve --directory /var/cache/tazel --port 7723 --max-size 50
+```
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `--directory` | required | where the results are kept |
+| `--host` | `127.0.0.1` | the address it listens on |
+| `--port` | `7723` | the port it listens on |
+| `--max-size` | `10` | gigabytes it keeps; the results used longest ago go first |
+
+`TAZEL_CACHE_TOKEN` is the token a `PUT` needs; without it the server takes no results. `TAZEL_CACHE_READ_TOKEN`, when set, is
+the token a `GET` needs. Tokens stay out of the command line, where other users could read them.
+
+The server speaks plain HTTP. For other machines it stands behind a proxy with TLS, because Tazel takes `https` for every
+address but this machine. It looks at nothing inside a result; whether a result is genuine is decided by the reader through
+its signature, so the server need not be trusted with that.
+
+`tazel cache keygen` prints a new pair of keys for a project file.
 
 ## Test suites
 
@@ -90,7 +129,8 @@ code is `1` when a test failed, and also when a runner stopped before it wrote i
 
 A suite that passed is not run again while everything it can see stays the same: its sources, the settings, the compiler
 and every file below its `testDir`, data files included. It then shows `Cached` and counts in the totals. A suite that
-failed always runs again. A test that reads anything else, such as a file outside the project or the network, needs
+failed always runs again, and it runs first, so the answer to what is being worked on comes before the rest. A test that
+reads anything else, such as a file outside the project or the network, needs
 `--no-cache`; so does a run in CI that has to prove the tests pass.
 
 ## Selecting targets

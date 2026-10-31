@@ -118,6 +118,12 @@ internal fun forwardToDaemon(
     reportError(terminal, "the daemon went away before the command ended; see its log")
     return ExitCode.FAILURE
   }
+  if (exit.stale) {
+    // The project file reads a variable that changed since the daemon started. The command runs
+    // here, and the next one starts a daemon that sees the new value.
+    client.stop()
+    return null
+  }
   val total = Duration.ofNanos(System.nanoTime() - started)
   var command = Duration.ZERO
   exit.phases.forEach { (name, nanos) ->
