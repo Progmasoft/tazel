@@ -22,7 +22,11 @@ internal class Fixture(
   val root: Path,
   val recorder: TerminalRecorder = TerminalRecorder(),
 ) : Processes {
-  val commands = mutableListOf<Pair<List<String>, Path>>()
+  val commands: MutableList<Pair<List<String>, Path>> =
+    java.util.Collections.synchronizedList(mutableListOf())
+
+  /** How many jobs a command runs unless told otherwise: one, so that its order is known. */
+  var processors = 1
   var compilerExitCode = 0
   var programExitCode = 0
 
@@ -54,14 +58,22 @@ internal class Fixture(
     Files.writeString(path, text.trimIndent())
   }
 
-  fun tazel(directory: String = "."): Tazel =
+  /** What a command finds in its environment. */
+  val environment = mutableMapOf<String, String>()
+
+  fun tazel(
+    directory: String = ".",
+    processes: Processes = this,
+  ): Tazel =
     Tazel(
       Terminal(terminalInterface = recorder),
       root.resolve(directory).normalize(),
       OperatingSystem.LINUX,
       Toolchain(OperatingSystem.LINUX, mapOf("PATH" to root.resolve("tools").toString()), null),
-      this,
+      processes,
       "1.2.3",
+      commandEnvironment = environment,
+      processors = processors,
     )
 
   fun run(
@@ -71,6 +83,16 @@ internal class Fixture(
     val parsed = parseCommandLine(arguments.toList())
     check(parsed is ParseResult.Parsed) { "not a command line: ${arguments.toList()}" }
     return tazel(directory).run(parsed.command)
+  }
+
+  /** Runs a command line with [processes] starting its programs. */
+  fun runWith(
+    processes: Processes,
+    vararg arguments: String,
+  ): Int {
+    val parsed = parseCommandLine(arguments.toList())
+    check(parsed is ParseResult.Parsed) { "not a command line: ${arguments.toList()}" }
+    return tazel(processes = processes).run(parsed.command)
   }
 
   /** The recorded command lines of one tool, without the path of the tool. */

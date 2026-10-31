@@ -143,6 +143,7 @@ internal constructor(
   private val libraries = mutableListOf<LibrarySourceTarget>()
   private val testSuites = mutableListOf<TestSuite>()
   private var buildCache: BuildCacheSettings? = null
+  private var execution: ExecutionSettings? = null
   internal val compilerSettings = CompilerSettings().apply { version = compilerVersion }
 
   val projectName: String?
@@ -227,6 +228,13 @@ internal constructor(
     CompilerScope(compilerSettings).apply(block)
   }
 
+  fun execution(block: ExecutionScope.() -> Unit) {
+    if (execution != null) {
+      throw ProjectConfigurationException("execution may be configured only once")
+    }
+    execution = ExecutionScope().apply(block).build()
+  }
+
   fun buildCache(block: BuildCacheScope.() -> Unit) {
     if (buildCache != null) {
       throw ProjectConfigurationException("buildCache may be configured only once")
@@ -286,6 +294,7 @@ internal constructor(
         compilerSettings.copy(),
         emptyList(),
         buildCache ?: BuildCacheSettings(),
+        execution ?: ExecutionSettings(),
       )
     return plugins.finish(plan)
   }
@@ -400,6 +409,8 @@ internal object ProjectRuntime {
 
   fun buildCache(block: BuildCacheScope.() -> Unit) = current().buildCache(block)
 
+  fun execution(block: ExecutionScope.() -> Unit) = current().execution(block)
+
   fun build() = current().build()
 
   val compilerScope
@@ -432,6 +443,8 @@ fun compiler(block: CompilerScope.() -> Unit) = ProjectRuntime.compiler(block)
 
 /** Where results of earlier runs are kept: `local`, which is asked first, and `remote`. */
 fun buildCache(block: BuildCacheScope.() -> Unit) = ProjectRuntime.buildCache(block)
+
+fun execution(block: ExecutionScope.() -> Unit) = ProjectRuntime.execution(block)
 
 /**
  * The compiler settings as they stand, so a project file can read them after its `compiler` block:

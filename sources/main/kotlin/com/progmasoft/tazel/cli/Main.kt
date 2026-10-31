@@ -55,6 +55,7 @@ private val usage =
     CommandName.INSTALL to "[--global | -g] Publisher.Name",
     CommandName.VIGET_VIPKG_DESC to "Publisher.Name",
     CommandName.HELP to "[command]",
+    CommandName.REMOTE_SERVE to "[--host Address] [--port Number] [--jobs Number]",
     CommandName.FMT to "[-- talafmt options]",
     CommandName.LINT to "[--workspace | selection] [-- talalint options]",
   )
@@ -69,7 +70,18 @@ private const val SELECTION_HELP =
     "a flag takes a list: -e=First,Second.\n" +
     "Work whose inputs did not change is not done again, and a test suite that passed is not run\n" +
     "again.\n" +
-    "  --no-cache              do the work anyway"
+    "  --no-cache              do the work anyway\n" +
+    "These say how to spend the machine, and go before the execution block of the project file.\n" +
+    "  --jobs, -j Number       how many compiler runs and test suites run at once\n" +
+    "  --cpus Number           how many processors the command may keep busy\n" +
+    "  --memory Size           how much the jobs may hold together, such as 8g\n" +
+    "  --memory-per-job Size   what one job is reckoned to hold; 1g unless told\n" +
+    "  --keep-going, -k        go on with the other jobs after one failed\n" +
+    "  --incremental           keep an object per source in a debug build; the default\n" +
+    "  --no-incremental        build whole\n" +
+    "  --profile File          write a Chrome trace of the jobs\n" +
+    "  --remote-executor URL   compile on that machine; TAZEL_REMOTE_TOKEN is its token\n" +
+    "  --no-remote-executor    compile here, whatever the project file says"
 
 private const val GRAPH_HELP =
   "Every project of the workspace is a root of the graph. A dependency that a feature of the\n" +
@@ -190,11 +202,17 @@ fun main(arguments: Array<String>) {
         val environment = System.getenv()
         val client = DaemonClient(DaemonPaths.forInstallation(tazelVersion()), tazelVersion())
         if (command is Command.Daemon) {
-          exitProcess(runDaemonCommand(terminal, command.action, client, environment))
+          val started =
+            environment +
+              command.maxHeap?.let { "TAZEL_DAEMON_MAX_HEAP" to it }.let(::listOfNotNull)
+          exitProcess(runDaemonCommand(terminal, command.action, client, started))
         }
         val mode = DaemonMode.of(environment::get)
         // A server stays for as long as it runs, and a signing key has no business in the daemon.
-        val here = command is Command.CacheServe || command == Command.CacheKeygen
+        val here =
+          command is Command.CacheServe ||
+            command is Command.RemoteServe ||
+            command == Command.CacheKeygen
         if (!here) {
           forwardToDaemon(terminal, arguments.toList(), client, mode, environment, timings)?.let {
             timings.report().forEach { line -> terminal.println(dim(line), stderr = true) }

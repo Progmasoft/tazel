@@ -16,13 +16,23 @@ import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
 import com.progmasoft.tazel.driver.BuildCache
 import com.progmasoft.tazel.driver.BuildInputs
+import com.progmasoft.tazel.driver.BuildProfile
 import com.progmasoft.tazel.driver.CacheServer
 import com.progmasoft.tazel.driver.CacheServerSettings
+import com.progmasoft.tazel.driver.DirectoryLocks
 import com.progmasoft.tazel.driver.Emit
+import com.progmasoft.tazel.driver.GatheredRun
+import com.progmasoft.tazel.driver.HttpRemoteCompiler
 import com.progmasoft.tazel.driver.HttpRemoteStore
+import com.progmasoft.tazel.driver.JobFailures
+import com.progmasoft.tazel.driver.JobPool
 import com.progmasoft.tazel.driver.LoadedWorkspace
 import com.progmasoft.tazel.driver.Processes
 import com.progmasoft.tazel.driver.RUNTIME_LIBRARIES
+import com.progmasoft.tazel.driver.RemoteCompilation
+import com.progmasoft.tazel.driver.RemoteCompiler
+import com.progmasoft.tazel.driver.RemoteServer
+import com.progmasoft.tazel.driver.RemoteServerSettings
 import com.progmasoft.tazel.driver.SelectedTargets
 import com.progmasoft.tazel.driver.SourceFiles
 import com.progmasoft.tazel.driver.TestTotals
@@ -34,9 +44,11 @@ import com.progmasoft.tazel.driver.compilerArguments
 import com.progmasoft.tazel.driver.displayName
 import com.progmasoft.tazel.driver.executableExtension
 import com.progmasoft.tazel.driver.hasTargets
+import com.progmasoft.tazel.driver.isPlainPath
 import com.progmasoft.tazel.driver.loadWorkspace
 import com.progmasoft.tazel.driver.select
 import com.progmasoft.tazel.driver.toolIdentity
+import com.progmasoft.tazel.dsl.BuildMode
 import com.progmasoft.tazel.dsl.DependencyScope
 import com.progmasoft.tazel.dsl.ExecutableSourceTarget
 import com.progmasoft.tazel.dsl.Host
@@ -52,20 +64,26 @@ import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.coordinate
 import com.progmasoft.tazel.dsl.detectHost
 import com.progmasoft.tazel.dsl.discoverProject
+import com.progmasoft.tazel.dsl.effectiveJobs
 import com.progmasoft.tazel.dsl.plugin.toPluginBuildMode
 import com.progmasoft.tazel.dsl.plugin.toPluginHost
 import com.progmasoft.tazel.dsl.plugin.toPluginSummary
 import com.progmasoft.tazel.dsl.projectFileIn
+import com.progmasoft.tazel.dsl.remoteExecutionSettings
 import com.progmasoft.tazel.lock.LockedPlugin
 import com.progmasoft.tazel.lock.LockedProject
 import com.progmasoft.tazel.lock.LockfileDump
 import com.progmasoft.tazel.lock.ProjectLockFile
+import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.TimeSource
 
 /** The exit codes of Tazel. A program run by `tazel run` hands its own code through. */
@@ -79,6 +97,8 @@ object ExitCode {
  * A command that stops with a message; the message is all the user needs to see, with [hint] under
  * it when a word looks like a typo of a real one.
  */
+private const val REMOTE_TOKEN = "TAZEL_REMOTE_TOKEN"
+
 private class Stop(
   message: String,
   val hint: String? = null,
@@ -126,6 +146,8 @@ class Tazel(
   private val output: OutputOptions = OutputOptions(),
   /** The environment of the command when this JVM does not have it, as in the daemon. */
   private val commandEnvironment: Map<String, String>? = null,
+  /** The processors of the machine, which is how many jobs run unless told otherwise. */
+  private val processors: Int = Runtime.getRuntime().availableProcessors(),
 ) {
   private val sources = SourceFiles(ignoreCase = os == OperatingSystem.WINDOWS)
 
@@ -133,11 +155,24 @@ class Tazel(
   private val talacVersion by lazy { compilerVersion() }
 
   /** The caches of the projects at hand: a remote one that failed stays failed for the command. */
-  private val caches = mutableMapOf<Path, BuildCache>()
+  private val caches = ConcurrentHashMap<Path, BuildCache>()
+
+  /** Talac writes beside its first input, so runs in one directory take turns. */
+  private val directories = DirectoryLocks()
+
+  /** What the command line says about how to spend the machine. */
+  private var execution = ExecutionOptions()
+
+  /** The machines that compile for this one, by address, and whether they failed this command. */
+  private val remoteCompilers = ConcurrentHashMap<String, RemoteCompiler>()
+  private val remoteFailed = AtomicBoolean()
+
+  /** Keeps what jobs that overlap print from running into each other. */
+  private val printing = Any()
 
   /** Compiler runs and test runs of this command that were done, and those a result saved. */
-  private var workDone = 0
-  private var workSaved = 0
+  private val workDone = AtomicInteger()
+  private val workSaved = AtomicInteger()
 
   /**
    * The compiler and the host as the keys of the build cache see them. The host counts because a
@@ -145,12 +180,101 @@ class Tazel(
    */
   private fun compilerIdentity(project: LoadedProject): String {
     val memo = project.location.root.resolve(BuildCache.DIRECTORY).resolve(BuildCache.COMPILER_MEMO)
-    val compiler = toolIdentity(toolchain.require(Tool.TALAC), talacVersion, memo)
+    val compiler =
+      synchronized(printing) { toolIdentity(toolchain.require(Tool.TALAC), talacVersion, memo) }
     return listOf(compiler, os, detectHost().architecture).joinToString("\n")
+  }
+
+  /** Whether the compiler has `--incremental`; a released one may not. */
+  private val compilerIsIncremental by lazy {
+    toolchain
+      .find(Tool.TALAC)
+      ?.let { processes.capture(listOf(it.toString(), "--help")) }
+      .orEmpty()
+      .contains("--incremental=")
+  }
+
+  private fun settingsOf(workspace: LoadedWorkspace) = workspace.root.plan.execution
+
+  private fun jobPool(
+    workspace: LoadedWorkspace,
+    profile: BuildProfile?,
+  ): JobPool {
+    val settings = settingsOf(workspace)
+    val jobs =
+      effectiveJobs(
+        execution.jobs ?: settings.jobs,
+        execution.cpus ?: settings.cpus,
+        execution.memory ?: settings.memory,
+        execution.memoryPerJob ?: settings.memoryPerJob,
+        processors,
+      )
+    return JobPool(jobs, execution.keepGoing || settings.keepGoing, profile)
+  }
+
+  /** Where the trace of the jobs goes, if one was asked for, and what records it. */
+  private fun profileOf(workspace: LoadedWorkspace): Pair<Path, BuildProfile>? {
+    val file =
+      execution.profile?.let(directory::resolve)
+        ?: settingsOf(workspace).profile?.let(workspace.root.location.root::resolve)
+    return file?.let { it to BuildProfile() }
+  }
+
+  /** The machine that compiles for this command, if any. */
+  private fun remoteCompiler(workspace: LoadedWorkspace?): RemoteCompiler? {
+    if (execution.noRemoteExecutor || remoteFailed.get()) return null
+    val settings =
+      execution.remoteExecutor?.let {
+        val environment = commandEnvironment ?: System.getenv()
+        remoteExecutionSettings(it, environment[REMOTE_TOKEN])
+      } ?: workspace?.let { settingsOf(it).remote } ?: return null
+    return remoteCompilers.computeIfAbsent(settings.url) { HttpRemoteCompiler(settings) }
+  }
+
+  /**
+   * Compiles [run] on another machine. Anything that goes wrong there leaves the work to this one,
+   * with one warning for the whole command, as a remote cache does.
+   */
+  private fun compileRemotely(
+    remote: RemoteCompiler,
+    project: LoadedProject,
+    run: CompilerRun,
+  ): RemoteCompilation? {
+    if (run.inputs.any { !isPlainPath(it) }) return null
+    val arguments = run.arguments.filterNot { it.startsWith("--incremental=") }
+    try {
+      return remote.compile(
+        project.location.root,
+        arguments,
+        run.inputs,
+        talacVersion,
+        detectHost(),
+      )
+        ?: null.also {
+          if (remoteFailed.compareAndSet(false, true)) {
+            warn("the remote executor has another compiler or host; compiling here")
+          }
+        }
+    } catch (failure: IOException) {
+      if (remoteFailed.compareAndSet(false, true)) {
+        warn(
+          "the remote executor failed, compiling here: ${failure.message ?: failure.javaClass.simpleName}"
+        )
+      }
+      return null
+    }
   }
 
   fun run(command: Command): Int =
     try {
+      execution =
+        when (command) {
+          is Command.Check -> command.execution
+          is Command.Build -> command.execution
+          is Command.Run -> command.execution
+          is Command.Test -> command.execution
+          else -> ExecutionOptions()
+        }
       when (command) {
         is Command.Check ->
           compile(command.targets, Emit.METADATA, command.noCache).let { ExitCode.SUCCESS }
@@ -159,6 +283,7 @@ class Tazel(
         is Command.Run -> runPrograms(command)
         is Command.Test -> test(command)
         Command.Fetch -> fetch()
+        is Command.RemoteServe -> remoteServe(command)
         Command.LockResolve -> lockResolve()
         is Command.LockCreateDump -> lockCreateDump(command.path)
         is Command.LockGraph -> lockGraph(command)
@@ -191,6 +316,9 @@ class Tazel(
       }
     } catch (stop: Stop) {
       fail(stop.message.orEmpty(), stop.hint)
+    } catch (several: JobFailures) {
+      several.failures.dropLast(1).forEach { reportError(terminal, it.message.orEmpty()) }
+      fail(several.failures.last().message.orEmpty())
     } catch (unknown: UnknownTargetException) {
       fail(
         unknown.message.orEmpty(),
@@ -226,7 +354,8 @@ class Tazel(
     started: TimeSource.Monotonic.ValueTimeMark,
   ) {
     val seconds = started.elapsedNow().inWholeMilliseconds / 1000.0
-    val saved = if (workSaved > 0) ", $workSaved of ${workDone + workSaved} from the cache" else ""
+    val saved =
+      workSaved.get().let { if (it > 0) ", $it of ${workDone.get() + it} from the cache" else "" }
     status("Finished", "$what$saved " + dim("in ${"%.2f".format(java.util.Locale.ROOT, seconds)}s"))
   }
 
@@ -305,6 +434,9 @@ class Tazel(
       val work = selected.sumOf {
         it.executables.size + if (runSteps) it.project.buildSteps.size else 0
       }
+      val profile = profileOf(workspace)
+      val pool = jobPool(workspace, profile?.second)
+      val remote = remoteCompiler(workspace)
       StepProgress.start(terminal, verb, work, output.effectiveProgress).use { progress ->
         for (targets in selected) {
           val project = targets.project
@@ -312,11 +444,18 @@ class Tazel(
           requireNoDependencies(project, DependencyScope.BUILD)
           refuseLibraries(targets, selection)
           if (runSteps) stepsRun += runBuildSteps(project, progress)
-          for (executable in targets.executables) {
-            progress.working(executable.name)
-            outputs.add(compile(compiler!!, project, executable, emit, noCache, progress))
-            progress.done()
-          }
+        }
+        val jobs = selected.flatMap { targets -> targets.executables.map { targets to it } }
+        try {
+          outputs +=
+            pool.map(jobs, { (_, executable) -> executable.name }) { (targets, executable) ->
+              val project = targets.project
+              progress.working(executable.name)
+              compile(compiler!!, project, executable, emit, noCache, progress, remote, workspace)
+                .also { progress.done() }
+            }
+        } finally {
+          profile?.let { (file, recorded) -> recorded.write(file) }
         }
       }
       if (outputs.isEmpty() && stepsRun == 0) {
@@ -403,11 +542,13 @@ class Tazel(
     emit: Emit,
     noCache: Boolean,
     progress: StepProgress,
+    remote: RemoteCompiler?,
+    workspace: LoadedWorkspace,
   ): Path {
-    val run = executableRun(project, target, emit)
+    val run = executableRun(project, target, emit, settingsOf(workspace).incremental)
     val extension = emit.extension ?: executableExtension(os)
     val verb = if (emit == Emit.METADATA) "Checking" else "Compiling"
-    compile(compiler, project, run, verb, extension, noCache, progress)
+    compile(compiler, project, run, verb, extension, noCache, progress, remote)
     return run.output
   }
 
@@ -415,6 +556,7 @@ class Tazel(
     project: LoadedProject,
     target: ExecutableSourceTarget,
     emit: Emit,
+    incremental: Boolean = false,
   ): CompilerRun {
     val root = project.location.root
     val inputs =
@@ -432,13 +574,32 @@ class Tazel(
       "executable '${target.name}'",
       "${emit.value}-${target.name}",
       inputs,
-      compilerArguments(project.plan.compiler, target.entry, emit, inputs),
+      compilerArguments(project.plan.compiler, target.entry, emit, inputs).let {
+        val wanted = execution.incremental ?: incremental
+        if (wanted && emit == Emit.EXECUTABLE && project.keepsObjects) {
+          withIncrementalDirectory(it, ".tazel/incremental/${target.name}")
+        } else {
+          it
+        }
+      },
       root.resolve(project.plan.outputDirectory).resolve(target.name + extension),
     )
   }
 
+  /** Objects are worth keeping in a debug build, and only a compiler that knows them keeps any. */
+  private val LoadedProject.keepsObjects
+    get() = plan.compiler.buildMode == BuildMode.DEBUG && compilerIsIncremental
+
+  private fun withIncrementalDirectory(
+    arguments: List<String>,
+    path: String,
+  ): List<String> {
+    val separator = arguments.indexOf("--").takeIf { it >= 0 } ?: arguments.size
+    return arguments.take(separator) + "--incremental=$path" + arguments.drop(separator)
+  }
+
   private fun cacheOf(project: LoadedProject) =
-    caches.getOrPut(project.location.root) {
+    caches.computeIfAbsent(project.location.root) {
       val settings = project.plan.buildCache
       BuildCache(
         project.location.root.resolve(BuildCache.DIRECTORY),
@@ -461,12 +622,18 @@ class Tazel(
     extension: String,
     noCache: Boolean,
     progress: StepProgress,
+    remote: RemoteCompiler?,
   ): String {
     val root = project.location.root
     val cache = cacheOf(project)
     val inputs = BuildInputs.of(compilerIdentity(project), run.arguments, root, run.inputs)
     val key = inputs.key
-    val hit = if (noCache) null else cache.load(run.slug, key, run.output.parent)
+    val hit =
+      if (noCache) null
+      else
+        directories.withDirectory(run.output.parent) {
+          cache.load(run.slug, key, run.output.parent)
+        }
     val description = brightBlue("(${project.displayName}, ${run.inputs.size} sources)")
     val name = run.output.fileName.toString().removeSuffix(extension)
     if (hit != null) {
@@ -474,13 +641,36 @@ class Tazel(
       val state = if (hit.restored == BuildCache.Restored.FRESH) "Fresh" else "Restored"
       status(state, "$name $description")
       cache.remember(run.slug, inputs)
-      workSaved++
+      workSaved.incrementAndGet()
       return key
     }
     val reason = if (noCache) "--no-cache" else cache.latest(run.slug)?.let(inputs::changeFrom)
     status(verb, "$name $description" + (reason?.let { " " + dim(it) } ?: ""))
-    workDone++
-    val result = processes.runGathered(listOf(compiler.toString()) + run.arguments, root)
+    workDone.incrementAndGet()
+    val compiled =
+      remote?.takeUnless { remoteFailed.get() }?.let { compileRemotely(it, project, run) }
+    // The compiler writes beside its first input, under that input's name, with TalaRT beside it;
+    // the project decides where artifacts live and what they are called, so they are moved there.
+    val written = root.resolve(run.inputs.first().removeSuffix(".tala") + extension)
+    directories.withDirectory(written.parent) {
+      val result =
+        compiled?.use {
+          it.unpack(root)
+          GatheredRun(it.exitCode, it.log)
+        } ?: processes.runGathered(listOf(compiler.toString()) + run.arguments, root)
+      finishCompile(run, result, cache, written, key, inputs)
+    }
+    return key
+  }
+
+  private fun finishCompile(
+    run: CompilerRun,
+    result: GatheredRun,
+    cache: BuildCache,
+    written: Path,
+    key: String,
+    inputs: BuildInputs,
+  ) {
     // Talac names the place it linked to, which Tazel is about to leave; the rest is diagnostics.
     val diagnostics =
       result.output.lineSequence().filterNot { it.startsWith(LINKED_LINE) }.joinToString("\n")
@@ -488,24 +678,23 @@ class Tazel(
     if (result.exitCode != 0) {
       throw Stop("talac rejected ${run.what} (exit code ${result.exitCode})")
     }
-    // The compiler writes beside its first input, under that input's name, with TalaRT beside it;
-    // the project decides where artifacts live and what they are called, so they are moved there.
-    val written = root.resolve(run.inputs.first().removeSuffix(".tala") + extension)
     if (!Files.isRegularFile(written)) {
       throw Stop("talac reported success and left no $written")
     }
     Files.createDirectories(run.output.parent)
-    Files.move(written, run.output, REPLACE_EXISTING)
-    val outputs =
-      listOf(run.output) +
-        RUNTIME_LIBRARIES.map(written::resolveSibling).filter(Files::isRegularFile).map { library ->
-          run.output.resolveSibling(library.fileName).also {
-            Files.move(library, it, REPLACE_EXISTING)
+    directories.withDirectory(run.output.parent) {
+      Files.move(written, run.output, REPLACE_EXISTING)
+      val outputs =
+        listOf(run.output) +
+          RUNTIME_LIBRARIES.map(written::resolveSibling).filter(Files::isRegularFile).map { library
+            ->
+            run.output.resolveSibling(library.fileName).also {
+              Files.move(library, it, REPLACE_EXISTING)
+            }
           }
-        }
-    cache.store(run.slug, key, outputs, diagnostics)
+      cache.store(run.slug, key, outputs, diagnostics)
+    }
     cache.remember(run.slug, inputs)
-    return key
   }
 
   private fun requireNoDependencies(
@@ -566,28 +755,45 @@ class Tazel(
       val compiler = toolchain.require(Tool.TALAC)
       val results = mutableListOf<SuiteResult>()
       val work = selected.sumOf { it.project.plan.testSuites.size + it.project.buildSteps.size }
+      val profile = profileOf(workspace)
+      val pool = jobPool(workspace, profile?.second)
+      val remote = remoteCompiler(workspace)
       StepProgress.start(terminal, "Testing", work, output.effectiveProgress).use { progress ->
-        for (targets in selected) {
+        val jobs = selected.flatMap { targets ->
           val project = targets.project
           keepLockCurrent(project)
           requireNoDependencies(project, DependencyScope.BUILD)
           requireNoDependencies(project, DependencyScope.TEST)
           runBuildSteps(project, progress)
           // What failed last time is what is being worked on, so it answers first.
-          val cache = cacheOf(project)
-          val failed = cache.failedSuites()
-          val ran =
-            project.plan.testSuites
-              .sortedBy { it.name !in failed }
-              .map { suite ->
-                progress.working(suite.name)
-                runSuite(compiler, targets, suite, command.noCache, progress).also {
-                  progress.done()
-                }
-              }
-          cache.rememberFailedSuites(ran.filterNot { it.passed }.map { it.name })
-          results += ran
+          val failed = cacheOf(project).failedSuites()
+          project.plan.testSuites.sortedBy { it.name !in failed }.map { targets to it }
         }
+        val ran =
+          try {
+            pool.map(jobs, { (_, suite) -> suite.name }) { (targets, suite) ->
+              progress.working(suite.name)
+              val result =
+                runSuite(
+                  compiler,
+                  targets,
+                  suite,
+                  command.noCache,
+                  progress,
+                  remote,
+                  pool.concurrent,
+                )
+              progress.done()
+              targets.project to result
+            }
+          } finally {
+            profile?.let { (file, recorded) -> recorded.write(file) }
+          }
+        ran.groupBy({ (project, _) -> project }, { (_, result) -> result }).forEach {
+          (project, suites) ->
+          cacheOf(project).rememberFailedSuites(suites.filterNot { it.passed }.map { it.name })
+        }
+        results += ran.map { (_, result) -> result }
       }
       return reportTests(results, started)
     }
@@ -626,6 +832,8 @@ class Tazel(
     suite: TestSuite,
     noCache: Boolean,
     progress: StepProgress,
+    remote: RemoteCompiler?,
+    together: Boolean,
   ): SuiteResult {
     val project = targets.project
     val root = project.location.root
@@ -637,20 +845,23 @@ class Tazel(
       val totals = cache.load(passedSlug, passedKey, null)?.log?.let(TestTotals::parse)
       if (totals != null) {
         status("Cached", "${suite.name} " + brightBlue("(${project.displayName}, $totals)"))
-        workSaved++
+        workSaved.incrementAndGet()
         return SuiteResult(suite.name, ExitCode.SUCCESS, totals)
       }
     }
     val extension = executableExtension(os)
     val program = run.output
-    compile(compiler, project, run, "Compiling", extension, noCache, progress)
+    compile(compiler, project, run, "Compiling", extension, noCache, progress, remote)
     status("Testing", "${suite.name} " + brightBlue("(${project.displayName})"))
     var totals: TestTotals? = null
+    // Suites that run at once keep their lines together, so that each reads as one report.
+    val held = mutableListOf<String>()
     val exitCode =
       processes.runLines(listOf(program.toString()), root) { line ->
         TestTotals.parse(line)?.let { totals = it }
-        terminal.println(colored(line))
+        if (together) held += colored(line) else terminal.println(colored(line))
       }
+    if (held.isNotEmpty()) synchronized(printing) { held.forEach(terminal::println) }
     val result = SuiteResult(suite.name, exitCode, totals)
     if (result.passed) cache.store(passedSlug, passedKey, emptyList(), totals.toString())
     return result
@@ -868,6 +1079,34 @@ class Tazel(
       if (settings.writeToken == null) {
         warn("TAZEL_CACHE_TOKEN is not set, so this cache takes no results")
       }
+      Thread.currentThread().join()
+    }
+    return ExitCode.SUCCESS
+  }
+
+  /** Compiles for other machines until the process is stopped. */
+  private fun remoteServe(command: Command.RemoteServe): Int {
+    val token =
+      (commandEnvironment ?: System.getenv())[REMOTE_TOKEN]?.takeIf(String::isNotBlank)
+        ?: throw Stop(
+          "tazel remote serve needs $REMOTE_TOKEN: it compiles for whoever has the token"
+        )
+    val settings =
+      RemoteServerSettings(
+        command.host,
+        command.port,
+        command.jobs ?: processors,
+        token,
+        toolchain.require(Tool.TALAC),
+        talacVersion,
+        detectHost(),
+      )
+    RemoteServer(settings, processes).use { server ->
+      server.start()
+      status(
+        "Serving",
+        "compilers at http://${command.host}:${server.port}/, ${settings.jobs} at a time",
+      )
       Thread.currentThread().join()
     }
     return ExitCode.SUCCESS
