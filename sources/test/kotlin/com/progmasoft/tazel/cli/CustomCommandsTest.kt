@@ -5,6 +5,10 @@
 
 package com.progmasoft.tazel.cli
 
+import com.progmasoft.tazel.custom.commands.CustomCommand
+import com.progmasoft.tazel.custom.commands.CustomCommandsException
+import com.progmasoft.tazel.custom.commands.CustomStep
+import com.progmasoft.tazel.custom.commands.parser.parseCustomCommands
 import com.progmasoft.tazel.driver.Toolchain
 import com.progmasoft.tazel.dsl.OperatingSystem
 import java.nio.file.Files

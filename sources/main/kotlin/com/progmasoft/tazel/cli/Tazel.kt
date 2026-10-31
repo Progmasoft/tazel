@@ -14,6 +14,11 @@ import com.github.ajalt.mordant.rendering.TextStyles.dim
 import com.github.ajalt.mordant.terminal.Terminal
 import com.progmasoft.api.tazel.dsl.plugin.BuildStepException
 import com.progmasoft.api.tazel.dsl.plugin.CapturedRun
+import com.progmasoft.tazel.custom.commands.CUSTOM_COMMANDS_FILE
+import com.progmasoft.tazel.custom.commands.CustomCommand
+import com.progmasoft.tazel.custom.commands.CustomCommandsException
+import com.progmasoft.tazel.custom.commands.CustomStep
+import com.progmasoft.tazel.custom.commands.parser.parseCustomCommands
 import com.progmasoft.tazel.driver.BuildCache
 import com.progmasoft.tazel.driver.BuildInputs
 import com.progmasoft.tazel.driver.CacheServer
