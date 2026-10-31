@@ -33,6 +33,7 @@ class DependencyDslTest {
 
   @Test
   fun readsEveryKindOfDependency() {
+    project { name = "Demo" }
     dependencies {
       localDependency { path = "Dependency.vipkg" }
       dependency("Publisher") {
@@ -85,6 +86,7 @@ class DependencyDslTest {
 
   @Test
   fun aPackageMayServeTheBuildAndTheTestsSeparately() {
+    project { name = "Demo" }
     dependencies {
       dependency("Publisher") {
         name = "Shared"
@@ -100,6 +102,7 @@ class DependencyDslTest {
 
   @Test
   fun mergesRepeatedDeclarationsAndRejectsConflictingOnes() {
+    project { name = "Demo" }
     repeat(2) {
       dependencies {
         dependency("Publisher") {
@@ -155,6 +158,7 @@ class DependencyDslTest {
 
   @Test
   fun theLockfileKeepsEveryDeclaration() {
+    project { name = "Demo" }
     val root = Files.createTempDirectory("tazel-lock-")
     try {
       dependencies {

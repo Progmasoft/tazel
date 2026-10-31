@@ -115,6 +115,5 @@ sources {
   test("Integration") { testDir = "Tests/Integration" }
 }
 
-println("Tala compiler version: ${compiler.version}")
 println("Tala standard: ${compiler.standard}")
 println("Project: ${project.name}, ${project.version}, ${project.stability}")

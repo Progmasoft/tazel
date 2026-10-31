@@ -220,6 +220,7 @@ class PluginBuildTest {
       plugins {
         localPlugin { path = "native.jar" }
       }
+      project { name = "Native" }
       fixtureCompile("cc", "main.c")
       """,
     )
@@ -237,6 +238,7 @@ class PluginBuildTest {
       plugins {
         localPlugin { path = "native.jar" }
       }
+      project { name = "Native" }
       fixtureCompile("cc", "main.c", failWith = "no C compiler was found")
       """,
     )

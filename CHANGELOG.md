@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `project.name` is always required. A project file without it, such as the root
+  of a workspace with no `project` block, has to add it.
+- `compiler.version` is gone from project files. Loading a project no longer starts
+  talac to ask for its version.
 - Project files move to the Progmasoft Linking Exception, Version 2.0. Earlier
   releases can rely on Version 2.0 too.
 
