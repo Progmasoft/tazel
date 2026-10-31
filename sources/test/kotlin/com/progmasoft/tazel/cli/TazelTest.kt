@@ -45,7 +45,6 @@ class TazelTest {
           werror = true
         }
         outdirs { release = "out" }
-        check(compiler.version == "0.5.2")
         """
     )
 
@@ -92,7 +91,7 @@ class TazelTest {
 
     write("BUILD.kts", "sources { executable { entry = \"Unqualified\" } }")
     assertEquals(ExitCode.FAILURE, run("check"))
-    assertTrue(recorder.stderr().contains("sources.executable.name is required"))
+    assertTrue(recorder.stderr().contains("project requires name"))
   }
 
   @Test
@@ -397,7 +396,7 @@ class TazelTest {
 
   @Test
   fun aGraphOfAWorkspaceHasARootForEveryMember() = fixture {
-    write("BUILD.kts", "workspace { members(\"Server\", \"Client\") }")
+    write("BUILD.kts", "project { name = \"Root\" }\nworkspace { members(\"Server\", \"Client\") }")
     demo(
       "Server",
       "Server",
@@ -491,6 +490,7 @@ class TazelTest {
     write(
       "BUILD.kts",
       """
+      project { name = "Root" }
       workspace {
         members("Server", "./Client", "Old")
         defaultMembers("Client")
@@ -523,7 +523,7 @@ class TazelTest {
 
   @Test
   fun aWorkspaceMemberNeedsAProjectFile() = fixture {
-    write("BUILD.kts", "workspace { members(\"Missing\") }")
+    write("BUILD.kts", "project { name = \"Root\" }\nworkspace { members(\"Missing\") }")
     assertEquals(ExitCode.FAILURE, run("build"))
     assertTrue(recorder.stderr().contains("workspace member 'Missing' has no project file"))
   }

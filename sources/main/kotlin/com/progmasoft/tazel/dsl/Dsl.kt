@@ -11,10 +11,6 @@ import com.progmasoft.tazel.dsl.plugin.PluginState
 
 @TazelDsl
 class CompilerScope internal constructor(private val settings: CompilerSettings) {
-  /** The version of the compiler that will build the project; a project reads it, never sets it. */
-  val version: String
-    get() = settings.version
-
   var standard: TalaStandard
     get() = settings.standard
     set(value) {
@@ -118,11 +114,7 @@ private fun requireLlvmArgument(value: String): String {
  * the project and what its `project` block wrote. Every evaluation has its own, so two project
  * files can be evaluated at the same time on two threads.
  */
-class ProjectContext
-internal constructor(
-  compilerVersion: String = "unknown",
-  val host: Host = detectHost(),
-) {
+class ProjectContext internal constructor(val host: Host = detectHost()) {
   /** The plugins of this project, from activation to the finished plan. */
   internal val plugins = PluginState()
 
@@ -143,7 +135,7 @@ internal constructor(
   private val libraries = mutableListOf<LibrarySourceTarget>()
   private val testSuites = mutableListOf<TestSuite>()
   private var buildCache: BuildCacheSettings? = null
-  internal val compilerSettings = CompilerSettings().apply { version = compilerVersion }
+  internal val compilerSettings = CompilerSettings()
 
   val projectName: String?
     get() = identity?.name
@@ -248,12 +240,12 @@ internal constructor(
       )
     }
     val project = identity
+    if (project?.name == null) throw ProjectConfigurationException("project requires name")
     if (pushSources) {
       val missingFields = buildList {
-        if (project?.name == null) add("name")
-        if (project?.version == null) add("version")
-        if (project?.stability == null) add("stability")
-        if (project?.description == null) add("description")
+        if (project.version == null) add("version")
+        if (project.stability == null) add("stability")
+        if (project.description == null) add("description")
         if (authors.isEmpty()) add("authors")
       }
       if (missingFields.isNotEmpty()) {
@@ -354,8 +346,8 @@ internal object ProjectRuntime {
    * Binds a new project to this thread outside an evaluation, for code that calls the DSL directly
    * rather than through a project file.
    */
-  fun reset(compilerVersion: String = "unknown") {
-    active.set(ProjectContext(compilerVersion))
+  fun reset() {
+    active.set(ProjectContext())
   }
 
   /** The project being evaluated on this thread. */

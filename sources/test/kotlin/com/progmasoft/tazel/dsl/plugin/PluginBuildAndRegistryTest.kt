@@ -11,6 +11,7 @@ import com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.ProjectRuntime
 import com.progmasoft.tazel.dsl.detectHost
+import com.progmasoft.tazel.dsl.project
 import com.sun.net.httpserver.HttpServer
 import java.io.ByteArrayOutputStream
 import java.net.InetSocketAddress
@@ -43,6 +44,7 @@ class PluginBuildAndRegistryTest {
 
   @Test
   fun buildStepsAreAddedThroughTheExtensionScope() {
+    project { name = "Demo" }
     activate("native")
     PluginRuntime.declare(PluginRequest("Publisher", "Native", "1.0.0"))
     val scope = TazelExtensionHost().require("native")
