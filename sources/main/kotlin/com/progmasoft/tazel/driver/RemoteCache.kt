@@ -208,15 +208,18 @@ internal fun unpackResult(
   archive: Path,
   directory: Path,
 ) {
+  val base = directory.toAbsolutePath().normalize()
   ZipInputStream(Files.newInputStream(archive)).use { zip ->
+    // One limit for the whole archive: many small files are as large as one big one.
+    val contents = limited(zip)
     generateSequence { zip.nextEntry }
       .forEach { entry ->
         val name = entry.name
-        if (name.isEmpty() || name == ".." || name.any { it in "/\\:" }) {
+        val file = base.resolve(name).normalize()
+        if (name.any { it in "/\\:" } || file.parent != base || !file.startsWith(base)) {
           throw IOException("a result of the remote cache names the file '$name'")
         }
-        val file = directory.resolve(name)
-        Files.newOutputStream(file).use { limited(zip).copyTo(it) }
+        Files.newOutputStream(file).use { contents.copyTo(it) }
         file.toFile().setExecutable(true)
       }
   }
