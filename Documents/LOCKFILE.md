@@ -25,10 +25,12 @@ declares now. A file of an older format, a damaged file and a missing one are al
 A new lockfile is written to a temporary file in the same directory and then moved over the old one, atomically where
 the file system allows it, so an interrupted write never leaves half a lockfile behind.
 
-## Format 4
+## Format 5
 
-The `metadata` table holds the format: `format_version` is `4`. A lockfile of another format is not read; Tazel asks
-for `tazel lock resolve`, which writes the current one.
+The `metadata` table holds the format: `format_version` is `5`. Format 5 is format 4 with the stability `RC`, so a file
+of format 4 is read as it is and stays until the project changes. A lockfile of any other format is not read; Tazel
+asks for `tazel lock resolve`, which writes the current one. Versions of Tazel before format 5 refuse a file of format
+5 the same way.
 
 | Table | Key | Columns |
 | --- | --- | --- |

@@ -52,7 +52,7 @@ class LockfileDumpTest {
       assertEquals(text, second.readText())
       assertTrue(text.startsWith("-- Tala lockfile SQL dump\nPRAGMA foreign_keys=OFF;\n"))
       assertTrue(text.contains("CREATE TABLE metadata"))
-      assertTrue(text.contains("INSERT INTO \"metadata\" VALUES('format_version','4');"))
+      assertTrue(text.contains("INSERT INTO \"metadata\" VALUES('format_version','5');"))
       assertTrue(
         text.contains("INSERT INTO \"local_packages\" VALUES('packages/o''neil.vipkg','BUILD');")
       )
