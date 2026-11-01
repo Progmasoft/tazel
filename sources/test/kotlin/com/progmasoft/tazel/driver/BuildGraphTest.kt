@@ -123,6 +123,18 @@ class BuildGraphTest {
   }
 
   @Test
+  fun aUnitThatReturnsNothingRunsOnceUnderAProfile() {
+    var runs = 0
+    val unit =
+      BuildUnit<String?>("a") {
+        runs++
+        null
+      }
+    JobPool(1, keepGoing = false, profile = BuildProfile()).run(BuildGraph(listOf(unit)))
+    assertEquals(1, runs)
+  }
+
+  @Test
   fun mapKeepsTheOrderOfItsItems() {
     assertEquals(
       listOf(2, 4, 6),

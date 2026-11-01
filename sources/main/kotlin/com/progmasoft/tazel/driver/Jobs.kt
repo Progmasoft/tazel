@@ -99,7 +99,9 @@ class JobPool(
     val attempt = { unit: BuildUnit<R> ->
       try {
         if (!stopped.get()) {
-          results[unit.id] = Result(profile?.measure(unit.name, unit.work) ?: unit.work())
+          val measured = profile
+          results[unit.id] =
+            Result(if (measured != null) measured.measure(unit.name, unit.work) else unit.work())
         }
       } catch (failure: Exception) {
         synchronized(failures) { failures += failure }
