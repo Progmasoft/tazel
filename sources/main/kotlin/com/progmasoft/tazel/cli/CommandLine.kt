@@ -419,7 +419,8 @@ private fun outputOptions(arguments: List<String>): Pair<OutputOptions, List<Str
   }
   while (index < arguments.size) {
     val argument = arguments[index]
-    if (argument == "--") {
+    // What follows `custom` belongs to the command it names, whatever it looks like.
+    if (argument == "--" || (argument == "custom" && rest.isEmpty())) {
       rest += arguments.subList(index, arguments.size)
       break
     }

@@ -403,6 +403,14 @@ class CommandLineTest {
   }
 
   @Test
+  fun theWordsAfterCustomBelongToTheCommand() {
+    val result = parseCommandLine(listOf("--quiet", "custom", "go", "--quiet", "--color=never"))
+    val parsed = assertIs<ParseResult.Parsed>(result)
+    assertEquals(Command.Custom(listOf("go", "--quiet", "--color=never")), parsed.command)
+    assertTrue(parsed.output.quiet)
+  }
+
+  @Test
   fun outputOptionsStandAnywhereBeforeTheArgumentsPassedOn() {
     fun output(vararg arguments: String) =
       assertIs<ParseResult.Parsed>(parseCommandLine(arguments.toList())).output

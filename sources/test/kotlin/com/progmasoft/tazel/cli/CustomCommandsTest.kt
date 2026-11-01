@@ -102,14 +102,14 @@ class CustomCommandsTest {
 
   @Test
   fun placeholdersAreReadInPrograms() {
-    val step = parseCustomCommands("""with: ("tazel" <1> "x" <191> <*>);""").single().steps.single()
+    val step = parseCustomCommands("""with: ("tazel" <1> "x" <190> <*>);""").single().steps.single()
     assertEquals(
       CustomStep.Program(
         listOf(
           CustomArgument.Text("tazel"),
           CustomArgument.Position(1),
           CustomArgument.Text("x"),
-          CustomArgument.Position(191),
+          CustomArgument.Position(190),
           CustomArgument.All,
         )
       ),
@@ -117,6 +117,8 @@ class CustomCommandsTest {
     )
     assertContains(rejection("""a: ("b" <0>);"""), "runs from 1")
     assertContains(rejection("""a: ("b" <192>);"""), "runs from 1")
+    assertContains(rejection("""a: ("b" <191>);"""), "leaves room for 190")
+    assertContains(rejection("""a b: ("c" <190>);"""), "leaves room for 189")
     assertContains(rejection("""a: ("b" <01>);"""), "runs from 1")
     assertContains(rejection("""a: ("b" <x>);"""), "runs from 1")
     assertContains(rejection("""a: ("b" <1);"""), "expected <N>")

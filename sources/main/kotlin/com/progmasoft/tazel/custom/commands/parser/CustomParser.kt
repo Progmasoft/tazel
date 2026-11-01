@@ -94,7 +94,15 @@ private class CustomParser(private val tokens: List<Token>) {
       take(TokenKind.SEMICOLON, "';' at the end of a command")
       val joined = words.joinToString(" ")
       if (joined in commands) fail(name, "the command '$joined' is defined twice")
-      commands[joined] = CustomCommand(joined, steps)
+      val command = CustomCommand(joined, steps)
+      if (words.size + command.required > MAX_CUSTOM_ARGUMENTS) {
+        fail(
+          name,
+          "'$joined' needs ${command.required} arguments, and its name leaves room for " +
+            "${MAX_CUSTOM_ARGUMENTS - words.size}",
+        )
+      }
+      commands[joined] = command
     }
     return commands.values.toList()
   }
