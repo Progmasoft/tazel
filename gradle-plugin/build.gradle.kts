@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 plugins {
   kotlin("jvm")
   `java-gradle-plugin`
-  id("com.gradle.plugin-publish") version "2.0.0"
+  id("com.gradle.plugin-publish") version "2.2.1"
 }
 
 group = "com.progmasoft.tazel"
