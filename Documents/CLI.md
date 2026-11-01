@@ -22,7 +22,7 @@ tazel [output options] <command> [arguments]
 | `tazel run [-- arguments]` | builds the executables and runs them |
 | `tazel test` | builds and runs the test suites |
 | `tazel fetch` | fetches the dependencies ahead of time: plugins of ViGet into `.tazel/plugins`, and it fails if a local package is missing or a ViGet package is declared, because ViGet does not serve Tala packages yet |
-| `tazel custom [name]` | runs a command of `tazel_custom.txt`, or lists them; see [custom commands](#custom-commands) |
+| `tazel custom [name] [arguments]` | runs a command of `tazel_custom.txt`, or lists them; see [custom commands](#custom-commands) |
 | `tazel lock resolve` | resolves the dependencies and renews `LOCK.sqlite3` |
 | `tazel lock create-dump [--path File]` | writes the lockfile as text, to `LOCK.dump` or to the file `--path` names |
 | `tazel lock graph [options]` | prints the dependency graph; renews `LOCK.sqlite3` unless `--locked` |
@@ -428,16 +428,30 @@ fetch-sh:
 
 # Another shell is a program like any other.
 npm-dev-zsh: ("zsh" "-lc" "npm dev");
+
+# A name may hold several words.
+build no-cache: ("tazel" "build" "--no-cache");
+
+# <N> passes the Nth argument, from 1; <*> passes all of them.
+build with: ("tazel" "build" <1> <2>);
+test all: ("tazel" "test" <*>);
 ```
 
 ```text
 tazel custom fetch
+tazel custom build no-cache
+tazel custom build with -e MyApp
 ```
 
 A string is written with `"`, `'` or `` ` `` and has no escapes, so it cannot hold its own quote. `(...)` starts the program
 directly with these arguments: there is no shell, so a word like `|` means nothing special and each string stays one
 argument. On Windows the program may be a script such as `npm.cmd`. `s(...)` takes exactly one string and hands it to CMD
 on Windows and to `sh` elsewhere.
+
+The words after `tazel custom` belong to the command, so that nothing in them is an option of Tazel. The longest name they
+start with is the command, and the rest are its arguments. There are at most 191 words, those of the name included. A
+command takes exactly as many arguments as its highest `<N>`, or more with `<*>`. `<N>` and `<*>` are not strings and stand
+outside quotes; they come after the program and cannot be used in `s(...)`.
 
 A step that fails ends the command, and `tazel custom` exits with its exit code. Without a name it lists the commands.
 

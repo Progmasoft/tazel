@@ -18,6 +18,7 @@ import com.progmasoft.tazel.custom.commands.CUSTOM_COMMANDS_FILE
 import com.progmasoft.tazel.custom.commands.CustomCommand
 import com.progmasoft.tazel.custom.commands.CustomCommandsException
 import com.progmasoft.tazel.custom.commands.CustomStep
+import com.progmasoft.tazel.custom.commands.matching
 import com.progmasoft.tazel.custom.commands.parser.parseCustomCommands
 import com.progmasoft.tazel.driver.BuildCache
 import com.progmasoft.tazel.driver.BuildGraph
@@ -292,7 +293,7 @@ class Tazel(
         is Command.Test -> test(command)
         Command.Fetch -> fetch()
         is Command.RemoteServe -> remoteServe(command)
-        is Command.Custom -> custom(command.commandName)
+        is Command.Custom -> custom(command.words)
         Command.LockResolve -> lockResolve()
         is Command.LockCreateDump -> lockCreateDump(command.path)
         is Command.LockGraph -> lockGraph(command)
@@ -1170,7 +1171,7 @@ class Tazel(
   }
 
   /** Runs a command of the nearest `tazel_custom.txt`, in its directory, or lists them. */
-  private fun custom(name: String?): Int {
+  private fun custom(words: List<String>): Int {
     val file =
       generateSequence(directory, Path::getParent)
         .map { it.resolve(CUSTOM_COMMANDS_FILE) }
@@ -1182,18 +1183,30 @@ class Tazel(
       } catch (error: CustomCommandsException) {
         throw Stop(error.message.orEmpty())
       }
-    if (name == null) {
+    if (words.isEmpty()) {
       commands.forEach { terminal.println(it.name) }
       return ExitCode.SUCCESS
     }
-    val command =
-      commands.firstOrNull { it.name == name }
+    val written = words.joinToString(" ")
+    val (command, arguments) =
+      commands.matching(words)
         ?: throw Stop(
-          "no command is named '$name' in $file",
-          closestTo(name, commands.map(CustomCommand::name))?.let { didYouMean(name, it) },
+          "no command is named '$written' in $file",
+          closestTo(written, commands.map(CustomCommand::name))?.let { didYouMean(written, it) },
         )
+    if (arguments.size < command.required) {
+      throw Stop("'${command.name}' needs ${command.required} argument(s), not ${arguments.size}")
+    }
+    if (arguments.size > command.required && !command.takesAll) {
+      throw Stop(
+        "'${command.name}' takes ${command.required} argument(s), not ${arguments.size}",
+        closestTo(written, commands.map(CustomCommand::name))
+          ?.takeIf { it != command.name }
+          ?.let { didYouMean(written, it) },
+      )
+    }
     for (step in command.steps) {
-      val exitCode = processes.run(commandOf(step, file.parent), file.parent)
+      val exitCode = processes.run(commandOf(step, file.parent, arguments), file.parent)
       if (exitCode != ExitCode.SUCCESS) return exitCode
     }
     return ExitCode.SUCCESS
@@ -1202,13 +1215,15 @@ class Tazel(
   private fun commandOf(
     step: CustomStep,
     base: Path,
+    arguments: List<String>,
   ): List<String> =
     when (step) {
       is CustomStep.Shell ->
         if (os == OperatingSystem.WINDOWS) listOf("cmd.exe", "/d", "/s", "/c", step.line)
         else listOf("sh", "-c", step.line)
       is CustomStep.Program -> {
-        val program = step.arguments.first()
+        val expanded = step.expanded(arguments)
+        val program = expanded.first()
         val found =
           if (program.contains('/') || program.contains('\\')) {
             base.resolve(program).normalize().toString()
@@ -1216,7 +1231,7 @@ class Tazel(
             toolchain.findProgram(program)?.toString()
               ?: throw Stop("no program named '$program' on PATH")
           }
-        listOf(found) + step.arguments.drop(1)
+        listOf(found) + expanded.drop(1)
       }
     }
 
