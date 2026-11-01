@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- `Stability.RC` marks a release candidate. Lockfiles are now of format 5, since older versions of Tazel cannot
+  read that stability; files of format 4 keep working.
 - Project, package and plugin versions are `A.B.C`, then `.D`, `.E` and `-METADATA` if needed, and the
   Gradle plugin takes the same versions. A version with metadata ranks below the same one without it.
 - `OptLevel.OS` and `OptLevel.OZ` optimize for size; they need Tala 0.2.0.

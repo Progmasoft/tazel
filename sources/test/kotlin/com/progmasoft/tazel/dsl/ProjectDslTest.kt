@@ -101,6 +101,20 @@ class ProjectDslTest {
   }
 
   @Test
+  fun aReleaseCandidateHasItsOwnStability() {
+    project {
+      name = "PrivateCompiler"
+      version = "0.3.1"
+      stability = Stability.RC
+    }
+    demo()
+    assertEquals(
+      ProjectIdentity("PrivateCompiler", Stability.RC, "0.3.1"),
+      ProjectRuntime.build().identity,
+    )
+  }
+
+  @Test
   fun requiresEveryProjectFieldWhenPublishingIsEnabled() {
     fun rejectionFor(block: ProjectScope.() -> Unit): ProjectConfigurationException {
       ProjectRuntime.reset()

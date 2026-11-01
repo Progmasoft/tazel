@@ -50,7 +50,7 @@ This compiles every `.tala` file below `Sources/` and writes `build/debug/Exampl
 project {
   name = "Example"
   version = "0.1.0"
-  stability = Stability.STABLE // STABLE, UNSTABLE, BETA, NIGHTLY, ALPHA or DEV
+  stability = Stability.STABLE // STABLE, RC, UNSTABLE, BETA, NIGHTLY, ALPHA or DEV
   description = "A Tala project"
   authors("Leitwolf", "Helmut")
   defaultFeatures("TOML")

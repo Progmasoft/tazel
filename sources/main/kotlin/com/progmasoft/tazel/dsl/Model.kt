@@ -27,6 +27,7 @@ enum class Architecture {
 
 enum class Stability {
   STABLE,
+  RC,
   UNSTABLE,
   BETA,
   NIGHTLY,

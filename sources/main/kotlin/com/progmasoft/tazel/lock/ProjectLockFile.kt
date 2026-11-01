@@ -53,7 +53,10 @@ data class LockedPlugin(
 object ProjectLockFile {
   const val FILE_NAME = "LOCK.sqlite3"
   const val DUMP_FILE_NAME = "LOCK.dump"
-  private const val FORMAT_VERSION = 4
+  private const val FORMAT_VERSION = 5
+
+  // Format 5 only adds the stability RC, which a reader of format 4 cannot name.
+  private val READABLE_FORMATS = setOf(4, FORMAT_VERSION)
 
   fun write(
     root: Path,
@@ -89,7 +92,7 @@ object ProjectLockFile {
       LockedProject(readPackages(connection), readPlugins(connection))
     }
 
-  /** True when [path] is a lockfile of this format that records exactly [project]. */
+  /** True when [path] is a lockfile this Tazel reads that records exactly [project]. */
   fun isCurrent(
     path: Path,
     project: LockedProject,
@@ -365,7 +368,7 @@ object ProjectLockFile {
       } catch (_: java.sql.SQLException) {
         null
       }
-    if (version != FORMAT_VERSION) {
+    if (version !in READABLE_FORMATS) {
       throw ProjectConfigurationException(
         "$FILE_NAME is not of lockfile format $FORMAT_VERSION; renew it with tazel lock resolve"
       )
