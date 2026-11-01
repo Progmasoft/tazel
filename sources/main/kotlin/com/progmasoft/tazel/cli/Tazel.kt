@@ -21,8 +21,10 @@ import com.progmasoft.tazel.custom.commands.CustomStep
 import com.progmasoft.tazel.custom.commands.matching
 import com.progmasoft.tazel.custom.commands.parser.parseCustomCommands
 import com.progmasoft.tazel.driver.BuildCache
+import com.progmasoft.tazel.driver.BuildGraph
 import com.progmasoft.tazel.driver.BuildInputs
 import com.progmasoft.tazel.driver.BuildProfile
+import com.progmasoft.tazel.driver.BuildUnit
 import com.progmasoft.tazel.driver.CacheServer
 import com.progmasoft.tazel.driver.CacheServerSettings
 import com.progmasoft.tazel.driver.DirectoryLocks
@@ -71,6 +73,7 @@ import com.progmasoft.tazel.dsl.coordinate
 import com.progmasoft.tazel.dsl.detectHost
 import com.progmasoft.tazel.dsl.discoverProject
 import com.progmasoft.tazel.dsl.effectiveJobs
+import com.progmasoft.tazel.dsl.plugin.PluginBuildStep
 import com.progmasoft.tazel.dsl.plugin.toPluginBuildMode
 import com.progmasoft.tazel.dsl.plugin.toPluginHost
 import com.progmasoft.tazel.dsl.plugin.toPluginSummary
@@ -434,8 +437,6 @@ class Tazel(
       val runSteps = emit != Emit.METADATA
       val compiler =
         if (selected.any { it.executables.isNotEmpty() }) toolchain.require(Tool.TALAC) else null
-      val outputs = mutableListOf<Path>()
-      var stepsRun = 0
       val verb = if (emit == Emit.METADATA) "Checking" else "Building"
       val work = selected.sumOf {
         it.executables.size + if (runSteps) it.project.buildSteps.size else 0
@@ -443,28 +444,51 @@ class Tazel(
       val profile = profileOf(workspace)
       val pool = jobPool(workspace, profile?.second)
       val remote = remoteCompiler(workspace)
-      StepProgress.start(terminal, verb, work, output.effectiveProgress).use { progress ->
-        for (targets in selected) {
-          val project = targets.project
-          keepLockCurrent(project)
-          requireNoDependencies(project, DependencyScope.BUILD)
-          refuseLibraries(targets, selection)
-          if (runSteps) stepsRun += runBuildSteps(project, progress)
-        }
-        val jobs = selected.flatMap { targets -> targets.executables.map { targets to it } }
-        try {
-          outputs +=
-            pool.map(jobs, { (_, executable) -> executable.name }) { (targets, executable) ->
-              val project = targets.project
-              progress.working(executable.name)
-              compile(compiler!!, project, executable, emit, noCache, progress, remote, workspace)
-                .also { progress.done() }
+      val outputs =
+        StepProgress.start(terminal, verb, work, output.effectiveProgress).use { progress ->
+          for (targets in selected) {
+            val project = targets.project
+            keepLockCurrent(project)
+            requireNoDependencies(project, DependencyScope.BUILD)
+            refuseLibraries(targets, selection)
+          }
+          val units = selected.flatMap { targets ->
+            val project = targets.project
+            val steps = if (runSteps) stepUnits<Path?>(project, progress) else emptyList()
+            val compiled =
+              targets.executables.map { executable ->
+                BuildUnit<Path?>(
+                  "${project.location.root}/compile/${executable.name}",
+                  executable.name,
+                  steps.lastOrNull()?.let { setOf(it.id) }.orEmpty(),
+                ) {
+                  progress.working(executable.name)
+                  compile(
+                      compiler!!,
+                      project,
+                      executable,
+                      emit,
+                      noCache,
+                      progress,
+                      remote,
+                      workspace,
+                    )
+                    .also { progress.done() }
+                }
+              }
+            steps + compiled
+          }
+          try {
+            pool.run(BuildGraph(units)).let { results ->
+              units.mapNotNull { results.getValue(it.id) }
             }
-        } finally {
-          profile?.let { (file, recorded) -> recorded.write(file) }
+          } finally {
+            profile?.let { (file, recorded) -> recorded.write(file) }
+          }
         }
-      }
-      if (outputs.isEmpty() && stepsRun == 0) {
+      if (
+        outputs.isEmpty() && (!runSteps || selected.none { it.project.buildSteps.isNotEmpty() })
+      ) {
         throw Stop("the selection holds no executable to compile")
       }
       finished(if (emit == Emit.METADATA) "check" else "build", started)
@@ -473,72 +497,88 @@ class Tazel(
   }
 
   /**
-   * Runs the steps the plugins of [project] added to its build, in the order they were added, and
-   * returns how many ran. Each step has a work directory of its own below `.tazel/build`.
+   * The steps the plugins of [project] added to its build, as units that run one after the other in
+   * the order they were added. A plugin says nothing about what a step reads, so a step has no
+   * fingerprint and runs every time.
    */
-  private fun runBuildSteps(
+  private fun <R> stepUnits(
     project: LoadedProject,
     progress: StepProgress,
-  ): Int {
+  ): List<BuildUnit<R?>> {
+    var previous: String? = null
+    return project.buildSteps.map { step ->
+      val id = "${project.location.root}/step/${step.owner}/${step.name}"
+      val after = setOfNotNull(previous)
+      previous = id
+      BuildUnit<R?>(id, "${step.owner} ${step.name}", after) {
+        runBuildStep(project, step, progress)
+        null
+      }
+    }
+  }
+
+  /** Runs one step of a plugin, in a work directory of its own below `.tazel/build`. */
+  private fun runBuildStep(
+    project: LoadedProject,
+    step: PluginBuildStep,
+    progress: StepProgress,
+  ) {
     val root = project.location.root
     val plan = project.plan
     val output = root.resolve(plan.outputDirectory).normalize()
-    for (step in project.buildSteps) {
-      progress.working("${step.owner} ${step.name}")
-      val work = root.resolve(".tazel/build").resolve(step.owner).resolve(step.name)
-      Files.createDirectories(work)
-      Files.createDirectories(output)
-      val services =
-        object : StepServices {
-          override fun status(
-            verb: String,
-            message: String,
-          ) = this@Tazel.status(verb, message)
+    progress.working("${step.owner} ${step.name}")
+    val work = root.resolve(".tazel/build").resolve(step.owner).resolve(step.name)
+    Files.createDirectories(work)
+    Files.createDirectories(output)
+    val services =
+      object : StepServices {
+        override fun status(
+          verb: String,
+          message: String,
+        ) = this@Tazel.status(verb, message)
 
-          override fun warn(message: String) = this@Tazel.warn(message)
+        override fun warn(message: String) = this@Tazel.warn(message)
 
-          override fun run(
-            command: List<String>,
-            directory: Path,
-            environment: Map<String, String>,
-          ) = execute(command, directory, progress, environment)
+        override fun run(
+          command: List<String>,
+          directory: Path,
+          environment: Map<String, String>,
+        ) = execute(command, directory, progress, environment)
 
-          override fun capture(
-            command: List<String>,
-            directory: Path,
-            environment: Map<String, String>,
-          ) =
-            processes.runGatheredWith(command, directory, environment).let {
-              CapturedRun(it.exitCode, it.output)
-            }
+        override fun capture(
+          command: List<String>,
+          directory: Path,
+          environment: Map<String, String>,
+        ) =
+          processes.runGatheredWith(command, directory, environment).let {
+            CapturedRun(it.exitCode, it.output)
+          }
 
-          override fun findProgram(name: String) = toolchain.findProgram(name)
-        }
-      val context =
-        PluginStepContext(
-          root,
-          project.plan.toPluginSummary(),
-          output,
-          plan.compiler.buildMode.toPluginBuildMode(),
-          Host(os, detectHost().architecture).toPluginHost(),
-          work,
-          services,
-        )
-      try {
-        step.step.run(context)
-      } catch (failure: BuildStepException) {
-        throw Stop("${step.owner} ${step.name}: ${failure.message}")
-      } catch (problem: ProjectConfigurationException) {
-        throw problem
-      } catch (error: Exception) {
-        throw Stop(
-          "build step '${step.name}' of plugin '${step.owner}' failed: " +
-            (error.message ?: error.javaClass.name)
-        )
+        override fun findProgram(name: String) = toolchain.findProgram(name)
       }
-      progress.done()
+    val context =
+      PluginStepContext(
+        root,
+        project.plan.toPluginSummary(),
+        output,
+        plan.compiler.buildMode.toPluginBuildMode(),
+        Host(os, detectHost().architecture).toPluginHost(),
+        work,
+        services,
+      )
+    try {
+      step.step.run(context)
+    } catch (failure: BuildStepException) {
+      throw Stop("${step.owner} ${step.name}: ${failure.message}")
+    } catch (problem: ProjectConfigurationException) {
+      throw problem
+    } catch (error: Exception) {
+      throw Stop(
+        "build step '${step.name}' of plugin '${step.owner}' failed: " +
+          (error.message ?: error.javaClass.name)
+      )
     }
-    return project.buildSteps.size
+    progress.done()
   }
 
   private fun compile(
@@ -765,32 +805,44 @@ class Tazel(
       val pool = jobPool(workspace, profile?.second)
       val remote = remoteCompiler(workspace)
       StepProgress.start(terminal, "Testing", work, output.effectiveProgress).use { progress ->
-        val jobs = selected.flatMap { targets ->
+        val units = selected.flatMap { targets ->
           val project = targets.project
           keepLockCurrent(project)
           requireNoDependencies(project, DependencyScope.BUILD)
           requireNoDependencies(project, DependencyScope.TEST)
-          runBuildSteps(project, progress)
+          val steps = stepUnits<Pair<LoadedProject, SuiteResult>>(project, progress)
           // What failed last time is what is being worked on, so it answers first.
           val failed = cacheOf(project).failedSuites()
-          project.plan.testSuites.sortedBy { it.name !in failed }.map { targets to it }
+          val suites =
+            project.plan.testSuites
+              .sortedBy { it.name !in failed }
+              .map { suite ->
+                BuildUnit<Pair<LoadedProject, SuiteResult>?>(
+                  "${project.location.root}/test/${suite.name}",
+                  suite.name,
+                  steps.lastOrNull()?.let { setOf(it.id) }.orEmpty(),
+                ) {
+                  progress.working(suite.name)
+                  val result =
+                    runSuite(
+                      compiler,
+                      targets,
+                      suite,
+                      command.noCache,
+                      progress,
+                      remote,
+                      pool.concurrent,
+                    )
+                  progress.done()
+                  project to result
+                }
+              }
+          steps + suites
         }
         val ran =
           try {
-            pool.map(jobs, { (_, suite) -> suite.name }) { (targets, suite) ->
-              progress.working(suite.name)
-              val result =
-                runSuite(
-                  compiler,
-                  targets,
-                  suite,
-                  command.noCache,
-                  progress,
-                  remote,
-                  pool.concurrent,
-                )
-              progress.done()
-              targets.project to result
+            pool.run(BuildGraph(units)).let { results ->
+              units.mapNotNull { results.getValue(it.id) }
             }
           } finally {
             profile?.let { (file, recorded) -> recorded.write(file) }
