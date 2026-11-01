@@ -7,11 +7,15 @@ package com.progmasoft.tazel.custom.commands.lexer
 
 import com.progmasoft.tazel.custom.commands.CUSTOM_COMMANDS_FILE
 import com.progmasoft.tazel.custom.commands.CustomCommandsException
+import com.progmasoft.tazel.custom.commands.MAX_CUSTOM_ARGUMENTS
 
 /** The kinds of [Token]. */
 enum class TokenKind {
   NAME,
   STRING,
+
+  /** `<N>` or `<*>`; its text is what stands between the brackets. */
+  PLACEHOLDER,
   COLON,
   SEMICOLON,
   OPEN,
@@ -78,6 +82,37 @@ class CustomLexer(private val text: String) {
     return Token(TokenKind.STRING, value, startLine, startColumn)
   }
 
+  private fun placeholder(): Token {
+    val startLine = line
+    val startColumn = column
+    advance()
+    val begin = position
+    while (position < text.length && text[position] != '>' && !text[position].isWhitespace()) {
+      advance()
+    }
+    if (position == text.length || text[position] != '>') {
+      fail("expected <N> or <*>", startLine, startColumn)
+    }
+    val value = text.substring(begin, position)
+    advance()
+    val number = value.toIntOrNull()
+    val valid =
+      value == "*" ||
+        (number != null &&
+          number in 1..MAX_CUSTOM_ARGUMENTS &&
+          !value.startsWith("0") &&
+          value.all(Char::isDigit))
+    if (!valid) {
+      fail(
+        "<$value> is not an argument: <N> runs from 1 to $MAX_CUSTOM_ARGUMENTS, and <*> is all of " +
+          "them",
+        startLine,
+        startColumn,
+      )
+    }
+    return Token(TokenKind.PLACEHOLDER, value, startLine, startColumn)
+  }
+
   private fun name(): Token {
     val startLine = line
     val startColumn = column
@@ -94,6 +129,7 @@ class CustomLexer(private val text: String) {
         text.startsWith("<#", position) -> skipBlockComment()
         letter == '#' -> while (position < text.length && text[position] != '\n') advance()
         letter == '"' || letter == '\'' || letter == '`' -> add(string())
+        letter == '<' -> add(placeholder())
         isNameLetter(letter) -> add(name())
         else -> {
           val kind =
