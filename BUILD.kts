@@ -25,7 +25,7 @@ compiler {
   wshadow = true // default: false; no warning level turns it on
   xppOptimizationPasses = false // default: true
   xmmOptimizationPasses = false // default: true
-  optLevel = OptLevel.O3 // default: O0 for DEBUG and O3 for RELEASE; O0, O1, O2, O3 or OG
+  optLevel = OptLevel.O3 // default: O0 for DEBUG and O3 for RELEASE; O0, O1, O2, O3, OG, OS or OZ
 
   llvm {
     compiler = LlvmCompiler.AOT // default: AOT; AOT or ORC
