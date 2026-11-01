@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- `tazel custom` names may hold several words, and `<N>` and `<*>` pass arguments of the
+  command line to a program: `build with: ("tazel" "build" <1> <2>);`.
+
 ## 0.4.0 - 2026-10-31
 
 Two changes need an edit in existing project files:
