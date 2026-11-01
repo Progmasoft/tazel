@@ -56,7 +56,9 @@ abstract class TazelPluginDescriptorTask : DefaultTask() {
     val name = required(pluginName, "name").also { identifier(it, "name") }
     val version = required(version, "version")
     if (!version.matches(VERSION)) {
-      throw GradleException("tazelPlugin.version '$version' is not a semantic version")
+      throw GradleException(
+        "tazelPlugin.version '$version' is not a version of three to five numbers"
+      )
     }
     val pluginClass = required(pluginClass, "pluginClass")
     val imports = imports.get()
@@ -122,9 +124,9 @@ abstract class TazelPluginDescriptorTask : DefaultTask() {
 
   private companion object {
     val IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
-    // The versions Tazel accepts: exact, without leading zeros or build metadata.
+    // The versions Tazel accepts: exact, without leading zeros.
     private const val COMPONENT = "(?:0|[1-9][0-9]*)"
-    val VERSION = Regex("$COMPONENT\\.$COMPONENT\\.$COMPONENT(?:-[0-9A-Za-z.-]+)?")
+    val VERSION = Regex("$COMPONENT(?:\\.$COMPONENT){2,4}(?:-[0-9A-Za-z.-]+)?")
     val IMPORT = Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*(?:\\.\\*)?")
   }
 }
