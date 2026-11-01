@@ -9,7 +9,7 @@ project {
   // With `sources.viget.push = true` every field below is required; otherwise each is optional.
   name = "Example"
   version = "0.1.0"
-  stability = Stability.STABLE // STABLE, UNSTABLE, BETA, NIGHTLY, ALPHA or DEV
+  stability = Stability.STABLE // STABLE, RC, UNSTABLE, BETA, NIGHTLY, ALPHA or DEV
   description = "A Tala project"
   authors("Leitwolf", "Helmut")
   defaultFeatures("TOML")

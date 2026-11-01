@@ -5,6 +5,7 @@
 
 ## Unreleased
 
+- `Stability.RC` marks a release candidate.
 - `OptLevel.OS` and `OptLevel.OZ` optimize for size; they need Tala 0.2.0.
 - A command is a graph of units: a step of a plugin, the compilation of a target, a test suite.
   Each unit waits only for what it depends on, so the projects of a workspace run their plugin
