@@ -5,7 +5,8 @@
 
 ## Unreleased
 
-- Package and plugin versions may have four numbers, as Progmasoft's own releases do.
+- Project, package and plugin versions are `A.B.C`, then `.D`, `.E` and `-METADATA` if needed, and the
+  Gradle plugin takes the same versions. A version with metadata ranks below the same one without it.
 - `OptLevel.OS` and `OptLevel.OZ` optimize for size; they need Tala 0.2.0.
 - A command is a graph of units: a step of a plugin, the compilation of a target, a test suite.
   Each unit waits only for what it depends on, so the projects of a workspace run their plugin

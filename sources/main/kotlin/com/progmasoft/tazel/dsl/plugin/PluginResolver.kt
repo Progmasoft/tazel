@@ -9,6 +9,7 @@ import com.progmasoft.api.tazel.dsl.plugin.PROJECT_PLUGIN_API_VERSION
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.requireModuleSegment
 import com.progmasoft.tazel.dsl.requirePackageVersion
+import java.math.BigInteger
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -227,18 +228,27 @@ object PluginResolver {
     else selected.copy(requestCoordinate = request.coordinate)
   }
 
+  /** Orders by the numbers, then a version without metadata above the same one with it. */
   internal fun compareVersions(
     left: String,
     right: String,
   ): Int {
-    val leftParts = left.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-    val rightParts = right.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+    val leftParts = numbersOf(left)
+    val rightParts = numbersOf(right)
     repeat(maxOf(leftParts.size, rightParts.size)) { index ->
-      val comparison = leftParts.getOrElse(index) { 0 }.compareTo(rightParts.getOrElse(index) { 0 })
+      val comparison =
+        leftParts
+          .getOrElse(index) { BigInteger.ZERO }
+          .compareTo(rightParts.getOrElse(index) { BigInteger.ZERO })
       if (comparison != 0) return comparison
     }
-    return left.compareTo(right)
+    val leftPlain = '-' !in left
+    val rightPlain = '-' !in right
+    return if (leftPlain != rightPlain) leftPlain.compareTo(rightPlain) else left.compareTo(right)
   }
+
+  private fun numbersOf(version: String) =
+    version.substringBefore('-').split('.').map { it.toBigIntegerOrNull() ?: BigInteger.ZERO }
 
   private fun requireSafeImport(value: String) {
     if (!value.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*(?:\\.\\*)?"))) {

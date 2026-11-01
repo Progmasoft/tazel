@@ -43,7 +43,7 @@ class TazelPluginPluginTest {
             """
             plugins { id("com.progmasoft.tazel.plugin") }
 
-            version = "1.2.0"
+            version = "1.2.0.3.4-build5"
 
             tazelPlugin {
             $tazelPlugin
@@ -84,7 +84,7 @@ class TazelPluginPluginTest {
       listOf(
         "publisher=Publisher",
         "name=Native",
-        "version=1.2.0",
+        "version=1.2.0.3.4-build5",
         "apiVersion=${TazelPluginPlugin.API_VERSION}",
         "imports=com.example.dsl.*",
         "description=Builds native code; with \\= and \\: in it.",

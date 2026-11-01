@@ -14,16 +14,18 @@ import kotlin.test.assertTrue
 
 class PackageVersionTest {
   @Test
-  fun aVersionHasThreeOrFourNumbers() {
-    for (version in listOf("0.4.0", "0.4.0.1", "1.2.3.4-beta", "0.19.9.9")) {
+  fun aVersionHasThreeToFiveNumbers() {
+    val versions =
+      listOf("0.4.0", "0.4.0.1", "1.2.3.4-beta", "0.19.9.9", "1.2.3.4.5", "1.2.3.4.5-build.7")
+    for (version in versions) {
       assertEquals(version, requirePackageVersion(version))
     }
-    for (version in listOf("1.2", "1.2.3.4.5", "01.2.3", "1.2.3.04", "1.2.3.")) {
+    for (version in listOf("1.2", "1.2.3.4.5.6", "01.2.3", "1.2.3.04", "1.2.3.", "1.2.3.4.05")) {
       val problem =
         assertFailsWith<ProjectConfigurationException> {
           requirePackageVersion(version)
         }
-      assertContains(problem.message.orEmpty(), "three or four numbers")
+      assertContains(problem.message.orEmpty(), "three to five numbers")
     }
   }
 
@@ -32,5 +34,25 @@ class PackageVersionTest {
     assertTrue(PluginResolver.compareVersions("0.4.0.1", "0.4.0") > 0)
     assertTrue(PluginResolver.compareVersions("0.4.0.10", "0.4.0.9") > 0)
     assertTrue(PluginResolver.compareVersions("0.4.1.0", "0.4.0.9") > 0)
+  }
+
+  @Test
+  fun aFifthNumberOrdersVersions() {
+    assertTrue(PluginResolver.compareVersions("1.2.3.4.1", "1.2.3.4") > 0)
+    assertTrue(PluginResolver.compareVersions("1.2.3.4.10", "1.2.3.4.9") > 0)
+  }
+
+  @Test
+  fun numbersOfAnySizeOrderVersions() {
+    assertTrue(PluginResolver.compareVersions("1.2.3.3000000000", "1.2.3.2999999999") > 0)
+    assertTrue(PluginResolver.compareVersions("1.2.3.99999999999999999999", "1.2.3.4") > 0)
+  }
+
+  @Test
+  fun metadataRanksBelowTheSameVersionWithoutIt() {
+    assertTrue(PluginResolver.compareVersions("1.2.3.4", "1.2.3.4-build") > 0)
+    assertTrue(PluginResolver.compareVersions("1.2.3.4-build", "1.2.3.4") < 0)
+    assertTrue(PluginResolver.compareVersions("1.2.3.5-build", "1.2.3.4") > 0)
+    assertTrue(PluginResolver.compareVersions("1.2.3.4-b", "1.2.3.4-a") > 0)
   }
 }
