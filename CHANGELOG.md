@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- `OptLevel.OS` and `OptLevel.OZ` optimize for size; they need Tala 0.2.0.
+
 ## 0.4.0 - 2026-10-31
 
 Two changes need an edit in existing project files:
