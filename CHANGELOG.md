@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+## 0.4.0.1 - 2026-11-02
+
 - `Stability.RC` marks a release candidate. Lockfiles are now of format 5, since older versions of Tazel cannot
   read that stability; files of format 4 keep working.
 - Project, package and plugin versions are `A.B.C`, then `.D`, `.E` and `-METADATA` if needed, and the
