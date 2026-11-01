@@ -7,8 +7,10 @@ package com.progmasoft.tazel.driver
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
@@ -77,25 +79,68 @@ class JobPool(
     name: (T) -> String,
     work: (T) -> R,
   ): List<R> {
-    val failures = ConcurrentLinkedQueue<Exception>()
+    val units = items.mapIndexed { index, item ->
+      BuildUnit(index.toString(), name(item)) { work(item) }
+    }
+    return run(BuildGraph(units)).let { results -> units.map { results.getValue(it.id) } }
+  }
+
+  /**
+   * The results of the units of [graph], by [BuildUnit.id]. A unit starts when what it depends on
+   * has finished, and never after one of those failed.
+   */
+  fun <R> run(graph: BuildGraph<R>): Map<String, R> {
+    val results = ConcurrentHashMap<String, Result<R>>()
+    val failures = mutableListOf<Exception>()
     val stopped = AtomicBoolean()
-    val results = arrayOfNulls<Any?>(items.size)
-    val job = { index: Int ->
-      if (!stopped.get()) {
-        try {
-          val item = items[index]
-          results[index] = profile?.measure(name(item)) { work(item) } ?: work(item)
-        } catch (failure: Exception) {
-          failures += failure
-          if (!keepGoing) stopped.set(true)
+    val waiting = graph.units.associate { it.id to it.dependsOn.size }.toMutableMap()
+    val ready = ArrayDeque(graph.units.filter { it.dependsOn.isEmpty() })
+    val finished = LinkedBlockingQueue<BuildUnit<R>>()
+    val attempt = { unit: BuildUnit<R> ->
+      try {
+        if (!stopped.get()) {
+          results[unit.id] = Result(profile?.measure(unit.name, unit.work) ?: unit.work())
+        }
+      } catch (failure: Exception) {
+        synchronized(failures) { failures += failure }
+        if (!keepGoing) stopped.set(true)
+      }
+    }
+    // What failed is never counted down from, so what waits for it stays waiting.
+    val release = { unit: BuildUnit<R> ->
+      if (results.containsKey(unit.id)) {
+        for (next in graph.dependents[unit.id].orEmpty()) {
+          val left = waiting.getValue(next.id) - 1
+          waiting[next.id] = left
+          if (left == 0) ready += next
         }
       }
     }
-    if (jobs <= 1 || items.size <= 1) {
-      items.indices.forEach(job)
+    if (jobs <= 1 || graph.units.size <= 1) {
+      while (ready.isNotEmpty()) ready.removeFirst().let { unit ->
+        attempt(unit)
+        release(unit)
+      }
     } else {
-      val pool = Executors.newFixedThreadPool(minOf(jobs, items.size))
-      items.indices.forEach { index -> pool.execute { job(index) } }
+      val pool = Executors.newFixedThreadPool(minOf(jobs, graph.units.size))
+      var running = 0
+      while (ready.isNotEmpty() || running > 0) {
+        while (ready.isNotEmpty()) {
+          val unit = ready.removeFirst()
+          running++
+          pool.execute {
+            try {
+              attempt(unit)
+            } finally {
+              finished.put(unit)
+            }
+          }
+        }
+        finished.take().let { unit ->
+          running--
+          release(unit)
+        }
+      }
       pool.shutdown()
       pool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
     }
@@ -104,9 +149,11 @@ class JobPool(
       1 -> throw failures.single()
       else -> throw JobFailures(failures.toList())
     }
-    @Suppress("UNCHECKED_CAST")
-    return results.toList() as List<R>
+    return results.mapValues { (_, result) -> result.value }
   }
+
+  // A unit may well return null, which a concurrent map cannot hold.
+  private class Result<R>(val value: R)
 }
 
 /**

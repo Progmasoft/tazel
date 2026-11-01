@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- A command is a graph of units: a step of a plugin, the compilation of a target, a test suite.
+  Each unit waits only for what it depends on, so the projects of a workspace run their plugin
+  steps side by side, and with `--keep-going` a step that fails stops only its own project.
+
 ## 0.4.0 - 2026-10-31
 
 Two changes need an edit in existing project files:
