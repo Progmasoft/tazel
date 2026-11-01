@@ -126,13 +126,13 @@ fun printSummary() {
 // ---------------------------------------------------------------------------------------------
 // Versions and the changelog
 
-/** Matches `major.minor.patch`, the version form Tazel releases use. */
-val versionPattern = Regex("""(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})""")
+/** Matches the versions of Tazel: four numbers, or three up to 0.4.0. */
+val versionPattern = Regex("""(0|[1-9]\d{0,8})(\.(0|[1-9]\d{0,8})){2,3}""")
 val buildVersionPattern = Regex("""(?m)^version = "([^"]*)"\r?$""")
 
 fun parseVersion(text: String): String {
   if (!versionPattern.matches(text)) {
-    throw UsageError("$text is not a version; expected major.minor.patch, such as 0.1.0")
+    throw UsageError("$text is not a version; expected four numbers, such as 0.4.0.1")
   }
   return text
 }
@@ -651,9 +651,10 @@ class SelfTest : CliktCommand(name = "self-test") {
 
   override fun run() {
     expect("a version has three numbers", versionPattern.matches("0.10.2"))
+    expect("a version has four numbers", versionPattern.matches("0.10.2.3"))
     expect(
       "a prefixed tag or a leading zero is not a version",
-      listOf("tazel-0.1.0", "01.0.0", "1.2", "1.2.3.4").none { versionPattern.matches(it) },
+      listOf("tazel-0.1.0", "01.0.0", "1.2", "1.2.3.4.5").none { versionPattern.matches(it) },
     )
     expect(
       "the declared version is read",

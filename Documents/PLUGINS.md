@@ -117,7 +117,7 @@ repository=https\://github.com/example/cmake-plugin
 | --- | --- |
 | `publisher` | one identifier: the name of a Progmasoft Account |
 | `name` | one identifier |
-| `version` | an exact semantic version |
+| `version` | an exact version: `A.B.C`, then `.D`, `.E` and `-METADATA` if needed |
 | `apiVersion` | the plugin API it was built for; Tazel loads only `2`, the current `PROJECT_PLUGIN_API_VERSION` |
 | `imports` | optional; comma-separated packages or classes the project file imports by default, such as `com.example.cmake.dsl.*` |
 | `description`, `author.0`, `author.1`, ..., `license`, `homepage`, `repository` | optional for Tazel; ViGet shows them on the page of the plugin. `license` is an SPDX expression. |
