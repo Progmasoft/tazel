@@ -118,7 +118,7 @@ class CommandLineTest {
         CommandName.CACHE_SERVE to parsed("cache", "serve", "--directory", "Results"),
         CommandName.FETCH to parsed("fetch"),
         CommandName.REMOTE_SERVE to parsed("remote", "serve"),
-        CommandName.CUSTOM to parsed("custom", "dev"),
+        CommandName.CUSTOM to parsed("custom", "dev", "--no-cache", "-e", "MyApp"),
         CommandName.LOCK_RESOLVE to parsed("lock", "resolve"),
         CommandName.LOCK_CREATE_DUMP to parsed("lock", "create-dump"),
         CommandName.LOCK_GRAPH to parsed("lock", "graph"),
@@ -400,6 +400,14 @@ class CommandLineTest {
     assertContains(rejected("lock", "graph", "-dx"), "-d takes no value")
     assertContains(rejected("install", "-g=1", "Publisher.Name"), "-g takes no value")
     assertContains(hint("build", "--vipgk=Server").orEmpty(), "did you mean --vipkg?")
+  }
+
+  @Test
+  fun theWordsAfterCustomBelongToTheCommand() {
+    val result = parseCommandLine(listOf("--quiet", "custom", "go", "--quiet", "--color=never"))
+    val parsed = assertIs<ParseResult.Parsed>(result)
+    assertEquals(Command.Custom(listOf("go", "--quiet", "--color=never")), parsed.command)
+    assertTrue(parsed.output.quiet)
   }
 
   @Test

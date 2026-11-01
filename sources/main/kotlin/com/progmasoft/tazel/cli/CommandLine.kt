@@ -5,6 +5,7 @@
 
 package com.progmasoft.tazel.cli
 
+import com.progmasoft.tazel.custom.commands.MAX_CUSTOM_ARGUMENTS
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.byteSize
 
@@ -150,8 +151,11 @@ sealed interface Command {
     override val name = CommandName.FETCH
   }
 
-  /** Runs the command [commandName] of `tazel_custom.txt`; lists the commands when absent. */
-  data class Custom(val commandName: String?) : Command {
+  /**
+   * Runs the command of `tazel_custom.txt` that [words] start with, and hands it the rest; lists
+   * the commands when there are none.
+   */
+  data class Custom(val words: List<String>) : Command {
     override val name = CommandName.CUSTOM
   }
 
@@ -415,7 +419,8 @@ private fun outputOptions(arguments: List<String>): Pair<OutputOptions, List<Str
   }
   while (index < arguments.size) {
     val argument = arguments[index]
-    if (argument == "--") {
+    // What follows `custom` belongs to the command it names, whatever it looks like.
+    if (argument == "--" || (argument == "custom" && rest.isEmpty())) {
       rest += arguments.subList(index, arguments.size)
       break
     }
@@ -631,7 +636,7 @@ private class ArgumentReader(private val arguments: List<String>) {
   /** The next argument as an option, or `null` with the argument as it is written. */
   fun nextOption(): Pair<String, OptionWord?> = next().let { it to optionWord(it) }
 
-  /** Everything after `--`, or nothing when the line ended before one. */
+  /** The arguments that are left, unread. */
   private fun passThrough(): List<String> {
     val rest = arguments.subList(position, arguments.size).toList()
     position = arguments.size
@@ -659,6 +664,15 @@ private class ArgumentReader(private val arguments: List<String>) {
     return action
   }
 
+  // The words belong to the command of the file, so that nothing in them is an option of Tazel.
+  private fun custom(): Command.Custom {
+    val words = passThrough()
+    if (words.size > MAX_CUSTOM_ARGUMENTS) {
+      reject("tazel custom takes at most $MAX_CUSTOM_ARGUMENTS arguments, and got ${words.size}")
+    }
+    return Command.Custom(words)
+  }
+
   fun command(): Command =
     when (val word = next()) {
       "check" ->
@@ -669,8 +683,7 @@ private class ArgumentReader(private val arguments: List<String>) {
       "test" ->
         compiling(CommandName.TEST).let { Command.Test(it.targets, it.noCache, it.execution) }
       "fetch" -> Command.Fetch.also { finish(CommandName.FETCH) }
-      "custom" ->
-        Command.Custom(if (hasNext()) next() else null).also { finish(CommandName.CUSTOM) }
+      "custom" -> custom()
       "lock" ->
         when (action("lock", "resolve", "create-dump", "graph")) {
           "resolve" -> Command.LockResolve.also { finish(CommandName.LOCK_RESOLVE) }
