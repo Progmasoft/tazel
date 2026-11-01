@@ -7,8 +7,8 @@ import org.gradle.api.JavaVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-  kotlin("jvm") version "2.4.0"
-  id("com.diffplug.spotless") version "8.9.0"
+  kotlin("jvm") version "2.4.21"
+  id("com.diffplug.spotless") version "8.10.4"
   application
   jacoco
 }
@@ -22,12 +22,12 @@ repositories {
 
 dependencies {
   implementation(project(":tazel-api"))
-  implementation("com.github.ajalt.mordant:mordant:3.0.1")
-  implementation("org.jetbrains.kotlin:kotlin-scripting-common:2.4.0")
-  implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:2.4.0")
-  implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host:2.4.0")
-  implementation("org.xerial:sqlite-jdbc:3.53.1.0")
-  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+  implementation("com.github.ajalt.mordant:mordant:3.1.0")
+  implementation("org.jetbrains.kotlin:kotlin-scripting-common:2.4.21")
+  implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:2.4.21")
+  implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host:2.4.21")
+  implementation("org.xerial:sqlite-jdbc:3.53.4.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
   testImplementation(kotlin("test"))
 }
 
