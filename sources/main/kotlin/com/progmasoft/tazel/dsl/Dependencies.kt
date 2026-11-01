@@ -209,9 +209,10 @@ internal fun requireFeatureName(value: String): String {
 internal fun requirePackageVersion(value: String): String {
   val version = requireText(value, "package version")
   val component = "(?:0|[1-9][0-9]*)"
-  if (!version.matches(Regex("$component\\.$component\\.$component(?:-[0-9A-Za-z.-]+)?"))) {
+  val numbers = "$component\\.$component\\.$component(?:\\.$component)?"
+  if (!version.matches(Regex("$numbers(?:-[0-9A-Za-z.-]+)?"))) {
     throw ProjectConfigurationException(
-      "package version must be an exact semantic version: $version"
+      "package version must be an exact version of three or four numbers: $version"
     )
   }
   return version

@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- Package and plugin versions may have four numbers, as Progmasoft's own releases do.
+
 ## 0.4.0 - 2026-10-31
 
 Two changes need an edit in existing project files:

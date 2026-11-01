@@ -60,7 +60,7 @@ project {
 `name` is always required, so every project file has a `project` block. Every other field is optional on its own. With
 `sources.viget.push = true`, `version`, `stability`, `description` and at least one author are required too; this is checked
 once the whole file has run, so the order of the blocks does not matter.
-`name` is one identifier and `version` is an exact semantic version.
+`name` is one identifier and `version` is an exact version of three or four numbers.
 
 ## `compiler`
 
@@ -266,7 +266,7 @@ dependencies {
 }
 ```
 
-A dependency is a package of ViGet, written as a publisher, a name and an exact semantic version. `stability` defaults to
+A dependency is a package of ViGet, written as a publisher, a name and an exact version of three or four numbers. `stability` defaults to
 `STABLE`. The publisher is the case-sensitive name of a Progmasoft Account. ViGet is the only remote source: there is no
 list of repositories and no way to name another one.
 
