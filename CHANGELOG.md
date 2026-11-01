@@ -7,7 +7,6 @@
 
 - `tazel custom` names may hold several words, and `<N>` and `<*>` pass arguments of the
   command line to a program: `build with: ("tazel" "build" <1> <2>);`.
-- `OptLevel.OS` and `OptLevel.OZ` optimize for size; they need Tala 0.2.0.
 
 ## 0.4.0 - 2026-10-31
 

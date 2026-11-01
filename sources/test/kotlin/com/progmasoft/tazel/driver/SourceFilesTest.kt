@@ -156,13 +156,6 @@ class SourceFilesTest {
       compilerArguments(CompilerSettings(optLevel = OptLevel.OG), "A.B", Emit.METADATA, emptyList())
         .single { it.startsWith("--opt-level") },
     )
-    for ((level, written) in listOf(OptLevel.OS to "s", OptLevel.OZ to "z")) {
-      assertEquals(
-        "--opt-level=$written",
-        compilerArguments(CompilerSettings(optLevel = level), "A.B", Emit.METADATA, emptyList())
-          .single { it.startsWith("--opt-level") },
-      )
-    }
   }
 
   @Test

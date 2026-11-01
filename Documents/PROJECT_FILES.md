@@ -95,7 +95,7 @@ compiler {
 | `wshadow` | `true`, `false` | `false` | `--warnings=shadow` |
 | `xppOptimizationPasses` | `true`, `false` | `true` | `--xpp-optimization-passes` |
 | `xmmOptimizationPasses` | `true`, `false` | `true` | `--xmm-optimization-passes` |
-| `optLevel` | `OptLevel.O0`, `O1`, `O2`, `O3`, `OG`, `OS`, `OZ` | `O0` for `DEBUG`, `O3` for `RELEASE` | `--opt-level` |
+| `optLevel` | `OptLevel.O0`, `O1`, `O2`, `O3`, `OG` | `O0` for `DEBUG`, `O3` for `RELEASE` | `--opt-level` |
 | `staticTalaRTLibrary` | `true`, `false`, `null` | `null` | `--static-talart-library` |
 | `llvm.compiler` | `LlvmCompiler.AOT`, `ORC` | `AOT` | `--llvm-compiler` |
 | `llvm.lto` | `LlvmLto.FAT`, `THIN`, `NONE` | `NONE` | `--llvm-lto` |

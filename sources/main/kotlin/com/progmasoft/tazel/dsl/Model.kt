@@ -56,12 +56,6 @@ enum class OptLevel {
   O2,
   O3,
   OG,
-
-  /** For size. */
-  OS,
-
-  /** For size above all, even at the cost of speed. */
-  OZ,
 }
 
 enum class LlvmCompiler {
