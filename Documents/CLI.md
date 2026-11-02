@@ -462,8 +462,10 @@ A step that fails ends the command, and `tazel custom` exits with its exit code.
 
 ## Options of this machine
 
-`tazel_options.txt`, found in the current directory or the nearest one above it, holds options of Tazel itself rather than
-of a project. It uses the comments and strings of `tazel_custom.txt`; every option ends with `;`, which the last one may
+`tazel_options.txt` holds options of Tazel itself rather than of a project. Tazel reads every one in the current directory
+and the directories above it: the nearest file decides each option, except that `sandboxing-with-microvm: true` in any of
+them holds, so a project cannot turn off a sandbox that a directory around it asks for. A file that cannot be inspected or
+read stops the command, as a broken one does. It uses the comments and strings of `tazel_custom.txt`; every option ends with `;`, which the last one may
 leave out. An option that is not written keeps its default.
 
 ```text
@@ -487,8 +489,8 @@ With `sandboxing-with-microvm: false`, the project file and its plugins run in T
 who started it, and custom commands, the compiler and the tools run as processes of the host system, not in a MicroVM.
 
 `sandboxing-with-microvm: true` asks for all of them to run inside a MicroVM of hardware virtualization, for `tazel build`
-as for `tazel custom`. Tazel has no MicroVM to start, so it stops every command except `version` and `help` with exit code
-`1` before anything runs, rather than run it on the host system.
+as for `tazel custom`. Tazel has no MicroVM to start, so it stops every command except `version` and `help`, the daemon commands included,
+with exit code `1` before anything runs, rather than run it on the host system.
 
 ## Not implemented yet
 

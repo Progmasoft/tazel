@@ -8,11 +8,14 @@ package com.progmasoft.tazel.cli
 import com.progmasoft.tazel.options.Allocation
 import com.progmasoft.tazel.options.TazelOptions
 import com.progmasoft.tazel.options.TazelOptionsException
+import com.progmasoft.tazel.options.effectiveTazelOptions
 import com.progmasoft.tazel.options.parseTazelOptions
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class TazelOptionsTest {
   private fun rejection(text: String) =
@@ -91,6 +94,29 @@ class TazelOptionsTest {
     write("tazel_options.txt", "sandboxing-with-microvm: false; microvm-cpus: 2;")
     assertEquals(ExitCode.SUCCESS, run("custom", "dev"))
     assertEquals(1, commands.size)
+  }
+
+  @Test
+  fun aCloserFileCannotTurnOffASandboxAskedForAbove() = fixture {
+    write("tazel_options.txt", "sandboxing-with-microvm: true; microvm-cpus: 4;")
+    write("project/tazel_custom.txt", """dev: ("../bin/tool");""")
+    write("project/tazel_options.txt", "sandboxing-with-microvm: false; microvm-cpus: 2;")
+    assertEquals(ExitCode.FAILURE, run("custom", "dev", directory = "project"))
+    assertContains(recorder.stderr(), "has no MicroVM to start, so nothing ran")
+    assertEquals(0, commands.size)
+    val (options, asking) = assertNotNull(effectiveTazelOptions(root.resolve("project")))
+    assertEquals(true, options.sandboxingWithMicrovm)
+    assertEquals(Allocation.Fixed(2), options.microvmCpus)
+    assertEquals(root.resolve("tazel_options.txt").toAbsolutePath(), asking)
+  }
+
+  @Test
+  fun anUnreadableOptionsFileStopsTheCommand() = fixture {
+    write("tazel_custom.txt", """dev: ("bin/tool");""")
+    Files.write(root.resolve("tazel_options.txt"), byteArrayOf(0xFF.toByte(), 0xFE.toByte()))
+    assertEquals(ExitCode.FAILURE, run("custom", "dev"))
+    assertContains(recorder.stderr(), "could not be read")
+    assertEquals(0, commands.size)
   }
 
   @Test

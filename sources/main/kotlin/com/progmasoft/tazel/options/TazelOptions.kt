@@ -9,8 +9,11 @@ import com.progmasoft.tazel.custom.commands.CustomCommandsException
 import com.progmasoft.tazel.custom.commands.lexer.CustomLexer
 import com.progmasoft.tazel.custom.commands.lexer.Token
 import com.progmasoft.tazel.custom.commands.lexer.TokenKind
+import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * The file of the options of Tazel on this machine, in a directory a command runs in or above it.
@@ -52,7 +55,10 @@ private const val MAX_CPUS = 256
 private val KEYS =
   listOf("sandboxing-with-microvm", "microvm-network", "microvm-memory", "microvm-cpus")
 
-private class OptionsParser(private val tokens: List<Token>) {
+private class OptionsParser(
+  private val tokens: List<Token>,
+  private val file: String,
+) {
   private var position = 0
 
   private fun fail(
@@ -60,7 +66,7 @@ private class OptionsParser(private val tokens: List<Token>) {
     message: String,
   ): Nothing {
     val place = token?.let { "${it.line}:${it.column}: " }.orEmpty()
-    throw TazelOptionsException("$OPTIONS_FILE:$place$message")
+    throw TazelOptionsException("$file:$place$message")
   }
 
   private fun take(
@@ -127,22 +133,62 @@ private class OptionsParser(private val tokens: List<Token>) {
   }
 }
 
-/** Reads the text of a `tazel_options.txt`, with the comments and strings of `tazel_custom.txt`. */
-fun parseTazelOptions(text: String): TazelOptions {
+/**
+ * Reads the text of a `tazel_options.txt`, with the comments and strings of `tazel_custom.txt`;
+ * [file] names it in messages.
+ */
+fun parseTazelOptions(
+  text: String,
+  file: String = OPTIONS_FILE,
+): TazelOptions {
   val tokens =
     try {
-      CustomLexer(text, OPTIONS_FILE).tokens()
+      CustomLexer(text, file).tokens()
     } catch (error: CustomCommandsException) {
       throw TazelOptionsException(error.message.orEmpty())
     }
-  return OptionsParser(tokens).options()
+  return OptionsParser(tokens, file).options()
 }
 
-/** The nearest `tazel_options.txt` at or above [directory]. */
-fun findTazelOptions(directory: Path): Path? =
+// A file that cannot be inspected is an error rather than a file that is not there, so that a
+// sandbox asked for is never skipped.
+private fun isOptionsFile(file: Path): Boolean =
+  try {
+    Files.readAttributes(file, BasicFileAttributes::class.java).isRegularFile
+  } catch (_: NoSuchFileException) {
+    false
+  } catch (problem: IOException) {
+    throw TazelOptionsException("$file could not be inspected: ${problem.message}")
+  }
+
+/** Every `tazel_options.txt` at or above [directory], the nearest first. */
+fun findTazelOptions(directory: Path): List<Path> =
   generateSequence(directory.toAbsolutePath(), Path::getParent)
     .map { it.resolve(OPTIONS_FILE) }
-    .firstOrNull(Files::isRegularFile)
+    .filter(::isOptionsFile)
+    .toList()
+
+private fun readTazelOptions(file: Path): TazelOptions {
+  val text =
+    try {
+      Files.readString(file)
+    } catch (problem: IOException) {
+      throw TazelOptionsException("$file could not be read: ${problem.message}")
+    }
+  return parseTazelOptions(text, file.toString())
+}
+
+/**
+ * The options that hold in [directory]: those of the nearest `tazel_options.txt`, except that a
+ * sandbox asked for in any file above stays asked for, so a project cannot turn off what a
+ * directory around it requires. Null without any file.
+ */
+fun effectiveTazelOptions(directory: Path): Pair<TazelOptions, Path?>? {
+  val files = findTazelOptions(directory).map { it to readTazelOptions(it) }
+  if (files.isEmpty()) return null
+  val asking = files.firstOrNull { it.second.sandboxingWithMicrovm }?.first
+  return files.first().second.copy(sandboxingWithMicrovm = asking != null) to asking
+}
 
 /**
  * Why a command must not run from [directory], or null when it may. Tazel has no MicroVM to start,
@@ -150,8 +196,7 @@ fun findTazelOptions(directory: Path): Path? =
  * than run it on the host system.
  */
 fun sandboxRefusal(directory: Path): String? {
-  val file = findTazelOptions(directory) ?: return null
-  if (!parseTazelOptions(Files.readString(file)).sandboxingWithMicrovm) return null
+  val file = effectiveTazelOptions(directory)?.second ?: return null
   return "$file asks for sandboxing-with-microvm, but Tazel has no MicroVM to start, so " +
     "nothing ran. Set it to false to run without the sandbox."
 }
