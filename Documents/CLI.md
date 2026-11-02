@@ -446,7 +446,9 @@ tazel custom build with -e MyApp
 A string is written with `"`, `'` or `` ` `` and has no escapes, so it cannot hold its own quote, and a backslash in it is
 a backslash. `(...)` starts the program directly with these arguments: there is no shell, so a word like `|` means nothing
 special and each string stays one argument. On Windows the program may be a script such as `npm.cmd`. `s(...)` takes exactly
-one string and hands it unchanged to CMD on Windows and to `sh` elsewhere; escapes in it are for that shell to read.
+one string and hands it unchanged to CMD on Windows and to `sh` elsewhere; escapes in it are for that shell to read. The one
+exception is a JVM started with `jdk.lang.Process.allowAmbiguousCommands=false` on Windows: it cannot pass a line that holds
+a `"` or ends with `\`, so Tazel refuses such a command before it runs any of its steps.
 
 The words after `tazel custom` belong to the command, so that nothing in them is an option of Tazel. The longest name they
 start with is the command, and the rest are its arguments. `--` ends the name: with commands `first` and `first second`,

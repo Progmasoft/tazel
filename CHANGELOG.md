@@ -8,7 +8,8 @@
 - `--` ends the name of a `tazel custom` command, so `tazel custom first -- second` passes `second` to `first`
   even when a command `first second` exists. It used to reach the command as an argument.
 - On Windows, a line of `s(...)` reaches CMD unchanged: a trailing backslash was doubled, and a line that started
-  and ended with a quote lost both.
+  and ended with a quote lost both. With `jdk.lang.Process.allowAmbiguousCommands=false`, Java cannot pass a line
+  that holds a `"` or ends with `\`, so such a command is refused before any of its steps runs.
 
 ## 0.4.0.1 - 2026-11-02
 

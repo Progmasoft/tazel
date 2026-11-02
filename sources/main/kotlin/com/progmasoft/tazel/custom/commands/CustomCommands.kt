@@ -16,6 +16,9 @@ const val MAX_CUSTOM_ARGUMENTS = 191
 /** Ends the name of a custom command on the command line; what follows it is arguments. */
 const val CUSTOM_NAME_END = "--"
 
+/** With the value `false`, the JVM quotes the arguments of processes on Windows more strictly. */
+const val STRICT_PROCESSES_PROPERTY = "jdk.lang.Process.allowAmbiguousCommands"
+
 /** One argument of a program in a custom command. */
 sealed interface CustomArgument {
   /** A string of the file. */
@@ -55,6 +58,14 @@ sealed interface CustomStep {
     fun started(os: OperatingSystem): List<String> =
       if (os == OperatingSystem.WINDOWS) listOf("cmd.exe", "/d", "/s", "/c", "\"$line\"")
       else listOf("sh", "-c", line)
+
+    /**
+     * Whether [started] still holds under `jdk.lang.Process.allowAmbiguousCommands=false`. In that
+     * mode Java refuses a quoted argument with a quote inside and doubles the backslash before a
+     * closing quote, and it has no other way to give CMD a line as it is.
+     */
+    val fitsStrictProcesses: Boolean
+      get() = '"' !in line && !line.endsWith('\\')
   }
 }
 
@@ -73,6 +84,10 @@ data class CustomCommand(
   /** The highest `<N>`: the arguments the command cannot do without. */
   val required: Int
     get() = placeholders.filterIsInstance<CustomArgument.Position>().maxOfOrNull { it.number } ?: 0
+
+  /** The first line of a shell step that Java's strict process mode would refuse or change. */
+  val lineUnfitForStrictProcesses: String?
+    get() = steps.filterIsInstance<CustomStep.Shell>().firstOrNull { !it.fitsStrictProcesses }?.line
 
   /** Whether `<*>` takes any number of arguments. */
   val takesAll: Boolean

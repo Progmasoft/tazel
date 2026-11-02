@@ -202,6 +202,14 @@ class CustomCommandsTest {
   }
 
   @Test
+  fun strictProcessesAreRefusedOnlyForLinesTheyChange() {
+    val command = { line: String -> CustomCommand("a", listOf(CustomStep.Shell(line))) }
+    assertEquals(null, command("echo a b").lineUnfitForStrictProcesses)
+    assertEquals("echo \"a\"", command("echo \"a\"").lineUnfitForStrictProcesses)
+    assertEquals("dir a\\", command("dir a\\").lineUnfitForStrictProcesses)
+  }
+
+  @Test
   fun cmdReceivesTheLineAsWritten() {
     if (!System.getProperty("os.name").startsWith("Windows")) return
     val started = CustomStep.Shell("echo trailing\\").started(OperatingSystem.WINDOWS)

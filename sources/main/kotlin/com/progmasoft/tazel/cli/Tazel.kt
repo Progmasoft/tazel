@@ -18,6 +18,7 @@ import com.progmasoft.tazel.custom.commands.CUSTOM_COMMANDS_FILE
 import com.progmasoft.tazel.custom.commands.CustomCommand
 import com.progmasoft.tazel.custom.commands.CustomCommandsException
 import com.progmasoft.tazel.custom.commands.CustomStep
+import com.progmasoft.tazel.custom.commands.STRICT_PROCESSES_PROPERTY
 import com.progmasoft.tazel.custom.commands.matching
 import com.progmasoft.tazel.custom.commands.parser.parseCustomCommands
 import com.progmasoft.tazel.driver.BuildCache
@@ -1205,12 +1206,23 @@ class Tazel(
           ?.let { didYouMean(written, it) },
       )
     }
+    if (os == OperatingSystem.WINDOWS && strictProcesses()) {
+      command.lineUnfitForStrictProcesses?.let {
+        throw Stop(
+          "'${command.name}' cannot reach CMD unchanged: this JVM runs with " +
+            "$STRICT_PROCESSES_PROPERTY=false, which refuses or changes the line: $it"
+        )
+      }
+    }
     for (step in command.steps) {
       val exitCode = processes.run(commandOf(step, file.parent, arguments), file.parent)
       if (exitCode != ExitCode.SUCCESS) return exitCode
     }
     return ExitCode.SUCCESS
   }
+
+  private fun strictProcesses() =
+    System.getProperty(STRICT_PROCESSES_PROPERTY).equals("false", ignoreCase = true)
 
   private fun commandOf(
     step: CustomStep,
