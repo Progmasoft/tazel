@@ -460,6 +460,36 @@ outside quotes; they come after the program and cannot be used in `s(...)`.
 
 A step that fails ends the command, and `tazel custom` exits with its exit code. Without a name it lists the commands.
 
+## Options of this machine
+
+`tazel_options.txt`, found in the current directory or the nearest one above it, holds options of Tazel itself rather than
+of a project. It uses the comments and strings of `tazel_custom.txt`; every option ends with `;`, which the last one may
+leave out. An option that is not written keeps its default.
+
+```text
+# Run what a project brings inside a MicroVM.
+sandboxing-with-microvm: true;
+microvm-network: true;
+microvm-memory: 2048;
+microvm-cpus: "auto"
+```
+
+| Option | Value | Default |
+| --- | --- | --- |
+| `sandboxing-with-microvm` | `true` or `false` | `false` |
+| `microvm-network` | `true` or `false` | `false` |
+| `microvm-memory` | MiB from 256 to 1048576, or `"auto"` | `"auto"` |
+| `microvm-cpus` | 1 to 256, or `"auto"` | `"auto"` |
+
+`"auto"` may be written with any of the three quotes; numbers and `true`/`false` stand without them.
+
+With `sandboxing-with-microvm: false`, the project file and its plugins run in Tazel's JVM with all the rights of the user
+who started it, and custom commands, the compiler and the tools run as processes of the host system, not in a MicroVM.
+
+`sandboxing-with-microvm: true` asks for all of them to run inside a MicroVM of hardware virtualization, for `tazel build`
+as for `tazel custom`. Tazel has no MicroVM to start, so it stops every command except `version` and `help` with exit code
+`1` before anything runs, rather than run it on the host system.
+
 ## Not implemented yet
 
 These are refused by name with exit code `1`:
