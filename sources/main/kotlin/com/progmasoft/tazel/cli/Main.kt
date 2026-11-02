@@ -20,6 +20,8 @@ import com.progmasoft.tazel.dsl.Phase
 import com.progmasoft.tazel.dsl.ScriptCache
 import com.progmasoft.tazel.dsl.Timings
 import com.progmasoft.tazel.dsl.detectHost
+import com.progmasoft.tazel.options.TazelOptionsException
+import com.progmasoft.tazel.options.sandboxRefusal
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -201,6 +203,20 @@ fun main(arguments: Array<String>) {
         val command = parsed.command
         val environment = System.getenv()
         val client = DaemonClient(DaemonPaths.forInstallation(tazelVersion()), tazelVersion())
+        // Checked here as well as in Tazel.run, so that a sandbox asked for also stops the daemon
+        // commands and nothing reaches a daemon.
+        if (command != Command.Version && command !is Command.Help) {
+          val refusal =
+            try {
+              sandboxRefusal(Path.of("").toAbsolutePath())
+            } catch (problem: TazelOptionsException) {
+              problem.message.orEmpty()
+            }
+          if (refusal != null) {
+            reportError(terminal, refusal)
+            exitProcess(ExitCode.FAILURE)
+          }
+        }
         if (command is Command.Daemon) {
           val started =
             environment +

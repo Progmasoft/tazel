@@ -30,8 +30,14 @@ data class Token(
   val column: Int,
 )
 
-/** Splits the text of the file: comments go, and whitespace of any kind only separates. */
-class CustomLexer(private val text: String) {
+/**
+ * Splits the text of [file], `tazel_custom.txt` or `tazel_options.txt`: comments go, and whitespace
+ * of any kind only separates.
+ */
+class CustomLexer(
+  private val text: String,
+  private val file: String = CUSTOM_COMMANDS_FILE,
+) {
   private var position = 0
   private var line = 1
   private var column = 1
@@ -40,7 +46,7 @@ class CustomLexer(private val text: String) {
     message: String,
     atLine: Int = line,
     atColumn: Int = column,
-  ): Nothing = throw CustomCommandsException("$CUSTOM_COMMANDS_FILE:$atLine:$atColumn: $message")
+  ): Nothing = throw CustomCommandsException("$file:$atLine:$atColumn: $message")
 
   private fun advance(): Char {
     val letter = text[position++]

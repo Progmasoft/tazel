@@ -84,6 +84,8 @@ import com.progmasoft.tazel.lock.LockedPlugin
 import com.progmasoft.tazel.lock.LockedProject
 import com.progmasoft.tazel.lock.LockfileDump
 import com.progmasoft.tazel.lock.ProjectLockFile
+import com.progmasoft.tazel.options.TazelOptionsException
+import com.progmasoft.tazel.options.sandboxRefusal
 import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -277,6 +279,9 @@ class Tazel(
 
   fun run(command: Command): Int =
     try {
+      if (command != Command.Version && command !is Command.Help) {
+        sandboxRefusal(directory)?.let { throw Stop(it) }
+      }
       execution =
         when (command) {
           is Command.Check -> command.execution
@@ -338,6 +343,8 @@ class Tazel(
         },
       )
     } catch (problem: ProjectConfigurationException) {
+      fail(problem.message.orEmpty())
+    } catch (problem: TazelOptionsException) {
       fail(problem.message.orEmpty())
     } catch (problem: java.sql.SQLException) {
       fail("${ProjectLockFile.FILE_NAME} could not be used: ${problem.message}")
