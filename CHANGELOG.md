@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+## 0.4.0.2 - 2026-11-02
+
 - `--` ends the name of a `tazel custom` command, so `tazel custom first -- second` passes `second` to `first`
   even when a command `first second` exists. It used to reach the command as an argument.
 - On Windows, a line of `s(...)` reaches CMD unchanged: a trailing backslash was doubled, and a line that started
