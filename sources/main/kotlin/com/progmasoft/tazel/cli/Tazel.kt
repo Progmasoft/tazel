@@ -1218,9 +1218,7 @@ class Tazel(
     arguments: List<String>,
   ): List<String> =
     when (step) {
-      is CustomStep.Shell ->
-        if (os == OperatingSystem.WINDOWS) listOf("cmd.exe", "/d", "/s", "/c", step.line)
-        else listOf("sh", "-c", step.line)
+      is CustomStep.Shell -> step.started(os)
       is CustomStep.Program -> {
         val expanded = step.expanded(arguments)
         val program = expanded.first()

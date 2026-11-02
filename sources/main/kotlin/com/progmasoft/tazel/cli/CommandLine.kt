@@ -5,6 +5,7 @@
 
 package com.progmasoft.tazel.cli
 
+import com.progmasoft.tazel.custom.commands.CUSTOM_NAME_END
 import com.progmasoft.tazel.custom.commands.MAX_CUSTOM_ARGUMENTS
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.byteSize
@@ -667,8 +668,9 @@ private class ArgumentReader(private val arguments: List<String>) {
   // The words belong to the command of the file, so that nothing in them is an option of Tazel.
   private fun custom(): Command.Custom {
     val words = passThrough()
-    if (words.size > MAX_CUSTOM_ARGUMENTS) {
-      reject("tazel custom takes at most $MAX_CUSTOM_ARGUMENTS arguments, and got ${words.size}")
+    val count = if (CUSTOM_NAME_END in words) words.size - 1 else words.size
+    if (count > MAX_CUSTOM_ARGUMENTS) {
+      reject("tazel custom takes at most $MAX_CUSTOM_ARGUMENTS arguments, and got $count")
     }
     return Command.Custom(words)
   }

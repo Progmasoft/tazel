@@ -170,6 +170,46 @@ class CustomCommandsTest {
   }
 
   @Test
+  fun theSeparatorEndsTheName() = fixture {
+    write(
+      "tazel_custom.txt",
+      """
+      first: ("bin/short" <*>);
+      first second: ("bin/long" <*>);
+      """,
+    )
+    assertEquals(ExitCode.SUCCESS, run("custom", "first", "second"))
+    assertEquals(listOf(emptyList<String>()), callsOf("long"))
+    assertEquals(ExitCode.SUCCESS, run("custom", "first", "--", "second"))
+    assertEquals(listOf(listOf("second")), callsOf("short"))
+    assertEquals(ExitCode.SUCCESS, run("custom", "first", "a", "--", "second", "--"))
+    assertEquals(listOf("a", "second", "--"), callsOf("short").last())
+  }
+
+  @Test
+  fun aNameCannotHoldTheSeparator() {
+    assertContains(rejection("""a -- b: ("c");"""), "cannot hold it")
+  }
+
+  @Test
+  fun aShellLineIsNotChanged() {
+    val line = """"a b" \c\"""
+    assertEquals(listOf("sh", "-c", line), CustomStep.Shell(line).started(OperatingSystem.LINUX))
+    assertEquals(
+      listOf("cmd.exe", "/d", "/s", "/c", "\"$line\""),
+      CustomStep.Shell(line).started(OperatingSystem.WINDOWS),
+    )
+  }
+
+  @Test
+  fun cmdReceivesTheLineAsWritten() {
+    if (!System.getProperty("os.name").startsWith("Windows")) return
+    val started = CustomStep.Shell("echo trailing\\").started(OperatingSystem.WINDOWS)
+    val process = ProcessBuilder(started).redirectErrorStream(true).start()
+    assertEquals("trailing\\", process.inputStream.bufferedReader().readText().trim())
+  }
+
+  @Test
   fun theNumberOfArgumentsIsChecked() = fixture {
     write(
       "tazel_custom.txt",
