@@ -443,13 +443,18 @@ tazel custom build no-cache
 tazel custom build with -e MyApp
 ```
 
-A string is written with `"`, `'` or `` ` `` and has no escapes, so it cannot hold its own quote. `(...)` starts the program
-directly with these arguments: there is no shell, so a word like `|` means nothing special and each string stays one
-argument. On Windows the program may be a script such as `npm.cmd`. `s(...)` takes exactly one string and hands it to CMD
-on Windows and to `sh` elsewhere.
+A string is written with `"`, `'` or `` ` `` and has no escapes, so it cannot hold its own quote, and a backslash in it is
+a backslash. `(...)` starts the program directly with these arguments: there is no shell, so a word like `|` means nothing
+special and each string stays one argument. On Windows the program may be a script such as `npm.cmd`. `s(...)` takes exactly
+one string and hands it unchanged to CMD on Windows and to `sh` elsewhere; escapes in it are for that shell to read. The one
+exception is a JVM started with `jdk.lang.Process.allowAmbiguousCommands=false` on Windows: it cannot pass a line that holds
+a `"` or ends with `\`, so Tazel refuses such a command before it runs any of its steps.
 
 The words after `tazel custom` belong to the command, so that nothing in them is an option of Tazel. The longest name they
-start with is the command, and the rest are its arguments. There are at most 191 words, those of the name included. A
+start with is the command, and the rest are its arguments. `--` ends the name: with commands `first` and `first second`,
+`tazel custom first second` runs `first second`, and `tazel custom first -- second` runs `first` with the argument `second`.
+Only the first `--` does this, and it is not an argument itself; a later one is, and a name cannot hold it. There are at
+most 191 words, those of the name included and that `--` not. A
 command takes exactly as many arguments as its highest `<N>`, or more with `<*>`. `<N>` and `<*>` are not strings and stand
 outside quotes; they come after the program and cannot be used in `s(...)`.
 

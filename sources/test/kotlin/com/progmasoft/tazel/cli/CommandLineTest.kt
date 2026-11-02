@@ -403,6 +403,13 @@ class CommandLineTest {
   }
 
   @Test
+  fun theSeparatorOfCustomIsNotCounted() {
+    val words = listOf("custom", "a", "--") + List(190) { "b" }
+    assertIs<ParseResult.Parsed>(parseCommandLine(words))
+    assertIs<ParseResult.Rejected>(parseCommandLine(words + "b"))
+  }
+
+  @Test
   fun theWordsAfterCustomBelongToTheCommand() {
     val result = parseCommandLine(listOf("--quiet", "custom", "go", "--quiet", "--color=never"))
     val parsed = assertIs<ParseResult.Parsed>(result)

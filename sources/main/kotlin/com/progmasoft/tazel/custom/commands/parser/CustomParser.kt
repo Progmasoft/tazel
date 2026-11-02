@@ -6,6 +6,7 @@
 package com.progmasoft.tazel.custom.commands.parser
 
 import com.progmasoft.tazel.custom.commands.CUSTOM_COMMANDS_FILE
+import com.progmasoft.tazel.custom.commands.CUSTOM_NAME_END
 import com.progmasoft.tazel.custom.commands.CustomArgument
 import com.progmasoft.tazel.custom.commands.CustomCommand
 import com.progmasoft.tazel.custom.commands.CustomCommandsException
@@ -83,6 +84,9 @@ private class CustomParser(private val tokens: List<Token>) {
       val words = buildList {
         add(name.text)
         while (peek()?.kind == TokenKind.NAME) add(take(TokenKind.NAME, "a word").text)
+      }
+      if (CUSTOM_NAME_END in words) {
+        fail(name, "'$CUSTOM_NAME_END' ends a name on the command line, so a name cannot hold it")
       }
       if (words.size > MAX_CUSTOM_ARGUMENTS) {
         fail(name, "a name holds at most $MAX_CUSTOM_ARGUMENTS words")
