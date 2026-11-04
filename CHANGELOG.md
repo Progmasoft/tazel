@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+## 0.4.0.3 - 2026-11-02
+
 - `tazel_options.txt` holds options of Tazel itself: `sandboxing-with-microvm`, `microvm-network`, `microvm-memory` and
   `microvm-cpus`. Tazel has no MicroVM to start, so asking for the sandbox stops every command before anything runs.
 
