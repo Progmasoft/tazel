@@ -222,6 +222,8 @@ data class ProjectPlan(
   val plugins: List<PluginPlanEntry>,
   val buildCache: BuildCacheSettings = BuildCacheSettings(),
   val execution: ExecutionSettings = ExecutionSettings(),
+  /** The executable `tazel run` runs when the command line names none. */
+  val defaultRun: String? = null,
 ) {
   /** The directory the build mode of the project writes its artifacts to. */
   val outputDirectory: String

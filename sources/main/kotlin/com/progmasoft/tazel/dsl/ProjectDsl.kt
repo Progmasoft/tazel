@@ -11,6 +11,9 @@ class ProjectScope internal constructor() {
   var version: String? = null
   var stability: Stability? = null
   var description: String? = null
+
+  /** The executable `tazel run` runs when the command line names none; default: the only one. */
+  var defaultRun: String? = null
   private val authors = mutableListOf<String>()
   private val defaultFeatures = mutableListOf<String>()
 
@@ -30,6 +33,7 @@ class ProjectScope internal constructor() {
       ProjectIdentity(name, stability, version, description),
       authors,
       defaultFeatures,
+      defaultRun,
     )
     ProjectRuntime.current().projectView = this
   }

@@ -42,6 +42,7 @@ import com.progmasoft.tazel.driver.RemoteCompilation
 import com.progmasoft.tazel.driver.RemoteCompiler
 import com.progmasoft.tazel.driver.RemoteServer
 import com.progmasoft.tazel.driver.RemoteServerSettings
+import com.progmasoft.tazel.driver.RunSelectionException
 import com.progmasoft.tazel.driver.SelectedTargets
 import com.progmasoft.tazel.driver.SourceFiles
 import com.progmasoft.tazel.driver.TestTotals
@@ -55,6 +56,7 @@ import com.progmasoft.tazel.driver.executableExtension
 import com.progmasoft.tazel.driver.hasTargets
 import com.progmasoft.tazel.driver.isPlainPath
 import com.progmasoft.tazel.driver.loadWorkspace
+import com.progmasoft.tazel.driver.runTarget
 import com.progmasoft.tazel.driver.select
 import com.progmasoft.tazel.driver.toolIdentity
 import com.progmasoft.tazel.dsl.BuildMode
@@ -335,6 +337,8 @@ class Tazel(
     } catch (several: JobFailures) {
       several.failures.dropLast(1).forEach { reportError(terminal, it.message.orEmpty()) }
       fail(several.failures.last().message.orEmpty())
+    } catch (ambiguous: RunSelectionException) {
+      fail(ambiguous.message.orEmpty())
     } catch (unknown: UnknownTargetException) {
       fail(
         unknown.message.orEmpty(),
@@ -783,13 +787,11 @@ class Tazel(
   }
 
   private fun runPrograms(command: Command.Run): Int {
-    val programs = compile(command.targets, Emit.EXECUTABLE, command.noCache)
-    for (program in programs) {
-      status("Running", program.toString())
-      val exitCode = processes.run(listOf(program.toString()) + command.programArguments, directory)
-      if (exitCode != 0) return exitCode
-    }
-    return ExitCode.SUCCESS
+    val (project, target) = load(forBuild = true).use { runTarget(it.all, command.targets) }
+    val only = TargetSelection(listOfNotNull(project.plan.identity?.name), listOf(target.name))
+    val program = compile(only, Emit.EXECUTABLE, command.noCache).single()
+    status("Running", program.toString())
+    return processes.run(listOf(program.toString()) + command.programArguments, directory)
   }
 
   /**

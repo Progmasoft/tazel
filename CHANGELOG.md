@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `tazel run` builds and runs exactly one executable: the one named with `--executable`, the only one of the selection,
+  or `project.defaultRun`. It takes at most one `--vipkg` and one `--executable` and no `--library`, and stops with the
+  list of executables when the choice is open. It used to build and run every executable of the selection.
+
 ## 0.4.0.3 - 2026-11-02
 
 - `tazel_options.txt` holds options of Tazel itself: `sandboxing-with-microvm`, `microvm-network`, `microvm-memory` and

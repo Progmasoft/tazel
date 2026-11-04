@@ -54,6 +54,7 @@ project {
   description = "A Tala project"
   authors("Leitwolf", "Helmut")
   defaultFeatures("TOML")
+  defaultRun = "Server" // the executable `tazel run` runs when none is named; default: the only one
 }
 ```
 
