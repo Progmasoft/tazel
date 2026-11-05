@@ -166,10 +166,7 @@ class PluginBuildAndRegistryTest {
       val jar = root.resolve("two.jar")
       JarOutputStream(Files.newOutputStream(jar)).use { output ->
         output.putNextEntry(JarEntry("META-INF/tazel-plugin.properties"))
-        output.write(
-          "publisher=Publisher\nname=Two\nversion=1.0.0\napiVersion=$PROJECT_PLUGIN_API_VERSION\n"
-            .toByteArray()
-        )
+        output.write("apiVersion=$PROJECT_PLUGIN_API_VERSION\n".toByteArray())
         output.closeEntry()
         output.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
         output.write("com.example.First\ncom.example.Second\n".toByteArray())
@@ -311,9 +308,6 @@ class PluginBuildAndRegistryTest {
       jar.putNextEntry(JarEntry("META-INF/tazel-plugin.properties"))
       jar.write(
         """
-        publisher=Publisher
-        name=Fixture
-        version=$version
         apiVersion=$apiVersion
         description=$description
         author.0=First Author

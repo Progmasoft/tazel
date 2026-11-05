@@ -12,6 +12,10 @@
 - `tazel run` builds and runs exactly one executable: the one named with `--executable`, the only one of the selection,
   or `project.defaultRun`. It takes at most one `--vipkg` and one `--executable` and no `--library`, and stops with the
   list of executables when the choice is open. It used to build and run every executable of the selection.
+- A plugin JAR no longer says who it is. Its descriptor has no `publisher`, `name` or `version`, and Tazel refuses one
+  that has: ViGet records them when a plugin is pushed, and Tazel keeps what ViGet said in `plugin.json` beside each
+  cached JAR. A local plugin is known by its path, `local:<path>`, with the version `local`. The plugin API is version
+  3, and `tazelPlugin { }` of the Gradle plugin has no `publisher`, `name` or `version`.
 
 ## 0.4.0.3 - 2026-11-02
 
