@@ -17,12 +17,25 @@ import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
-import kotlin.io.path.extension
 import kotlin.streams.toList
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 object PluginResolver {
   private const val DESCRIPTOR = "META-INF/tazel-plugin.properties"
   private const val SERVICE = "META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin"
+
+  /**
+   * What ViGet said about a version when Tazel fetched it, kept beside its JAR in the cache. A
+   * plugin is who ViGet recorded when it was pushed; neither its JAR nor its folder says so.
+   */
+  private const val RECORD = "plugin.json"
+
+  // The descriptor describes a plugin; who it is comes from ViGet or from localPlugin.
+  private val IDENTITY_KEYS = listOf("publisher", "name", "version")
   private val CLASS_NAME = Regex("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
   private val indexCache = ConcurrentHashMap<String, CachedIndex>()
 
@@ -85,6 +98,13 @@ object PluginResolver {
         .resolve(chosen.version)
         .resolve("$name-${chosen.version}.jar")
     registry.download(publisher, name, chosen, target)
+    val record = buildJsonObject {
+      put("publisher", publisher)
+      put("name", name)
+      put("version", chosen.version)
+      put("sha256", chosen.sha256)
+    }
+    Files.writeString(target.resolveSibling(RECORD), "$record\n")
   }
 
   internal fun clearCache() = indexCache.clear()
@@ -109,7 +129,14 @@ object PluginResolver {
         "local plugin path escapes the project root: ${request.path}"
       )
     }
-    return inspect(realRoot, realArtifact).copy(requestCoordinate = request.coordinate)
+    return inspect(
+        realRoot,
+        realArtifact,
+        LOCAL_PLUGIN_PUBLISHER,
+        request.path,
+        LOCAL_PLUGIN_VERSION,
+      )
+      .copy(requestCoordinate = request.coordinate)
   }
 
   private fun index(root: Path): List<ResolvedPlugin> {
@@ -120,13 +147,14 @@ object PluginResolver {
       ?.let {
         return it.plugins
       }
+    // A JAR without a record was not fetched by this Tazel and is not a candidate.
     val plugins =
       Files.walk(root)
         .use { paths ->
           paths
+            .filter { path -> path.fileName.toString() == RECORD }
             .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
-            .filter { path -> path.extension.equals("jar", ignoreCase = true) }
-            .map { path -> inspect(root, path) }
+            .map { record -> cached(root, record) }
             .toList()
         }
         .sortedWith(compareBy(ResolvedPlugin::coordinate, ResolvedPlugin::version))
@@ -144,9 +172,39 @@ object PluginResolver {
         .reduce(0L) { left, right -> left xor right }
     }
 
+  /** The plugin a [record] of the cache describes, checked against the JAR beside it. */
+  private fun cached(
+    root: Path,
+    record: Path,
+  ): ResolvedPlugin {
+    val invalid = { why: String ->
+      ProjectConfigurationException("the plugin cache record $record $why; delete its folder")
+    }
+    val fields =
+      try {
+        Json.parseToJsonElement(Files.readString(record)) as? JsonObject
+      } catch (error: IllegalArgumentException) {
+        null
+      } ?: throw invalid("is not a JSON object")
+    fun text(key: String) = fields[key]?.jsonPrimitive?.content ?: throw invalid("has no $key")
+    val publisher = requireModuleSegment(text("publisher"), "plugin publisher")
+    val name = requireModuleSegment(text("name"), "plugin name")
+    val version = requirePackageVersion(text("version"))
+    val artifact = record.resolveSibling("$name-$version.jar")
+    if (!Files.isRegularFile(artifact, LinkOption.NOFOLLOW_LINKS)) throw invalid("has no JAR")
+    val plugin = inspect(root, artifact, publisher, name, version)
+    if (plugin.sha256 != text("sha256")) {
+      throw invalid("lists another SHA-256 than its JAR has")
+    }
+    return plugin
+  }
+
   private fun inspect(
     root: Path,
     artifact: Path,
+    publisher: String,
+    name: String,
+    version: String,
   ): ResolvedPlugin {
     val normalized = artifact.toAbsolutePath().normalize()
     if (!normalized.startsWith(root) || Files.isSymbolicLink(normalized)) {
@@ -171,16 +229,20 @@ object PluginResolver {
         ?: throw ProjectConfigurationException(
           "the service entry of $artifact must name exactly one class; it names ${named.size}"
         )
-    val publisher =
-      requireModuleSegment(properties.required("publisher", artifact), "plugin publisher")
-    val name = requireModuleSegment(properties.required("name", artifact), "plugin name")
-    val version = requirePackageVersion(properties.required("version", artifact))
+    val coordinate = pluginCoordinate(publisher, name)
+    val identityKeys = IDENTITY_KEYS.filter(properties::containsKey)
+    if (identityKeys.isNotEmpty()) {
+      throw ProjectConfigurationException(
+        "the descriptor of plugin '$coordinate' names ${identityKeys.joinToString()}; " +
+          "Tazel takes who a plugin is from ViGet or from localPlugin, so its JAR names none"
+      )
+    }
     val apiVersion =
       properties.required("apiVersion", artifact).toIntOrNull()
-        ?: throw ProjectConfigurationException("plugin '$publisher.$name' has invalid API version")
+        ?: throw ProjectConfigurationException("plugin '$coordinate' has invalid API version")
     if (apiVersion != PROJECT_PLUGIN_API_VERSION) {
       throw ProjectConfigurationException(
-        "plugin '$publisher.$name' requires API $apiVersion; runtime provides $PROJECT_PLUGIN_API_VERSION"
+        "plugin '$coordinate' requires API $apiVersion; runtime provides $PROJECT_PLUGIN_API_VERSION"
       )
     }
     val imports =

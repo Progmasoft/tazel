@@ -11,6 +11,27 @@ import java.util.Properties
 // A hosted publisher is an identifier, so this spelling can never name one.
 internal const val LOCAL_PLUGIN_PUBLISHER = "<local>"
 
+// A local plugin has no version of its own: its JAR names none, and its digest tells it apart.
+internal const val LOCAL_PLUGIN_VERSION = "local"
+
+/**
+ * The folder below `.tazel/build` that holds the steps of the plugin [coordinate] names: the
+ * coordinate itself, with `local:` and the separators of a path turned into characters a file name
+ * may hold.
+ */
+internal fun pluginFolder(coordinate: String) =
+  coordinate
+    .replace(Regex("^local:"), "local.")
+    .replace('/', '_')
+    .replace('\\', '_')
+    .replace(':', '_')
+
+/** `Publisher.Name` of a plugin of ViGet, `local:<path>` of a local one. */
+internal fun pluginCoordinate(
+  publisher: String,
+  name: String,
+) = if (publisher == LOCAL_PLUGIN_PUBLISHER) "local:$name" else "$publisher.$name"
+
 data class PluginRequest(
   val publisher: String,
   val name: String?,
@@ -60,13 +81,13 @@ data class ResolvedPlugin(
   val sha256: String,
   val imports: List<String>,
   val artifact: Path,
-  val requestCoordinate: String = "$publisher.$name",
+  val requestCoordinate: String = pluginCoordinate(publisher, name),
   val metadata: PluginMetadata = PluginMetadata(),
   /** The class the service entry of the JAR names, which implements `ProjectPlugin`. */
   val pluginClass: String = "",
 ) {
   val coordinate: String
-    get() = "$publisher.$name"
+    get() = pluginCoordinate(publisher, name)
 }
 
 data class PluginPlanEntry(
@@ -79,5 +100,5 @@ data class PluginPlanEntry(
   val contributions: Map<String, String>,
 ) {
   val coordinate: String
-    get() = "$publisher.$name"
+    get() = pluginCoordinate(publisher, name)
 }

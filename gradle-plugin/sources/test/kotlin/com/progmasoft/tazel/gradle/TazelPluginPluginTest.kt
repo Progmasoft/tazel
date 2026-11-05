@@ -66,8 +66,6 @@ class TazelPluginPluginTest {
   fun writesTheDescriptorAndTheServiceEntry() {
     build(
         """
-        publisher = "Publisher"
-        name = "Native"
         pluginClass = "com.example.NativePlugin"
         imports = listOf("com.example.dsl.*")
         description = "Builds native code; with = and : in it."
@@ -79,12 +77,10 @@ class TazelPluginPluginTest {
       )
       .build()
 
+    // The JAR does not say who the plugin is: ViGet records that when it is pushed.
     val resources = project.resolve("build/resources/main/META-INF")
     assertEquals(
       listOf(
-        "publisher=Publisher",
-        "name=Native",
-        "version=1.2.0.3.4-build5",
         "apiVersion=${TazelPluginPlugin.API_VERSION}",
         "imports=com.example.dsl.*",
         "description=Builds native code; with \\= and \\: in it.",
@@ -109,8 +105,6 @@ class TazelPluginPluginTest {
     val output =
       build(
           """
-          publisher = "Publisher"
-          name = "Native"
           pluginClass = "com.example.NativePlugin"
           """,
           "printApi",
@@ -126,29 +120,35 @@ class TazelPluginPluginTest {
     val output =
       build(
           """
-          name = "Native"
-          pluginClass = "com.example.NativePlugin"
+          imports = listOf("com.example.dsl.*")
           """,
           "processResources",
         )
         .buildAndFail()
         .output
-    assertTrue("tazelPlugin.publisher is required" in output, output)
+    assertTrue("tazelPlugin.pluginClass is required" in output, output)
   }
 
   @Test
-  fun aNameThatIsNotOneIdentifierIsRefused() {
-    val output =
-      build(
-          """
-          publisher = "Publisher"
-          name = "native-plugin"
-          pluginClass = "com.example.NativePlugin"
-          """,
-          "processResources",
-        )
-        .buildAndFail()
-        .output
-    assertTrue("tazelPlugin.name 'native-plugin' is not one identifier" in output, output)
+  fun theBlockHasNoPublisherNameOrVersion() {
+    // Inside the block, Gradle reads `name` and `version` as those of the project; neither is a
+    // setting of the plugin, and `publisher` is nothing at all.
+    for ((setting, refusal) in
+      listOf(
+        "publisher = \"Publisher\"" to "Unresolved reference",
+        "name = \"Native\"" to "cannot be reassigned",
+      )) {
+      val output =
+        build(
+            """
+            pluginClass = "com.example.NativePlugin"
+            $setting
+            """,
+            "processResources",
+          )
+          .buildAndFail()
+          .output
+      assertTrue(refusal in output, output)
+    }
   }
 }

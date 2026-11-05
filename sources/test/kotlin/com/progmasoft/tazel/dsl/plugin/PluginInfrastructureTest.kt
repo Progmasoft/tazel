@@ -31,6 +31,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class PluginInfrastructureTest {
   @BeforeTest
@@ -94,8 +95,10 @@ class PluginInfrastructureTest {
       val request = localPluginRequest(artifact.fileName.toString())
       val resolved = PluginResolver.resolve(root, listOf(request)).single()
 
-      assertEquals("Publisher.Fixture", resolved.coordinate)
+      // A local plugin is the file the project names; its JAR says nothing about who it is.
+      assertEquals("local:${artifact.fileName}", resolved.coordinate)
       assertEquals("local:${artifact.fileName}", resolved.requestCoordinate)
+      assertEquals("local", resolved.version)
       assertEquals(
         request,
         PluginPreamble.parse("plugins { localPlugin { path = \"${artifact.fileName}\" } }")
@@ -125,8 +128,7 @@ class PluginInfrastructureTest {
   fun resolvesDescriptorAndVerifiesOptionalChecksum() {
     val root = Files.createTempDirectory("tala-plugin-resolver-")
     try {
-      val directory = Files.createDirectories(root.resolve(".tazel/plugins"))
-      val artifact = createPluginJar(directory, version = "1.2.3")
+      val artifact = cachePluginJar(root.resolve(".tazel/plugins"), version = "1.2.3")
       Files.writeString(artifact.resolveSibling("${artifact.fileName}.sha256"), sha256(artifact))
 
       val resolved =
@@ -155,19 +157,62 @@ class PluginInfrastructureTest {
   fun rejectsChecksumMismatchAndApiMismatch() {
     val root = Files.createTempDirectory("tala-plugin-integrity-")
     try {
-      val directory = Files.createDirectories(root.resolve(".tazel/plugins"))
-      val artifact = createPluginJar(directory)
+      val cache = root.resolve(".tazel/plugins")
+      val artifact = cachePluginJar(cache)
       Files.writeString(artifact.resolveSibling("${artifact.fileName}.sha256"), "0".repeat(64))
       assertFailsWith<ProjectConfigurationException> {
         PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", null)))
       }
       Files.delete(artifact.resolveSibling("${artifact.fileName}.sha256"))
-      Files.delete(artifact)
-      createPluginJar(directory, apiVersion = 99)
+      cachePluginJar(cache, apiVersion = 99)
       PluginResolver.clearCache()
       assertFailsWith<ProjectConfigurationException> {
         PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", null)))
       }
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun takesWhoAPluginIsFromViGetAndNeverFromItsJar() {
+    val root = Files.createTempDirectory("tala-plugin-identity-")
+    try {
+      val cache = root.resolve(".tazel/plugins")
+      // A JAR that names itself is refused, whoever recorded it.
+      cachePluginJar(cache, identity = true)
+      val named =
+        assertFailsWith<ProjectConfigurationException> {
+          PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", "1.0.0")))
+        }
+      assertTrue("names publisher, name, version" in named.message.orEmpty(), named.message)
+
+      // The record decides who a cached JAR is, not the folders it lies in.
+      root.resolve(".tazel").toFile().deleteRecursively()
+      PluginResolver.clearCache()
+      val artifact = cachePluginJar(cache)
+      val moved = cache.resolve("Other/Fixture/1.0.0/Fixture-1.0.0.jar")
+      Files.createDirectories(moved.parent)
+      Files.copy(artifact, moved)
+      val resolved =
+        PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", "1.0.0")))
+      assertEquals("Publisher.Fixture", resolved.single().coordinate)
+      assertFailsWith<ProjectConfigurationException> {
+        PluginResolver.resolve(root, listOf(PluginRequest("Other", "Fixture", "1.0.0")))
+      }
+
+      // A record that lists another digest than its JAR has is refused.
+      PluginResolver.clearCache()
+      val record = artifact.resolveSibling("plugin.json")
+      Files.writeString(
+        record,
+        Files.readString(record).replace(sha256(artifact), "0".repeat(64)),
+      )
+      val changed =
+        assertFailsWith<ProjectConfigurationException> {
+          PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", "1.0.0")))
+        }
+      assertTrue("another SHA-256" in changed.message.orEmpty(), changed.message)
     } finally {
       root.toFile().deleteRecursively()
     }
@@ -243,20 +288,15 @@ class PluginInfrastructureTest {
     directory: Path,
     version: String = "1.0.0",
     apiVersion: Int = PROJECT_PLUGIN_API_VERSION,
+    fileName: String = "fixture-$version.jar",
+    identity: Boolean = false,
   ): Path {
-    val path = directory.resolve("fixture-$version.jar")
+    val path = directory.resolve(fileName)
+    val names = if (identity) "publisher=Publisher\nname=Fixture\nversion=$version\n" else ""
     JarOutputStream(path.outputStream()).use { jar ->
       jar.putNextEntry(JarEntry("META-INF/tazel-plugin.properties"))
       jar.write(
-        """
-        publisher=Publisher
-        name=Fixture
-        version=$version
-        apiVersion=$apiVersion
-        imports=com.progmasoft.tazel.dsl.*
-        """
-          .trimIndent()
-          .toByteArray()
+        (names + "apiVersion=$apiVersion\nimports=com.progmasoft.tazel.dsl.*\n").toByteArray()
       )
       jar.closeEntry()
       jar.putNextEntry(JarEntry("META-INF/services/${ProjectPlugin::class.java.name}"))
@@ -264,6 +304,25 @@ class PluginInfrastructureTest {
       jar.closeEntry()
     }
     return path
+  }
+
+  /**
+   * Puts a fixture JAR into [cache] the way Tazel keeps one it fetched from ViGet, beside the
+   * record of what ViGet said about it.
+   */
+  private fun cachePluginJar(
+    cache: Path,
+    version: String = "1.0.0",
+    apiVersion: Int = PROJECT_PLUGIN_API_VERSION,
+    identity: Boolean = false,
+  ): Path {
+    val directory = Files.createDirectories(cache.resolve("Publisher/Fixture/$version"))
+    val artifact = createPluginJar(directory, version, apiVersion, "Fixture-$version.jar", identity)
+    Files.writeString(
+      directory.resolve("plugin.json"),
+      """{"publisher":"Publisher","name":"Fixture","version":"$version","sha256":"${sha256(artifact)}"}""",
+    )
+    return artifact
   }
 
   private fun resolved(

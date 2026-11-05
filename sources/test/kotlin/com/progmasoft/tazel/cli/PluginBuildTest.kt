@@ -124,9 +124,6 @@ class PluginBuildTest {
         jar.putNextEntry(JarEntry("META-INF/tazel-plugin.properties"))
         jar.write(
           """
-          publisher=Publisher
-          name=Native
-          version=1.0.0
           apiVersion=$PROJECT_PLUGIN_API_VERSION
           imports=com.progmasoft.tazel.cli.fixtureCompile
           """
@@ -171,7 +168,7 @@ class PluginBuildTest {
     )
     assertEquals(root, directory)
     assertEquals(mapOf("NATIVE_MODE" to "DEBUG"), environment)
-    assertTrue(Files.isRegularFile(root.resolve(".tazel/build/Publisher.Native/compile/done")))
+    assertTrue(Files.isRegularFile(root.resolve(".tazel/build/local.native.jar/compile/done")))
     assertTrue("Compiling" in recorder.stdout())
   }
 
@@ -190,7 +187,7 @@ class PluginBuildTest {
 
       assertEquals(ExitCode.FAILURE, build())
       assertTrue(
-        "plugin 'Publisher.Native' names com.example.Missing, which its JAR does not hold" in
+        "plugin 'local:native.jar' names com.example.Missing, which its JAR does not hold" in
           recorder.stderr(),
         recorder.stderr(),
       )
@@ -227,7 +224,7 @@ class PluginBuildTest {
     exitCode = 2
 
     assertEquals(ExitCode.FAILURE, build())
-    assertTrue("Publisher.Native compile: cc exited with 2" in recorder.stderr(), recorder.stderr())
+    assertTrue("local:native.jar compile: cc exited with 2" in recorder.stderr(), recorder.stderr())
   }
 
   @Test
