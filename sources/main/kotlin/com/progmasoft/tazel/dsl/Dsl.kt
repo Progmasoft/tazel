@@ -123,6 +123,7 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
   private var identity: ProjectIdentity? = null
   private val authors = mutableListOf<String>()
   private val defaultFeatures = mutableListOf<String>()
+  private var defaultRun: String? = null
   private var dependencies = DependencyManifest(emptyList())
   private var releaseOutputDirectory = "build/release"
   private var debugOutputDirectory = "build/debug"
@@ -145,6 +146,7 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
     configured: ProjectIdentity,
     configuredAuthors: List<String>,
     configuredDefaultFeatures: List<String>,
+    configuredDefaultRun: String?,
   ) {
     if (identity != null) throw ProjectConfigurationException("project may be configured only once")
     identity =
@@ -156,6 +158,7 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
       )
     authors += configuredAuthors.map { requireText(it, "project author") }.distinct()
     defaultFeatures += configuredDefaultFeatures.map(::requireFeatureName).distinct()
+    defaultRun = configuredDefaultRun?.let { requireText(it, "project.defaultRun") }
   }
 
   internal fun configureOutputDirectories(
@@ -262,6 +265,13 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
         )
       }
     }
+    defaultRun?.let { name ->
+      if (executables.none { it.name == name }) {
+        throw ProjectConfigurationException(
+          "project.defaultRun is '$name', and the project has no executable of that name"
+        )
+      }
+    }
     if (compilerSettings.shadowWarnings && compilerSettings.warnings == Warnings.NONE) {
       throw ProjectConfigurationException(
         "compiler.wshadow asks for a warning and Warnings.NONE silences every warning; choose one"
@@ -287,6 +297,7 @@ class ProjectContext internal constructor(val host: Host = detectHost()) {
         emptyList(),
         buildCache ?: BuildCacheSettings(),
         execution ?: ExecutionSettings(),
+        defaultRun,
       )
     return plugins.finish(plan)
   }
@@ -370,7 +381,8 @@ internal object ProjectRuntime {
     identity: ProjectIdentity,
     authors: List<String>,
     defaultFeatures: List<String>,
-  ) = current().configureIdentity(identity, authors, defaultFeatures)
+    defaultRun: String?,
+  ) = current().configureIdentity(identity, authors, defaultFeatures, defaultRun)
 
   fun configureOutputDirectories(
     release: String,

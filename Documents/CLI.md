@@ -19,7 +19,7 @@ tazel [output options] <command> [arguments]
 | --- | --- |
 | `tazel check` | checks the sources without writing an executable |
 | `tazel build` | builds the targets |
-| `tazel run [-- arguments]` | builds the executables and runs them |
+| `tazel run [-- arguments]` | builds one executable and runs it |
 | `tazel test` | builds and runs the test suites |
 | `tazel fetch` | fetches the dependencies ahead of time: plugins of ViGet into `.tazel/plugins`, and it fails if a local package is missing or a ViGet package is declared, because ViGet does not serve Tala packages yet |
 | `tazel custom [name] [arguments]` | runs a command of `tazel_custom.txt`, or lists them; see [custom commands](#custom-commands) |
@@ -163,6 +163,17 @@ tazel build --library Name        tazel build -l Name
 Each flag may be written several times, and the kinds may be combined; [Writing options](#writing-options) shows the
 spellings. `--vipkg` keeps the named ViPkgs; once `--executable` or `--library` is written, only named targets remain. A name
 that selects nothing is an error.
+
+`tazel run` builds and runs exactly one executable, so it takes at most one `--vipkg` and one `--executable` and no
+`--library`. Without `--executable` it runs the only executable of the selection; when there are several, it runs the
+`project.defaultRun` of the one selected ViPkg that sets it. Anything else is an error that lists the executables, and
+nothing is built.
+
+```text
+tazel run                    # the only executable, or project.defaultRun
+tazel run -p App             # the same, within App
+tazel run -p App -e Server   # Server of App
+```
 
 ## Writing options
 

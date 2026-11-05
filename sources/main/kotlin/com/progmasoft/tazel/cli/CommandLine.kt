@@ -956,6 +956,20 @@ private class ArgumentReader(private val arguments: List<String>) {
     return Compiling(selection.build(), noCache, execution.build())
   }
 
+  // tazel run runs one executable, so it takes at most one ViPkg and one executable, and no
+  // library.
+  private fun runSelection(selection: SelectionBuilder): TargetSelection {
+    val targets = selection.build()
+    if (targets.libraries.isNotEmpty()) {
+      reject("tazel run runs an executable; --library selects targets of tazel build")
+    }
+    if (targets.viPkgs.size > 1) reject("tazel run takes one --vipkg, not ${targets.viPkgs.size}")
+    if (targets.executables.size > 1) {
+      reject("tazel run takes one --executable, not ${targets.executables.size}")
+    }
+    return targets
+  }
+
   private fun run(): Command {
     val selection = SelectionBuilder()
     val execution = ExecutionBuilder()
@@ -963,7 +977,7 @@ private class ArgumentReader(private val arguments: List<String>) {
     while (hasNext()) {
       val (argument, word) = nextOption()
       if (argument == "--") {
-        return Command.Run(selection.build(), passThrough(), noCache, execution.build())
+        return Command.Run(runSelection(selection), passThrough(), noCache, execution.build())
       }
       if (noCache(word, noCache)) {
         noCache = true
@@ -974,7 +988,7 @@ private class ArgumentReader(private val arguments: List<String>) {
         )
       }
     }
-    return Command.Run(selection.build(), emptyList(), noCache, execution.build())
+    return Command.Run(runSelection(selection), emptyList(), noCache, execution.build())
   }
 
   private fun install(): Command {

@@ -98,6 +98,51 @@ class UnknownTargetException(
   val known: List<String>,
 ) : Exception("no $kind is named ${names.joinToString()}")
 
+/** Why `tazel run` cannot tell which executable to run. */
+class RunSelectionException(message: String) : Exception(message)
+
+/**
+ * The one executable `tazel run` runs from [projects] under [selection]: the named one, else the
+ * only one, else the `project.defaultRun` of the one selected ViPkg that sets it.
+ */
+fun runTarget(
+  projects: List<LoadedProject>,
+  selection: TargetSelection,
+): Pair<LoadedProject, ExecutableSourceTarget> {
+  val selected = select(projects, selection)
+  val candidates = selected.flatMap { targets -> targets.executables.map { targets.project to it } }
+  candidates.singleOrNull()?.let {
+    return it
+  }
+  fun named(choices: List<Pair<LoadedProject, ExecutableSourceTarget>>) =
+    choices.joinToString { (project, target) ->
+      "${project.plan.identity?.name}/${target.name}"
+    }
+  if (candidates.isEmpty()) throw RunSelectionException("the selection has no executable to run")
+  if (selection.executables.isNotEmpty()) {
+    throw RunSelectionException(
+      "${selection.executables.single()} is an executable of several ViPkgs (${named(candidates)}); " +
+        "choose one with --vipkg"
+    )
+  }
+  val defaults = selected.mapNotNull { targets ->
+    targets.project.plan.defaultRun?.let { name ->
+      targets.executables.firstOrNull { it.name == name }?.let { targets.project to it }
+    }
+  }
+  defaults.singleOrNull()?.let {
+    return it
+  }
+  throw RunSelectionException(
+    if (defaults.isEmpty()) {
+      "the selection holds several executables (${named(candidates)}); choose one with --executable " +
+        "or set project.defaultRun"
+    } else {
+      "several ViPkgs set project.defaultRun (${named(defaults)}); choose one with --vipkg"
+    }
+  )
+}
+
 /**
  * Applies the selection flags of a command line to [projects].
  *

@@ -147,8 +147,8 @@ class CommandLineTest {
       parsed("build", "--vipkg", "Name", "-p", "Other2"),
     )
     assertEquals(
-      Command.Run(TargetSelection(executables = listOf("Name", "Other2")), emptyList()),
-      parsed("run", "--executable", "Name", "-e", "Other2"),
+      Command.Build(TargetSelection(executables = listOf("Name", "Other2"))),
+      parsed("build", "--executable", "Name", "-e", "Other2"),
     )
     assertEquals(
       Command.Build(TargetSelection(libraries = listOf("Name", "Other2"))),
@@ -364,10 +364,10 @@ class CommandLineTest {
     assertEquals(two, parsed("build", "--executable:First", "--executable=Second"))
     assertEquals(
       Command.Run(
-        TargetSelection(viPkgs = listOf("App"), libraries = listOf("Core")),
+        TargetSelection(viPkgs = listOf("App"), executables = listOf("Core")),
         listOf("-x"),
       ),
-      parsed("run", "-pApp", "--library:Core", "--", "-x"),
+      parsed("run", "-pApp", "--executable:Core", "--", "-x"),
     )
     assertEquals(
       Command.LockGraph(invert = InvertTarget.Project("Server"), depth = 1),
