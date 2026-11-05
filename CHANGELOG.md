@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- A compiled project file is kept under the SHA-256 of what the JARs and directories of its classpath hold, not their
+  size and modification time, so a JAR replaced in place no longer reuses a script compiled against the old one.
 - `tazel run` builds and runs exactly one executable: the one named with `--executable`, the only one of the selection,
   or `project.defaultRun`. It takes at most one `--vipkg` and one `--executable` and no `--library`, and stops with the
   list of executables when the choice is open. It used to build and run every executable of the selection.

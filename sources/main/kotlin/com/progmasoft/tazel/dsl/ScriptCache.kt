@@ -23,7 +23,7 @@ import kotlin.script.experimental.jvmhost.loadScriptFromJar
 import kotlin.script.experimental.jvmhost.saveToJar
 
 /** Bumped whenever the layout of a cached script or the meaning of its key changes. */
-private const val CACHE_FORMAT = 1
+private const val CACHE_FORMAT = 2
 
 /** The most compiled project files the cache keeps; the least recently used go first. */
 private const val DEFAULT_MAXIMUM_ENTRIES = 256
@@ -63,10 +63,10 @@ internal fun kotlinCompilerVersion(): String =
  * version, the JVM target, the compilation configuration (script name, imports, compiler options),
  * the classpath and the plugin JARs.
  *
- * A classpath entry is identified by its path, size and modification time rather than its content:
- * the classpath is Tazel's own installation, hundreds of megabytes that do not change between two
- * runs of one installation, and reading it all would cost more than the compilation it saves. A
- * plugin JAR is identified by the SHA-256 its descriptor was verified against.
+ * A classpath entry is identified by the SHA-256 of what it holds, so a JAR that was replaced keeps
+ * no compiled script of its own, whatever its size and modification time say; for Tazel's own
+ * installation that is reading about a hundred megabytes, well below the cost of a compilation. A
+ * plugin JAR is identified by the SHA-256 it was verified against.
  */
 fun scriptCacheKey(inputs: ScriptCacheInputs): String {
   val digest = MessageDigest.getInstance("SHA-256")
@@ -92,12 +92,38 @@ fun scriptCacheKey(inputs: ScriptCacheInputs): String {
 private fun fingerprint(entry: Path): String {
   val absolute = entry.toAbsolutePath().normalize()
   return try {
-    val attributes =
-      Files.readAttributes(absolute, java.nio.file.attribute.BasicFileAttributes::class.java)
-    "$absolute ${attributes.size()} ${attributes.lastModifiedTime().toMillis()}"
+    "$absolute ${contentDigest(absolute)}"
   } catch (_: IOException) {
     "$absolute missing"
   }
+}
+
+/** The SHA-256 of a file, or of the names and contents of the files below a directory. */
+internal fun contentDigest(entry: Path): String {
+  val digest = MessageDigest.getInstance("SHA-256")
+  val buffer = ByteArray(64 * 1024)
+  fun add(file: Path) =
+    Files.newInputStream(file).use { stream ->
+      generateSequence { stream.read(buffer) }
+        .takeWhile { it >= 0 }
+        .forEach { digest.update(buffer, 0, it) }
+    }
+  if (Files.isDirectory(entry)) {
+    val files =
+      Files.walk(entry)
+        .use { paths -> paths.filter(Files::isRegularFile).toList() }
+        .sortedBy { entry.relativize(it).toString() }
+    for (file in files) {
+      digest.update(entry.relativize(file).toString().replace('\\', '/').toByteArray())
+      digest.update(0)
+      digest.update(Files.size(file).toString().toByteArray())
+      digest.update(0)
+      add(file)
+    }
+  } else {
+    add(entry)
+  }
+  return digest.digest().toHex()
 }
 
 internal fun sha256(text: String): String =

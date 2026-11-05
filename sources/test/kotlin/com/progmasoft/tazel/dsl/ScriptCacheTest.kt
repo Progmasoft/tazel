@@ -73,9 +73,23 @@ class ScriptCacheTest {
       )
     changed.forEach { assertNotEquals(key, scriptCacheKey(it), it.toString()) }
 
-    // A classpath entry that changes on disk changes the key.
+    // What a classpath entry holds decides the key: a JAR replaced with one of the same size and
+    // modification time changes it, and a new modification time alone does not.
+    val time = Files.getLastModifiedTime(jar)
+    Files.writeString(jar, "CLASSES")
+    Files.setLastModifiedTime(jar, time)
+    val replaced = scriptCacheKey(base)
+    assertNotEquals(key, replaced)
     Files.setLastModifiedTime(jar, FileTime.from(Instant.parse("2020-01-01T00:00:00Z")))
-    assertNotEquals(key, scriptCacheKey(base))
+    assertEquals(replaced, scriptCacheKey(base))
+
+    // A directory on the classpath is the names and contents of its files.
+    val classes = Files.createDirectories(root.resolve("classes/a"))
+    Files.writeString(classes.resolve("A.class"), "a")
+    val withDirectory = base.copy(classpath = listOf(root.resolve("classes")))
+    val directoryKey = scriptCacheKey(withDirectory)
+    Files.writeString(classes.resolve("A.class"), "b")
+    assertNotEquals(directoryKey, scriptCacheKey(withDirectory))
   }
 
   @Test
