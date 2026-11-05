@@ -61,8 +61,6 @@ version = "0.1.0"
 kotlin { jvmToolchain(25) }
 
 tazelPlugin {
-  publisher = "Publisher"
-  name = "CMake"
   pluginClass = "com.example.cmake.CMakePlugin"
   imports = listOf("com.example.cmake.dsl.*")
   description = "Configures and builds CMake projects."
@@ -82,10 +80,17 @@ The Gradle plugin
 - adds the repository of the API, `https://maven.progmasoft.com/tazel`, for the group `com.progmasoft.tazel` only;
 - makes `tazelApi()` mean `compileOnly` and `testImplementation` of `com.progmasoft.tazel:tazel-api` in its own version.
   The API is not bundled: Tazel provides it, and the Kotlin standard library, when it loads the plugin;
-- writes the descriptor and the service entry below from `tazelPlugin { }` into the JAR. The version of the plugin is
-  the version of the project unless `tazelPlugin.version` sets another.
+- writes the descriptor and the service entry below from `tazelPlugin { }` into the JAR.
 
-`gradlew jar` then writes the plugin JAR.
+`gradlew jar` then writes the plugin JAR. Neither the block nor the JAR says who the plugin is: the publisher, the name
+and the version are given when it is pushed to ViGet, and ViGet records them:
+
+```text
+tazel plugin push --jar plugin.jar --name CMake --version 0.1.0
+```
+
+The publisher is the Progmasoft Account that is signed in with `tazel account login`. Pushing is part of the second
+stage of ViGet; until then, Progmasoft publishes its own plugins on the server.
 
 ## The JAR
 
@@ -101,10 +106,7 @@ META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin
 ### The descriptor
 
 ```properties
-publisher=Publisher
-name=CMake
-version=0.1.0
-apiVersion=2
+apiVersion=3
 imports=com.example.cmake.dsl.*
 description=Configures and builds CMake projects.
 author.0=Ada Lovelace <ada@example.com>
@@ -115,14 +117,13 @@ repository=https\://github.com/example/cmake-plugin
 
 | Key | Rule |
 | --- | --- |
-| `publisher` | one identifier: the name of a Progmasoft Account |
-| `name` | one identifier |
-| `version` | an exact version: `A.B.C`, then `.D`, `.E` and `-METADATA` if needed |
-| `apiVersion` | the plugin API it was built for; Tazel loads only `2`, the current `PROJECT_PLUGIN_API_VERSION` |
+| `apiVersion` | the plugin API it was built for; Tazel loads only `3`, the current `PROJECT_PLUGIN_API_VERSION` |
 | `imports` | optional; comma-separated packages or classes the project file imports by default, such as `com.example.cmake.dsl.*` |
 | `description`, `author.0`, `author.1`, ..., `license`, `homepage`, `repository` | optional for Tazel; ViGet shows them on the page of the plugin. `license` is an SPDX expression. |
 
-An import must be a dotted name, optionally ending in `.*`; anything else is refused.
+An import must be a dotted name, optionally ending in `.*`; anything else is refused. A descriptor that has a
+`publisher`, a `name` or a `version` is refused too: who a plugin is comes from ViGet, or, for a local plugin, from the
+path the project names.
 
 ### The service
 
@@ -133,8 +134,7 @@ com.example.cmake.CMakePlugin
 ```
 
 The entry names exactly one class; a line may end in a `#` comment. The class implements `ProjectPlugin` and has a
-public constructor without parameters. Who the plugin is comes from the descriptor alone: the class does not state its
-publisher, name or version.
+public constructor without parameters. The class does not state its publisher, name or version either.
 
 ## The API
 
@@ -211,7 +211,7 @@ runs the steps of its project before it compiles it. A step runs with a `BuildCo
 | `projectRoot`, `host`, `buildMode` | the project, the machine and `DEBUG` or `RELEASE` |
 | `project` | the `ProjectSummary` of the project: its name, version, build mode and output directory |
 | `outputDirectory` | the absolute directory the build mode of the project writes artifacts to |
-| `workDirectory` | a directory of the step for intermediate files: `.tazel/build/<Publisher>.<Name>/<step>` of the project, the same in every build |
+| `workDirectory` | a directory of the step for intermediate files: `.tazel/build/<Publisher>.<Name>/<step>` of the project, the same in every build; for a local plugin, `<Publisher>.<Name>` is `local_3A` and its path, with every byte other than ASCII letters, digits, `.` and `-` written as `_` and two hex digits, so `native/c.jar` is `local_3Anative_2Fc.jar`. The step folders of two plugins never coincide |
 | `status(verb, message)`, `warn(message)` | prints a line in the output of Tazel |
 | `run(command, directory, environment)` | runs a program, with variables added to those of Tazel, and returns its exit code; what it prints goes to the output of Tazel, and its input is empty |
 | `capture(command, directory, environment)` | runs a program like `run`, but returns its exit code and what it printed instead of showing it: for a probe whose failure is an answer, or a program whose output the step reads |
@@ -228,11 +228,14 @@ CMakeLists.txt`.
 ## How Tazel loads a plugin
 
 1. **Resolve.** A local plugin must be a regular file, not a symbolic link, inside the project directory, also after its
-   real path is resolved. A ViGet plugin is looked up in `.tazel/plugins` by publisher, name and, when given, version;
-   when it is not there, its index, `index.json`, and its JAR, `<Version>/<Name>-<Version>.jar`, are fetched from ViGet,
-   and the JAR is kept only when its SHA-256 is the one the index lists.
-2. **Verify.** Tazel reads the descriptor, checks every key and computes the SHA-256 digest of the JAR. When a file
-   `<plugin>.jar.sha256` lies beside the JAR, its first word must be that digest, in lower-case hex.
+   real path is resolved; it is known by that path, as `local:<path>`, and its version is `local`. A ViGet plugin is
+   looked up in `.tazel/plugins` by publisher, name and, when given, version; when it is not there, its index,
+   `index.json`, and its JAR, `<Version>/<Name>-<Version>.jar`, are fetched from ViGet, and the JAR is kept only when
+   its SHA-256 is the one the index lists. Beside the JAR, `plugin.json` keeps what ViGet said: the publisher, the name,
+   the version and the SHA-256. A cached JAR is the plugin its `plugin.json` names; a JAR without one is not used.
+2. **Verify.** Tazel reads the descriptor, checks every key and computes the SHA-256 digest of the JAR, which has to be
+   the one `plugin.json` lists. When a file `<plugin>.jar.sha256` lies beside the JAR, its first word must be that
+   digest, in lower-case hex.
 3. **Activate.** The JARs are put on a class loader of their own; for each plugin, the class its service entry names is
    created with its public constructor, and `apply` runs in the order of the declarations.
 4. **Configure.** The project file runs. Its `plugins` block declares the same plugins again; each must have been resolved

@@ -20,17 +20,14 @@ import org.gradle.api.tasks.TaskAction
 
 /**
  * Writes `META-INF/tazel-plugin.properties` and the `ProjectPlugin` service entry of a Tazel
- * plugin, which Tazel reads before it loads the plugin and ViGet reads when it is published.
+ * plugin, which Tazel reads before it loads the plugin and ViGet reads when it is pushed.
+ *
+ * Neither says who the plugin is: ViGet records its publisher, name and version when it is pushed,
+ * and a local plugin is the file the project names.
  */
 @CacheableTask
 abstract class TazelPluginDescriptorTask : DefaultTask() {
-  // The required fields are optional to Gradle, so the task reports them as tazelPlugin settings.
-  @get:Input @get:Optional abstract val publisher: Property<String>
-
-  @get:Input @get:Optional abstract val pluginName: Property<String>
-
-  @get:Input abstract val version: Property<String>
-
+  // A required field is optional to Gradle, so the task reports it as a tazelPlugin setting.
   @get:Input @get:Optional abstract val pluginClass: Property<String>
 
   @get:Input abstract val imports: ListProperty<String>
@@ -52,14 +49,6 @@ abstract class TazelPluginDescriptorTask : DefaultTask() {
 
   @TaskAction
   fun write() {
-    val publisher = required(publisher, "publisher").also { identifier(it, "publisher") }
-    val name = required(pluginName, "name").also { identifier(it, "name") }
-    val version = required(version, "version")
-    if (!version.matches(VERSION)) {
-      throw GradleException(
-        "tazelPlugin.version '$version' is not a version of three to five numbers"
-      )
-    }
     val pluginClass = required(pluginClass, "pluginClass")
     val imports = imports.get()
     imports.forEach { import ->
@@ -68,13 +57,7 @@ abstract class TazelPluginDescriptorTask : DefaultTask() {
       }
     }
 
-    val entries =
-      linkedMapOf(
-        "publisher" to publisher,
-        "name" to name,
-        "version" to version,
-        "apiVersion" to apiVersion.get().toString(),
-      )
+    val entries = linkedMapOf("apiVersion" to apiVersion.get().toString())
     if (imports.isNotEmpty()) entries["imports"] = imports.joinToString(",")
     description_.orNull?.let { entries["description"] = it }
     authors.get().forEachIndexed { index, author -> entries["author.$index"] = author }
@@ -97,15 +80,6 @@ abstract class TazelPluginDescriptorTask : DefaultTask() {
     property.orNull?.trim()?.takeIf(String::isNotEmpty)
       ?: throw GradleException("tazelPlugin.$name is required")
 
-  private fun identifier(
-    value: String,
-    name: String,
-  ) {
-    if (!value.matches(IDENTIFIER)) {
-      throw GradleException("tazelPlugin.$name '$value' is not one identifier")
-    }
-  }
-
   /**
    * The entries in the format of [Properties], escaped by it, without the date line it writes, so
    * the same settings always give the same bytes.
@@ -123,10 +97,6 @@ abstract class TazelPluginDescriptorTask : DefaultTask() {
   }
 
   private companion object {
-    val IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
-    // The versions Tazel accepts: exact, without leading zeros.
-    private const val COMPONENT = "(?:0|[1-9][0-9]*)"
-    val VERSION = Regex("$COMPONENT(?:\\.$COMPONENT){2,4}(?:-[0-9A-Za-z.-]+)?")
     val IMPORT = Regex("[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*(?:\\.\\*)?")
   }
 }
