@@ -14,6 +14,8 @@ internal const val LOCAL_PLUGIN_PUBLISHER = "<local>"
 // A local plugin has no version of its own: its JAR names none, and its digest tells it apart.
 internal const val LOCAL_PLUGIN_VERSION = "local"
 
+private val FOLDER_CHARACTERS = (('A'..'Z') + ('a'..'z') + ('0'..'9') + '.' + '-').toSet()
+
 /**
  * The folder below `.tazel/build` that holds the steps of the plugin [coordinate] names. ASCII
  * letters, digits, `.` and `-` stand for themselves and every other byte of its UTF-8 spelling
@@ -23,7 +25,7 @@ internal const val LOCAL_PLUGIN_VERSION = "local"
 internal fun pluginFolder(coordinate: String) = buildString {
   for (byte in coordinate.toByteArray(Charsets.UTF_8)) {
     val char = byte.toInt().toChar()
-    if (char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' || char == '.' || char == '-') {
+    if (char in FOLDER_CHARACTERS) {
       append(char)
     } else {
       append('_').append("%02X".format(byte.toInt() and 0xFF))

@@ -33,8 +33,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
+private const val PUBLISHER = "Publisher"
+private const val FIXTURE = "Fixture"
+private const val CACHE = ".tazel/plugins"
+
 class PluginInfrastructureTest {
-  private val fixture = PluginRequest("Publisher", "Fixture", "1.0.0")
+  private val fixture = PluginRequest(PUBLISHER, FIXTURE, "1.0.0")
 
   @BeforeTest
   fun reset() {
@@ -67,7 +71,7 @@ class PluginInfrastructureTest {
       )
 
     assertEquals(
-      PluginRequest("Publisher", "CMake", "1.2.3"),
+      PluginRequest(PUBLISHER, "CMake", "1.2.3"),
       requests.single(),
     )
   }
@@ -130,13 +134,13 @@ class PluginInfrastructureTest {
   fun resolvesDescriptorAndVerifiesOptionalChecksum() {
     val root = Files.createTempDirectory("tala-plugin-resolver-")
     try {
-      val artifact = cachePluginJar(root.resolve(".tazel/plugins"), version = "1.2.3")
+      val artifact = cachePluginJar(root.resolve(CACHE), version = "1.2.3")
       Files.writeString(artifact.resolveSibling("${artifact.fileName}.sha256"), sha256(artifact))
 
       val resolved =
         PluginResolver.resolve(
           root,
-          listOf(PluginRequest("Publisher", "Fixture", "1.2.3")),
+          listOf(PluginRequest(PUBLISHER, FIXTURE, "1.2.3")),
         )
 
       assertEquals("Publisher.Fixture", resolved.single().coordinate)
@@ -146,7 +150,7 @@ class PluginInfrastructureTest {
         resolved.single(),
         PluginResolver.resolve(
             root,
-            listOf(PluginRequest("Publisher", "Fixture", "1.2.3")),
+            listOf(PluginRequest(PUBLISHER, FIXTURE, "1.2.3")),
           )
           .single(),
       )
@@ -159,17 +163,17 @@ class PluginInfrastructureTest {
   fun rejectsChecksumMismatchAndApiMismatch() {
     val root = Files.createTempDirectory("tala-plugin-integrity-")
     try {
-      val cache = root.resolve(".tazel/plugins")
+      val cache = root.resolve(CACHE)
       val artifact = cachePluginJar(cache)
       Files.writeString(artifact.resolveSibling("${artifact.fileName}.sha256"), "0".repeat(64))
       assertFailsWith<ProjectConfigurationException> {
-        PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", null)))
+        PluginResolver.resolve(root, listOf(PluginRequest(PUBLISHER, FIXTURE, null)))
       }
       Files.delete(artifact.resolveSibling("${artifact.fileName}.sha256"))
       cachePluginJar(cache, apiVersion = 99)
       PluginResolver.clearCache()
       assertFailsWith<ProjectConfigurationException> {
-        PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", null)))
+        PluginResolver.resolve(root, listOf(PluginRequest(PUBLISHER, FIXTURE, null)))
       }
     } finally {
       root.toFile().deleteRecursively()
@@ -181,7 +185,7 @@ class PluginInfrastructureTest {
   fun takesWhoAPluginIsFromViGetAndNeverFromItsJar() {
     val root = Files.createTempDirectory("tala-plugin-identity-")
     try {
-      val cache = root.resolve(".tazel/plugins")
+      val cache = root.resolve(CACHE)
       // A JAR that names itself is refused, whoever recorded it.
       cachePluginJar(cache, identity = true)
       val named =
@@ -200,7 +204,7 @@ class PluginInfrastructureTest {
       val resolved = PluginResolver.resolve(root, listOf(fixture))
       assertEquals("Publisher.Fixture", resolved.single().coordinate)
       assertFailsWith<ProjectConfigurationException> {
-        PluginResolver.resolve(root, listOf(PluginRequest("Other", "Fixture", "1.0.0")))
+        PluginResolver.resolve(root, listOf(PluginRequest("Other", FIXTURE, "1.0.0")))
       }
 
       // A record that lists another digest than its JAR has is refused.
@@ -232,6 +236,7 @@ class PluginInfrastructureTest {
     }
   }
 
+  /** Every coordinate has a step folder of its own, whatever characters its path holds. */
   @Test
   fun twoPluginsNeverShareAStepFolder() {
     assertEquals("Publisher.Native", pluginFolder("Publisher.Native"))
@@ -267,7 +272,7 @@ class PluginInfrastructureTest {
       ProjectRuntime.reset()
       project { name = "Demo" }
       PluginRuntime.activate(listOf(first), listOf(firstPlugin), root, detectHost())
-      PluginRuntime.declare(PluginRequest("Publisher", "First", "1.0.0"))
+      PluginRuntime.declare(PluginRequest(PUBLISHER, "First", "1.0.0"))
       sources {
         executable {
           name = "Demo"
@@ -287,7 +292,7 @@ class PluginInfrastructureTest {
     val root = Files.createTempDirectory("tala-plugin-lock-")
     try {
       val plugin =
-        LockedPlugin("Publisher", "CMake", "1.0.0", PROJECT_PLUGIN_API_VERSION, "a".repeat(64))
+        LockedPlugin(PUBLISHER, "CMake", "1.0.0", PROJECT_PLUGIN_API_VERSION, "a".repeat(64))
       ProjectLockFile.write(root, LockedProject(DependencyManifest(emptyList()), listOf(plugin)))
       val restored = ProjectLockFile.read(root.resolve(ProjectLockFile.FILE_NAME))
       assertEquals(listOf(plugin), restored.plugins)
@@ -349,7 +354,7 @@ class PluginInfrastructureTest {
     name: String,
   ) =
     ResolvedPlugin(
-      "Publisher",
+      PUBLISHER,
       name,
       "1.0.0",
       PROJECT_PLUGIN_API_VERSION,
