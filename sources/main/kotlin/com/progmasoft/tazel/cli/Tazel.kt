@@ -799,7 +799,10 @@ class Tazel(
         }
         .single()
     status("Running", program.toString())
-    return processes.run(listOf(program.toString()) + command.programArguments, directory)
+    return processes.runInteractive(
+      listOf(program.toString()) + command.programArguments,
+      directory,
+    )
   }
 
   /**
@@ -1232,7 +1235,7 @@ class Tazel(
       }
     }
     for (step in command.steps) {
-      val exitCode = processes.run(commandOf(step, file.parent, arguments), file.parent)
+      val exitCode = processes.runInteractive(commandOf(step, file.parent, arguments), file.parent)
       if (exitCode != ExitCode.SUCCESS) return exitCode
     }
     return ExitCode.SUCCESS

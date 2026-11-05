@@ -25,6 +25,10 @@ internal class Fixture(
   val commands: MutableList<Pair<List<String>, Path>> =
     java.util.Collections.synchronizedList(mutableListOf())
 
+  /** The programs that were given the input of Tazel, of all [commands]. */
+  val interactive: MutableList<List<String>> =
+    java.util.Collections.synchronizedList(mutableListOf())
+
   /** How many jobs a command runs unless told otherwise: one, so that its order is known. */
   var processors = 1
   var compilerExitCode = 0
@@ -114,6 +118,14 @@ internal class Fixture(
     Files.writeString(written, "artifact of $first")
     runtimeLibrary?.let { Files.writeString(written.resolveSibling(it), "runtime") }
     return 0
+  }
+
+  override fun runInteractive(
+    command: List<String>,
+    directory: Path,
+  ): Int {
+    interactive += command
+    return run(command, directory)
   }
 
   override fun runGathered(

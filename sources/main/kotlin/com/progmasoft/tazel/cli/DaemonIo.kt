@@ -277,8 +277,20 @@ internal class ForwardingProcesses(
     command: List<String>,
     directory: Path,
     environment: Map<String, String>,
+  ): Int = forwarded(command, builder(command, directory, environment), typed = false)
+
+  override fun runInteractive(
+    command: List<String>,
+    directory: Path,
+  ): Int = forwarded(command, builder(command, directory), typed = true)
+
+  /** Runs [command] with its output sent to the client and, when [typed], what the client types. */
+  private fun forwarded(
+    command: List<String>,
+    builder: ProcessBuilder,
+    typed: Boolean,
   ): Int {
-    val process = started(command, builder(command, directory, environment))
+    val process = started(command, builder)
     val stop = {
       process.destroyForcibly()
       Unit
@@ -287,11 +299,13 @@ internal class ForwardingProcesses(
     try {
       val output = pump(process.inputStream, stderr = false)
       val errors = pump(process.errorStream, stderr = true)
-      val typing = thread(isDaemon = true, name = "tazel-daemon-stdin") { feed(process) }
+      val typing =
+        if (typed) thread(isDaemon = true, name = "tazel-daemon-stdin") { feed(process) }
+        else null.also { process.outputStream.close() }
       val code = process.waitFor()
       output.join()
       errors.join()
-      typing.interrupt()
+      typing?.interrupt()
       return code
     } finally {
       sink.forget(stop)

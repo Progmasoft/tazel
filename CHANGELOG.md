@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- The compiler, the tools and the build steps of plugins start with an empty input instead of the terminal of Tazel;
+  only the program of `tazel run` and the commands of `tazel custom` read what the user types.
 - `tazel run` builds and runs exactly one executable: the one named with `--executable`, the only one of the selection,
   or `project.defaultRun`. It takes at most one `--vipkg` and one `--executable` and no `--library`, and stops with the
   list of executables when the choice is open. It used to build and run every executable of the selection.
