@@ -6,18 +6,29 @@
 package com.progmasoft.tazel.dsl.plugin
 
 import com.progmasoft.api.tazel.dsl.plugin.PROJECT_PLUGIN_API_VERSION
+import com.progmasoft.tazel.driver.blocking
+import com.progmasoft.tazel.driver.copyLimited
 import com.progmasoft.tazel.dsl.ProjectConfigurationException
 import com.progmasoft.tazel.dsl.requirePackageVersion
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.header
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
-import java.time.Duration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -63,23 +74,27 @@ interface PluginRegistry {
  */
 class ViGetPlugins(
   private val base: URI = URI.create(System.getenv("TAZEL_VIGET_URL") ?: DEFAULT_BASE),
-  private val http: HttpClient =
-    HttpClient.newBuilder()
-      .connectTimeout(Duration.ofSeconds(15))
-      .followRedirects(HttpClient.Redirect.NORMAL)
-      .build(),
+  private val http: HttpClient = followingClient,
 ) : PluginRegistry {
   override fun versions(
     publisher: String,
     name: String,
   ): List<RegistryVersion> {
     val uri = pluginUri(publisher, name, "index.json")
-    val response = send(uri, HttpResponse.BodyHandlers.ofString())
-    if (response.statusCode() == 404) return emptyList()
-    if (response.statusCode() != 200) {
-      throw ProjectConfigurationException("ViGet answered $uri with HTTP ${response.statusCode()}")
+    val (status, body) =
+      send(uri) { response ->
+        response.status to
+          if (response.status == HttpStatusCode.OK) {
+            ByteArrayOutputStream()
+              .also { response.bodyAsChannel().copyLimited(it, MAXIMUM_INDEX_BYTES) }
+              .toString(Charsets.UTF_8)
+          } else ""
+      }
+    if (status == HttpStatusCode.NotFound) return emptyList()
+    if (status != HttpStatusCode.OK) {
+      throw ProjectConfigurationException("ViGet answered $uri with HTTP ${status.value}")
     }
-    return parseIndex(publisher, name, response.body(), uri)
+    return parseIndex(publisher, name, body, uri)
   }
 
   override fun download(
@@ -92,11 +107,18 @@ class ViGetPlugins(
     Files.createDirectories(target.parent)
     val partial = Files.createTempFile(target.parent, ".download-", ".jar")
     try {
-      val response = send(uri, HttpResponse.BodyHandlers.ofFile(partial, *WRITE_OPTIONS))
-      if (response.statusCode() != 200) {
-        throw ProjectConfigurationException(
-          "ViGet answered $uri with HTTP ${response.statusCode()}"
-        )
+      val status =
+        send(uri) { response ->
+          if (response.status == HttpStatusCode.OK) {
+            val body = response.bodyAsChannel()
+            withContext(Dispatchers.IO) {
+              Files.newOutputStream(partial).use { body.copyLimited(it, MAXIMUM_JAR_BYTES) }
+            }
+          }
+          response.status
+        }
+      if (status != HttpStatusCode.OK) {
+        throw ProjectConfigurationException("ViGet answered $uri with HTTP ${status.value}")
       }
       val actual = PluginResolver.sha256(partial)
       if (actual != version.sha256) {
@@ -119,32 +141,39 @@ class ViGetPlugins(
 
   private fun <T> send(
     uri: URI,
-    handler: HttpResponse.BodyHandler<T>,
-  ): HttpResponse<T> =
+    read: suspend (HttpResponse) -> T,
+  ): T =
     try {
-      http.send(
-        HttpRequest.newBuilder(uri)
-          .timeout(Duration.ofSeconds(60))
-          .header("User-Agent", "Tazel")
-          .GET()
-          .build(),
-        handler,
-      )
+      blocking {
+        http
+          .prepareGet(uri.toString()) {
+            timeout {
+              connectTimeoutMillis = 15_000
+              requestTimeoutMillis = 60_000
+            }
+            header(HttpHeaders.UserAgent, "Tazel")
+          }
+          .execute(read)
+      }
     } catch (error: IOException) {
       throw ProjectConfigurationException("ViGet could not be reached at $uri: ${error.message}")
-    } catch (_: InterruptedException) {
-      Thread.currentThread().interrupt()
-      throw ProjectConfigurationException("the download from $uri was interrupted")
     }
 
   companion object {
     const val DEFAULT_BASE = "https://viget.progmasoft.com"
 
-    private val WRITE_OPTIONS =
-      arrayOf(
-        java.nio.file.StandardOpenOption.WRITE,
-        java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
-      )
+    /** The largest `index.json` and plugin JAR Tazel takes; ViGet takes JARs of up to 64 MiB. */
+    private const val MAXIMUM_INDEX_BYTES = 4L shl 20
+    private const val MAXIMUM_JAR_BYTES = 64L shl 20
+
+    /** Follows the redirects of ViGet, which may move a file, but never from https to http. */
+    private val followingClient: HttpClient by lazy {
+      HttpClient(CIO) {
+        expectSuccess = false
+        followRedirects = true
+        install(HttpTimeout)
+      }
+    }
 
     /**
      * Reads `index.json`: `{"publisher", "name", "versions":

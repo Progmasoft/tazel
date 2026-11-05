@@ -107,13 +107,17 @@ tazel cache serve --directory /var/cache/tazel --port 7723 --max-size 50
 | `--host` | `127.0.0.1` | the address it listens on |
 | `--port` | `7723` | the port it listens on |
 | `--max-size` | `10` | gigabytes it keeps; the results used longest ago go first |
+| `--tls-keystore` | none | a PKCS #12 key store with the certificate and key the server presents |
 
-`TAZEL_CACHE_TOKEN` is the token a `PUT` needs; without it the server takes no results. `TAZEL_CACHE_READ_TOKEN`, when set, is
-the token a `GET` needs. Tokens stay out of the command line, where other users could read them.
+`TAZEL_CACHE_READ_TOKEN` is required: it is the token a `GET` or `HEAD` needs, and the server does not start without it.
+`TAZEL_CACHE_TOKEN` is the token a `PUT` needs; without it the server takes no results. Tokens stay out of the command line,
+where other users could read them.
 
-The server speaks plain HTTP. For other machines it stands behind a proxy with TLS, because Tazel takes `https` for every
-address but this machine. It looks at nothing inside a result; whether a result is genuine is decided by the reader through
-its signature, so the server need not be trusted with that.
+With `--tls-keystore` the server speaks HTTPS, and `TAZEL_TLS_PASSWORD` is the password of the key store. Without it the
+server listens only on this machine: a `--host` of another address is refused, and other machines reach it through a proxy
+on this one that speaks TLS. Tazel takes `https` for every address but this machine. The server looks at nothing inside a
+result; whether a result is genuine is decided by the reader through its signature, so the server need not be trusted with
+that.
 
 `tazel cache keygen` prints a new pair of keys for a project file.
 
@@ -403,9 +407,11 @@ at once. A test suite that runs beside others prints its report when it ends.
 TAZEL_REMOTE_TOKEN=... tazel remote serve --host 127.0.0.1 --port 7724 --jobs 8
 ```
 
-The token is required. The server speaks plain HTTP, so for other machines it stands behind a proxy with TLS, which is also
-what Tazel asks of such an address. It only starts talac, on the sources it was sent, in a directory of their own, and it
-refuses a request whose options name a place on its machine.
+The token is required. `--tls-keystore` names a PKCS #12 key store, whose password is `TAZEL_TLS_PASSWORD`, and the server
+then speaks HTTPS. Without it the server listens only on this machine, and other machines reach it through a proxy that
+speaks TLS; Tazel asks `https` of every address but this machine. The server only starts talac, on the sources it was sent,
+in a directory of their own, and it refuses a request whose options name a place on its machine. It takes as many requests
+as it has compilers and 16 more, and answers `503` to the rest.
 
 The client sends the sources and the options of a compiler run and gets back what talac said and wrote. Results enter the
 build cache like local ones, and programs and test suites always run on this machine. A server with another talac version

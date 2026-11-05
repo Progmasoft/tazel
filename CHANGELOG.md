@@ -5,6 +5,12 @@
 
 ## Unreleased
 
+- `tazel cache serve` and `tazel remote serve` run on Ktor and take `--tls-keystore` with a PKCS #12 key store, whose
+  password is `TAZEL_TLS_PASSWORD`, to speak HTTPS. Without TLS they listen only on this machine and refuse a `--host` of
+  another address. `tazel cache serve` needs `TAZEL_CACHE_READ_TOKEN`: it used to hand results to anyone when that was
+  not set. Tazel sends its own requests, to a remote cache, a remote executor and ViGet, through the Ktor client.
+- An archive from another machine unpacks to at most 1 GiB in all and 65,536 files, and its arguments, exit code and log
+  to 16 MiB each. Each entry used to have a 1 GiB limit of its own.
 - `tazel run` builds and runs exactly one executable: the one named with `--executable`, the only one of the selection,
   or `project.defaultRun`. It takes at most one `--vipkg` and one `--executable` and no `--library`, and stops with the
   list of executables when the choice is open. It used to build and run every executable of the selection.

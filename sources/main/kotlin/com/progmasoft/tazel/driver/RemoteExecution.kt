@@ -7,12 +7,15 @@ package com.progmasoft.tazel.driver
 
 import com.progmasoft.tazel.dsl.Host
 import com.progmasoft.tazel.dsl.RemoteExecutionSettings
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.header
+import io.ktor.client.request.preparePost
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import java.io.InputStream
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
@@ -20,6 +23,8 @@ import java.time.Duration
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal const val COMPILER_HEADER = "X-Tala-Compiler"
 internal const val HOST_HEADER = "X-Tazel-Host"
@@ -109,12 +114,6 @@ internal fun entryText(contents: InputStream) =
 
 /** Sends the sources to `<url>/compile`, which answers with an archive; redirects are refused. */
 class HttpRemoteCompiler(private val settings: RemoteExecutionSettings) : RemoteCompiler {
-  private val client =
-    HttpClient.newBuilder()
-      .connectTimeout(CONNECT_TIMEOUT)
-      .followRedirects(HttpClient.Redirect.NEVER)
-      .build()
-
   private fun pack(
     root: Path,
     arguments: List<String>,
@@ -145,26 +144,33 @@ class HttpRemoteCompiler(private val settings: RemoteExecutionSettings) : Remote
     var kept = false
     try {
       pack(root, arguments, inputs, request)
-      val builder =
-        HttpRequest.newBuilder(URI.create("${settings.url}/compile"))
-          .timeout(COMPILE_TIMEOUT)
-          .header(COMPILER_HEADER, compilerVersion)
-          .header(HOST_HEADER, hostName(host))
-          .POST(HttpRequest.BodyPublishers.ofFile(request))
-      settings.token?.let { builder.header("Authorization", "Bearer $it") }
-      val response =
-        try {
-          client.send(builder.build(), HttpResponse.BodyHandlers.ofFile(answer))
-        } catch (_: InterruptedException) {
-          Thread.currentThread().interrupt()
-          throw IOException("the request was interrupted")
-        }
-      when (response.statusCode()) {
-        200 -> Unit
-        409 -> return null
-        else -> throw IOException("${settings.url} answered ${response.statusCode()}")
+      val status = blocking {
+        tazelClient
+          .preparePost("${settings.url}/compile") {
+            timeout {
+              connectTimeoutMillis = CONNECT_TIMEOUT.toMillis()
+              requestTimeoutMillis = COMPILE_TIMEOUT.toMillis()
+            }
+            header(COMPILER_HEADER, compilerVersion)
+            header(HOST_HEADER, hostName(host))
+            settings.token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            setBody(fileContent(request))
+          }
+          .execute { response ->
+            if (response.status == HttpStatusCode.OK) {
+              val body = response.bodyAsChannel()
+              withContext(Dispatchers.IO) {
+                Files.newOutputStream(answer).use { body.copyLimited(it) }
+              }
+            }
+            response.status
+          }
       }
-      if (Files.size(answer) > MAXIMUM_ARCHIVE_BYTES) throw IOException("the answer is too large")
+      when (status) {
+        HttpStatusCode.OK -> Unit
+        HttpStatusCode.Conflict -> return null
+        else -> throw IOException("${settings.url} answered ${status.value}")
+      }
       var exitCode: Int? = null
       var log = ""
       forEachEntry(answer) { name, zip ->

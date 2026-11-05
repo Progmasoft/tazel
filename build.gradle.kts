@@ -28,6 +28,8 @@ dependencies {
   implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host:2.4.0")
   implementation("org.xerial:sqlite-jdbc:3.53.1.0")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+  implementation("io.ktor:ktor-server-netty:3.6.0")
+  implementation("io.ktor:ktor-client-cio:3.6.0")
   testImplementation(kotlin("test"))
 }
 

@@ -171,7 +171,7 @@ class CommandLineTest {
       parsed("cache", "serve", "--directory", "Results"),
     )
     assertEquals(
-      Command.CacheServe("Results", "0.0.0.0", 80, 2),
+      Command.CacheServe("Results", "0.0.0.0", 80, 2, "server.p12"),
       parsed(
         "cache",
         "serve",
@@ -180,7 +180,13 @@ class CommandLineTest {
         "--port",
         "80",
         "--max-size:2",
+        "--tls-keystore",
+        "server.p12",
       ),
+    )
+    assertEquals(
+      Command.RemoteServe("0.0.0.0", 7724, null, "server.p12"),
+      parsed("remote", "serve", "--host=0.0.0.0", "--tls-keystore=server.p12"),
     )
     for (line in
       listOf(
@@ -188,6 +194,8 @@ class CommandLineTest {
         listOf("cache", "serve", "--directory", "R", "--port", "70000"),
         listOf("cache", "serve", "--directory", "R", "--max-size", "0"),
         listOf("cache", "serve", "--directory", "R", "--directory", "S"),
+        listOf("cache", "serve", "--directory", "R", "--tls-keystore", "a", "--tls-keystore", "b"),
+        listOf("remote", "serve", "--tls-keystore", "a", "--tls-keystore", "b"),
         listOf("cache", "keygen", "--port", "1"),
         listOf("cache"),
       )) {

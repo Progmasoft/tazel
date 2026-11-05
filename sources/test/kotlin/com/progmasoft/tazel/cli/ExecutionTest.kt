@@ -254,6 +254,26 @@ class ExecutionTest {
   fun aServerNeedsAToken() = fixture {
     assertEquals(ExitCode.FAILURE, run("remote", "serve"))
     assertContains(recorder.stderr(), "TAZEL_REMOTE_TOKEN")
+    assertEquals(ExitCode.FAILURE, run("cache", "serve", "--directory", "store"))
+    assertContains(recorder.stderr(), "TAZEL_CACHE_READ_TOKEN")
+  }
+
+  @Test
+  fun aServerForOtherMachinesNeedsTls() = fixture {
+    environment["TAZEL_REMOTE_TOKEN"] = "secret"
+    environment["TAZEL_CACHE_READ_TOKEN"] = "read"
+    assertEquals(ExitCode.FAILURE, run("remote", "serve", "--host", "0.0.0.0"))
+    assertContains(recorder.stderr(), "needs --tls-keystore")
+    assertEquals(
+      ExitCode.FAILURE,
+      run("cache", "serve", "--directory", "store", "--host", "0.0.0.0"),
+    )
+    assertContains(recorder.stderr(), "needs --tls-keystore")
+    assertEquals(
+      ExitCode.FAILURE,
+      run("cache", "serve", "--directory", "store", "--tls-keystore", "server.p12"),
+    )
+    assertContains(recorder.stderr(), "TAZEL_TLS_PASSWORD")
   }
 
   @Test

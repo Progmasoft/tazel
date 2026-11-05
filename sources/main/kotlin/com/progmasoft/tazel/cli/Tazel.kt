@@ -46,6 +46,7 @@ import com.progmasoft.tazel.driver.RunSelectionException
 import com.progmasoft.tazel.driver.SelectedTargets
 import com.progmasoft.tazel.driver.SourceFiles
 import com.progmasoft.tazel.driver.TestTotals
+import com.progmasoft.tazel.driver.TlsSettings
 import com.progmasoft.tazel.driver.Tool
 import com.progmasoft.tazel.driver.Toolchain
 import com.progmasoft.tazel.driver.UnknownTargetException
@@ -54,6 +55,7 @@ import com.progmasoft.tazel.driver.compilerArguments
 import com.progmasoft.tazel.driver.displayName
 import com.progmasoft.tazel.driver.executableExtension
 import com.progmasoft.tazel.driver.hasTargets
+import com.progmasoft.tazel.driver.isLoopback
 import com.progmasoft.tazel.driver.isPlainPath
 import com.progmasoft.tazel.driver.loadWorkspace
 import com.progmasoft.tazel.driver.runTarget
@@ -112,6 +114,7 @@ object ExitCode {
  * it when a word looks like a typo of a real one.
  */
 private const val REMOTE_TOKEN = "TAZEL_REMOTE_TOKEN"
+private const val TLS_PASSWORD = "TAZEL_TLS_PASSWORD"
 
 private class Stop(
   message: String,
@@ -1138,20 +1141,54 @@ class Tazel(
     return ExitCode.SUCCESS
   }
 
+  private fun serverEnvironment(name: String) =
+    (commandEnvironment ?: System.getenv())[name]?.takeIf(String::isNotBlank)
+
+  /** TLS from the key store [path] names, with the password of `TAZEL_TLS_PASSWORD`. */
+  private fun tls(path: String?): TlsSettings? {
+    path ?: return null
+    val password =
+      serverEnvironment(TLS_PASSWORD)
+        ?: throw Stop("--tls-keystore needs $TLS_PASSWORD, the password of the key store")
+    val keyStore = directory.resolve(path).toAbsolutePath().normalize()
+    if (!Files.isRegularFile(keyStore)) throw Stop("the key store $keyStore does not exist")
+    return TlsSettings(keyStore, password.toCharArray())
+  }
+
+  /** Refuses a server for other machines without TLS before it starts. */
+  private fun requireTlsOffThisMachine(
+    command: String,
+    host: String,
+    tls: TlsSettings?,
+  ) {
+    if (tls == null && !isLoopback(host)) {
+      throw Stop(
+        "tazel $command on $host serves other machines, so it needs --tls-keystore; " +
+          "without TLS it listens only on this machine, behind a proxy that speaks TLS"
+      )
+    }
+  }
+
   private fun cacheServe(command: Command.CacheServe): Int {
-    fun token(name: String) = System.getenv(name)?.takeIf(String::isNotBlank)
+    val tls = tls(command.tlsKeyStore)
+    requireTlsOffThisMachine("cache serve", command.host, tls)
     val settings =
       CacheServerSettings(
         directory.resolve(command.directory).toAbsolutePath().normalize(),
         command.host,
         command.port,
         command.maxGigabytes * (1L shl 30),
-        token("TAZEL_CACHE_TOKEN"),
-        token("TAZEL_CACHE_READ_TOKEN"),
+        serverEnvironment("TAZEL_CACHE_READ_TOKEN")
+          ?: throw Stop(
+            "tazel cache serve needs TAZEL_CACHE_READ_TOKEN: it hands results to whoever has it"
+          ),
+        serverEnvironment("TAZEL_CACHE_TOKEN"),
+        tls,
       )
     CacheServer(settings).use { server ->
       server.start()
-      status("Serving", "${settings.directory} on http://${settings.host}:${server.port}")
+      val scheme = if (tls == null) "http" else "https"
+      status("Serving", "${settings.directory} on $scheme://${settings.host}:${server.port}")
       if (settings.writeToken == null) {
         warn("TAZEL_CACHE_TOKEN is not set, so this cache takes no results")
       }
@@ -1162,8 +1199,10 @@ class Tazel(
 
   /** Compiles for other machines until the process is stopped. */
   private fun remoteServe(command: Command.RemoteServe): Int {
+    val tls = tls(command.tlsKeyStore)
+    requireTlsOffThisMachine("remote serve", command.host, tls)
     val token =
-      (commandEnvironment ?: System.getenv())[REMOTE_TOKEN]?.takeIf(String::isNotBlank)
+      serverEnvironment(REMOTE_TOKEN)
         ?: throw Stop(
           "tazel remote serve needs $REMOTE_TOKEN: it compiles for whoever has the token"
         )
@@ -1176,12 +1215,14 @@ class Tazel(
         toolchain.require(Tool.TALAC),
         talacVersion,
         detectHost(),
+        tls,
       )
     RemoteServer(settings, processes).use { server ->
       server.start()
+      val scheme = if (tls == null) "http" else "https"
       status(
         "Serving",
-        "compilers at http://${command.host}:${server.port}/, ${settings.jobs} at a time",
+        "compilers at $scheme://${command.host}:${server.port}/, ${settings.jobs} at a time",
       )
       Thread.currentThread().join()
     }
