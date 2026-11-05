@@ -65,6 +65,35 @@ class RunSelectionTest {
   }
 
   @Test
+  fun theChosenProgramIsTheOneBuiltWhenMembersShareTheirNames() = fixture {
+    write("BUILD.kts", "project { name = \"Root\" }\nworkspace { members(\"First\", \"Second\") }")
+    for ((member, project) in listOf("First" to "", "Second" to """defaultRun = "Server"""")) {
+      write(
+        "$member/BUILD.kts",
+        """
+        project {
+          name = "App"
+          $project
+        }
+        sources {
+          executable {
+            name = "Server"
+            entry = "App.Server"
+          }
+          executable {
+            name = "Client"
+            entry = "App.Client"
+          }
+        }
+        """,
+      )
+      write("$member/Sources/Main.tala")
+    }
+    assertEquals(ExitCode.SUCCESS, run("run"))
+    assertEquals(listOf(root.resolve("Second/build/debug/Server").toString()), ran())
+  }
+
+  @Test
   fun defaultRunMustNameAnExecutable() = fixture {
     twoPrograms("""defaultRun = "Missing"""")
     assertEquals(ExitCode.FAILURE, run("run"))

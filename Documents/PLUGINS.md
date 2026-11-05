@@ -203,7 +203,8 @@ fun cmake(block: CMakeScope.() -> Unit) {
 ```
 
 `tazel build` and `tazel run` run the steps of a project in the order they were added, before its Tala targets compile.
-A project whose plugins add steps needs no Tala target. A step runs with a `BuildContext`:
+For `tazel build`, a project whose plugins add steps needs no Tala target; `tazel run` needs an executable to run and
+runs the steps of its project before it compiles it. A step runs with a `BuildContext`:
 
 | Member | What it is |
 | --- | --- |
@@ -240,7 +241,7 @@ CMakeLists.txt`.
    to its plan.
 6. **Lock.** The publisher, name, version, API version and digest of every plugin are recorded in `LOCK.sqlite3`; see
    [The lockfile](LOCKFILE.md).
-7. **Build.** `tazel build` and `tazel run` run the build steps. The JARs stay open until the command ends.
+7. **Build.** `tazel build`, and `tazel run` for the project of the executable it runs, run the build steps. The JARs stay open until the command ends.
 
 ## Trying a plugin
 

@@ -436,15 +436,19 @@ class Tazel(
     }
   }
 
-  /** The outputs of the executables that were compiled, in the order they were compiled. */
+  /**
+   * The outputs of the executables that were compiled, in the order they were compiled. [choose]
+   * picks the targets from the loaded workspace; by default, those [selection] names.
+   */
   private fun compile(
     selection: TargetSelection,
     emit: Emit,
     noCache: Boolean,
+    choose: (LoadedWorkspace) -> List<SelectedTargets> = { select(it.all, selection) },
   ): List<Path> {
     val started = TimeSource.Monotonic.markNow()
     load(forBuild = true).use { workspace ->
-      val selected = select(workspace.all, selection)
+      val selected = choose(workspace)
       // A check only reads the Tala sources; the steps of plugins build, so only a build runs them.
       val runSteps = emit != Emit.METADATA
       val compiler =
@@ -787,9 +791,13 @@ class Tazel(
   }
 
   private fun runPrograms(command: Command.Run): Int {
-    val (project, target) = load(forBuild = true).use { runTarget(it.all, command.targets) }
-    val only = TargetSelection(listOfNotNull(project.plan.identity?.name), listOf(target.name))
-    val program = compile(only, Emit.EXECUTABLE, command.noCache).single()
+    // The one workspace both chooses and compiles, so the program built is the one chosen.
+    val program =
+      compile(command.targets, Emit.EXECUTABLE, command.noCache) { workspace ->
+          val (project, target) = runTarget(workspace.all, command.targets)
+          listOf(SelectedTargets(project, listOf(target), emptyList()))
+        }
+        .single()
     status("Running", program.toString())
     return processes.run(listOf(program.toString()) + command.programArguments, directory)
   }
