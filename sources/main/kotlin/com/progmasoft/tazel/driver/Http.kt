@@ -17,20 +17,25 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.engine.sslConnector
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
-import io.ktor.util.cio.readChannel
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readAvailable
+import io.ktor.utils.io.writeFully
 import java.io.IOException
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.nio.channels.UnresolvedAddressException
+import java.nio.channels.UnsupportedAddressTypeException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.GeneralSecurityException
 import java.security.KeyStore
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 /**
  * The certificate chain and private key a server of Tazel presents: a PKCS #12 key store and its
@@ -118,23 +123,45 @@ internal val tazelClient: HttpClient by lazy {
   }
 }
 
-/** Runs [block] on this thread; an interrupt of the thread ends it with an [IOException]. */
+/**
+ * Runs [block] on this thread. An interrupt of the thread, and an address the engine cannot resolve
+ * or use, which it reports unchecked, end it with an [IOException] like any other failure of a
+ * connection.
+ */
 internal fun <T> blocking(block: suspend CoroutineScope.() -> T): T =
   try {
     runBlocking(EmptyCoroutineContext, block)
   } catch (_: InterruptedException) {
     Thread.currentThread().interrupt()
     throw IOException("the request was interrupted")
+  } catch (error: UnresolvedAddressException) {
+    throw IOException("the address cannot be resolved", error)
+  } catch (error: UnsupportedAddressTypeException) {
+    throw IOException("the address cannot be used", error)
   }
 
-/** The bytes of [file] as the body of a request or a response, with its length. */
-internal fun fileContent(file: Path): OutgoingContent.ReadChannelContent {
+/**
+ * The bytes of [file] as the body of a request or a response, with its length. The file is opened,
+ * copied and closed while the body is written, so once `respond` or the request returns, nothing
+ * reads it any more and it may be deleted.
+ */
+internal fun fileContent(file: Path): OutgoingContent.WriteChannelContent {
   val length = Files.size(file)
-  return object : OutgoingContent.ReadChannelContent() {
+  return object : OutgoingContent.WriteChannelContent() {
     override val contentLength = length
     override val contentType = ContentType.Application.OctetStream
 
-    override fun readFrom(): ByteReadChannel = file.toFile().readChannel()
+    override suspend fun writeTo(channel: ByteWriteChannel) {
+      val buffer = ByteArray(64 * 1024)
+      withContext(Dispatchers.IO) { Files.newInputStream(file) }
+        .use { input ->
+          while (true) {
+            val count = withContext(Dispatchers.IO) { input.read(buffer) }
+            if (count < 0) break
+            channel.writeFully(buffer, 0, count)
+          }
+        }
+    }
   }
 }
 

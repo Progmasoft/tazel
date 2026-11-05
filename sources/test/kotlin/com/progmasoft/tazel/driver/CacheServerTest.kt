@@ -307,6 +307,10 @@ class CacheServerTest {
       assertEquals(201, status("PUT", "/build-Demo/key", "write", "x"))
       assertEquals(401, status("GET", "/build-Demo/key"))
       assertEquals(200, status("GET", "/build-Demo/key", "read"))
+      assertEquals(403, status("GET", "/build-Demo/key", "other"))
+      // The write token reads as well, so a client that reads and writes needs only that one.
+      assertEquals(200, status("GET", "/build-Demo/key", "write"))
+      assertEquals(403, status("PUT", "/build-Demo/key", "read", "y"))
     }
 
   @Test

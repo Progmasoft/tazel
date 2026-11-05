@@ -46,7 +46,8 @@ private val usage =
   mapOf(
     CommandName.CACHE_PULL to "[selection]",
     CommandName.CACHE_SERVE to
-      "--directory Folder [--host Address] [--port Number] [--max-size Gigabytes]",
+      "--directory Folder [--host Address] [--port Number] [--max-size Gigabytes] " +
+        "[--tls-keystore File]",
     CommandName.CHECK to "[selection] [--no-cache]",
     CommandName.BUILD to "[selection] [--no-cache]",
     CommandName.RUN to "[selection] [--no-cache] [-- program arguments]",
@@ -57,7 +58,8 @@ private val usage =
     CommandName.INSTALL to "[--global | -g] Publisher.Name",
     CommandName.VIGET_VIPKG_DESC to "Publisher.Name",
     CommandName.HELP to "[command]",
-    CommandName.REMOTE_SERVE to "[--host Address] [--port Number] [--jobs Number]",
+    CommandName.REMOTE_SERVE to
+      "[--host Address] [--port Number] [--jobs Number] [--tls-keystore File]",
     CommandName.FMT to "[-- talafmt options]",
     CommandName.LINT to "[--workspace | selection] [-- talalint options]",
   )

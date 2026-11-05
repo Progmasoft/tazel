@@ -25,6 +25,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
 
 /** What `tazel remote serve` is started with. The token comes from the environment. */
@@ -57,6 +58,13 @@ class RemoteServer(
 ) : AutoCloseable {
   private val slots = Semaphore(settings.jobs, true)
   private val admitted = Semaphore(settings.jobs + WAITING)
+
+  /**
+   * The threads of the admitted requests, which block on a compiler slot and while it runs; the
+   * shared IO dispatcher has a fixed number of threads, which a large `--jobs` would take up.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private val io = Dispatchers.IO.limitedParallelism(settings.jobs + WAITING)
   private val server =
     tazelServer(settings.host, settings.port, settings.tls) {
       routing { route("{...}") { handle { serve(call) } } }
@@ -106,17 +114,17 @@ class RemoteServer(
   }
 
   private suspend fun compile(call: ApplicationCall) {
-    val work = withContext(Dispatchers.IO) { Files.createTempDirectory("tazel-remote-") }
-    val request = withContext(Dispatchers.IO) { Files.createTempFile("tazel-request-", ".zip") }
-    val answer = withContext(Dispatchers.IO) { Files.createTempFile("tazel-answer-", ".zip") }
+    val work = withContext(io) { Files.createTempDirectory("tazel-remote-") }
+    val request = withContext(io) { Files.createTempFile("tazel-request-", ".zip") }
+    val answer = withContext(io) { Files.createTempFile("tazel-answer-", ".zip") }
     try {
       val body = call.receiveChannel()
-      withContext(Dispatchers.IO) { Files.newOutputStream(request).use { body.copyLimited(it) } }
-      val packed = withContext(Dispatchers.IO) { run(work, request, answer) }
+      withContext(io) { Files.newOutputStream(request).use { body.copyLimited(it) } }
+      val packed = withContext(io) { run(work, request, answer) }
       if (!packed) return call.respond(HttpStatusCode.UnprocessableEntity)
       call.respond(fileContent(answer))
     } finally {
-      withContext(Dispatchers.IO) {
+      withContext(io) {
         work.toFile().deleteRecursively()
         Files.deleteIfExists(request)
         Files.deleteIfExists(answer)

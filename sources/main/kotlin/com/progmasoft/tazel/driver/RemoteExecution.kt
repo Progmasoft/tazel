@@ -154,7 +154,7 @@ class HttpRemoteCompiler(private val settings: RemoteExecutionSettings) : Remote
           .preparePost("${settings.url}/compile") {
             timeout {
               connectTimeoutMillis = CONNECT_TIMEOUT.toMillis()
-              requestTimeoutMillis = COMPILE_TIMEOUT.toMillis()
+              socketTimeoutMillis = COMPILE_TIMEOUT.toMillis()
             }
             header(COMPILER_HEADER, compilerVersion)
             header(HOST_HEADER, hostName(host))
@@ -195,6 +195,7 @@ class HttpRemoteCompiler(private val settings: RemoteExecutionSettings) : Remote
 
   private companion object {
     val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
+    /** How long the server may send nothing, which it does while it compiles. */
     val COMPILE_TIMEOUT: Duration = Duration.ofMinutes(30)
   }
 }

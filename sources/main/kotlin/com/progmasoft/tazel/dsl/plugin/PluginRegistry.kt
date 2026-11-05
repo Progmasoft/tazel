@@ -149,7 +149,7 @@ class ViGetPlugins(
           .prepareGet(uri.toString()) {
             timeout {
               connectTimeoutMillis = 15_000
-              requestTimeoutMillis = 60_000
+              socketTimeoutMillis = 60_000
             }
             header(HttpHeaders.UserAgent, "Tazel")
           }

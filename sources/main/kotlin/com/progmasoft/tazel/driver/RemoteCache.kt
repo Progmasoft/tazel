@@ -83,7 +83,7 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
     url("${settings.url}/$slug/$key")
     timeout {
       connectTimeoutMillis = CONNECT_TIMEOUT.toMillis()
-      requestTimeoutMillis = REQUEST_TIMEOUT.toMillis()
+      socketTimeoutMillis = SOCKET_TIMEOUT.toMillis()
     }
     settings.token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
   }
@@ -141,7 +141,8 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
 
   private companion object {
     val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
-    val REQUEST_TIMEOUT: Duration = Duration.ofMinutes(5)
+    /** How long the server may send nothing; a large result takes as long as it needs. */
+    val SOCKET_TIMEOUT: Duration = Duration.ofMinutes(5)
   }
 }
 

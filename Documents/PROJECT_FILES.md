@@ -125,7 +125,7 @@ buildCache {
     url = "https://cache.example.com"
     read = true
     write = false
-    token = System.getenv("TAZEL_CACHE_TOKEN")
+    token = System.getenv("TAZEL_CACHE_READ_TOKEN")
     publicKey = "MCowBQYDK2VwAyEA..."
     signingKey = System.getenv("TAZEL_CACHE_SIGNING_KEY")
   }
@@ -139,7 +139,7 @@ buildCache {
 | `remote.url` | an `https` address; `http` for this machine only | required | where the shared results are |
 | `remote.read` | `true`, `false` | `true` | asks the server for results |
 | `remote.write` | `true`, `false` | `false` | sends results to the server |
-| `remote.token` | text or `null` | `null` | sent as `Authorization: Bearer`; empty counts as none |
+| `remote.token` | text or `null` | `null` | sent as `Authorization: Bearer`; empty counts as none. For `tazel cache serve`, the read token to read, the write token to write or both |
 | `remote.publicKey` | an Ed25519 key or `null` | `null` | only results signed for this key are used |
 | `remote.signingKey` | an Ed25519 key or `null` | `null` | signs what this machine writes; a secret |
 

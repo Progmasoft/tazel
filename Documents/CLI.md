@@ -110,8 +110,8 @@ tazel cache serve --directory /var/cache/tazel --port 7723 --max-size 50
 | `--tls-keystore` | none | a PKCS #12 key store with the certificate and key the server presents |
 
 `TAZEL_CACHE_READ_TOKEN` is required: it is the token a `GET` or `HEAD` needs, and the server does not start without it.
-`TAZEL_CACHE_TOKEN` is the token a `PUT` needs; without it the server takes no results. Tokens stay out of the command line,
-where other users could read them.
+`TAZEL_CACHE_TOKEN` is the token a `PUT` needs, and it reads as well, so a client that writes needs only that one; without it
+the server takes no results. Tokens stay out of the command line, where other users could read them.
 
 With `--tls-keystore` the server speaks HTTPS, and `TAZEL_TLS_PASSWORD` is the password of the key store. Without it the
 server listens only on this machine: a `--host` of another address is refused, and other machines reach it through a proxy

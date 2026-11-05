@@ -44,7 +44,8 @@ data class CacheServerSettings(
 /**
  * The server of the remote build cache: `GET` and `PUT` of `/<slug>/<key>`, a file each. It speaks
  * TLS when it has a key store; without one it listens only on this machine, behind a proxy that
- * speaks TLS for the others. Reading needs the read token and writing the write token.
+ * speaks TLS for the others. Reading needs the read token or the write token, and writing the write
+ * token, so a client that reads and writes needs only one.
  *
  * Results are opaque to it. When the disk holds more than [CacheServerSettings.maxBytes], the
  * results used longest ago go first. Whether a result is genuine is decided by the signature the
@@ -75,7 +76,9 @@ class CacheServer(private val settings: CacheServerSettings) : AutoCloseable {
     val allowed =
       when (method) {
         HttpMethod.Get,
-        HttpMethod.Head -> presents(call, settings.readToken)
+        HttpMethod.Head ->
+          presents(call, settings.readToken) ||
+            settings.writeToken != null && presents(call, settings.writeToken)
         HttpMethod.Put -> settings.writeToken != null && presents(call, settings.writeToken)
         else -> return call.respond(HttpStatusCode.MethodNotAllowed)
       }
