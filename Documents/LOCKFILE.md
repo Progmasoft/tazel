@@ -40,6 +40,9 @@ asks for `tazel lock resolve`, which writes the current one. Versions of Tazel b
 | `local_packages` | `path`, `scope` | the `.vipkg` files the project names, relative to the project file |
 | `plugins` | `publisher`, `name` | `version`, `api_version`, `sha256` (64 hex digits) |
 
+A plugin of ViGet is recorded with the publisher, name and version ViGet lists; a local plugin with the publisher
+`<local>`, its path as the name and the version `local`, so its digest alone tells two of its JARs apart.
+
 `name` in `packages` is the coordinate of the package, `Publisher.Name`. `scope` is `BUILD` for `dependency` and
 `localDependency`, `TEST` for `testDependency` and `localTestDependency`. Every table is `WITHOUT ROWID`: a row is identified by
 its key alone, so one package cannot be recorded twice in one scope.
