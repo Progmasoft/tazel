@@ -6,15 +6,22 @@
 package com.progmasoft.tazel.dsl
 
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 import java.time.Instant
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.io.path.name
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ScriptCacheTest {
@@ -90,6 +97,69 @@ class ScriptCacheTest {
     val directoryKey = scriptCacheKey(withDirectory)
     Files.writeString(classes.resolve("A.class"), "b")
     assertNotEquals(directoryKey, scriptCacheKey(withDirectory))
+  }
+
+  private fun jar(
+    file: Path,
+    entries: Map<String, String>,
+    comment: String? = null,
+  ): Path {
+    ZipOutputStream(Files.newOutputStream(file)).use { zip ->
+      comment?.let(zip::setComment)
+      entries.forEach { (name, text) ->
+        val bytes = text.toByteArray()
+        val entry = ZipEntry(name)
+        entry.method = ZipEntry.STORED
+        entry.size = bytes.size.toLong()
+        entry.crc = CRC32().apply { update(bytes) }.value
+        zip.putNextEntry(entry)
+        zip.write(bytes)
+        zip.closeEntry()
+      }
+    }
+    return file
+  }
+
+  /** A JAR is keyed by its central directory, which changes with the classes it holds. */
+  @Test
+  fun aJarIsKeyedByItsCentralDirectory() = inDirectory { root ->
+    val library = jar(root.resolve("library.jar"), mapOf("a/A.class" to "first"), "a comment")
+    assertNotNull(centralDirectory(library))
+    assertNull(centralDirectory(Files.writeString(root.resolve("text.jar"), "classes")))
+    val base = inputs(listOf(library))
+    val key = scriptCacheKey(base)
+
+    val time = Files.getLastModifiedTime(library)
+    val size = Files.size(library)
+    jar(library, mapOf("a/A.class" to "other"), "a comment")
+    Files.setLastModifiedTime(library, time)
+    assertEquals(size, Files.size(library))
+    assertNotEquals(key, scriptCacheKey(base))
+  }
+
+  /** A JAR whose end record defers to ZIP64 is read through its ZIP64 records. */
+  @Test
+  fun aZip64JarIsReadThroughItsZip64Records() = inDirectory { root ->
+    val small = jar(root.resolve("small.jar"), mapOf("a/A.class" to "first"))
+    val (_, expected) = assertNotNull(centralDirectory(small))
+    val bytes = Files.readAllBytes(small)
+    val end = ByteBuffer.wrap(bytes, bytes.size - 22, 22).slice().order(ByteOrder.LITTLE_ENDIAN)
+    val length = end.getInt(12).toLong()
+    val offset = end.getInt(16).toLong()
+    val zip64At = (bytes.size - 22).toLong()
+    val records = ByteBuffer.allocate(56 + 20 + 22).order(ByteOrder.LITTLE_ENDIAN)
+    records.putInt(0x06064b50).putLong(44).putShort(45).putShort(45).putInt(0).putInt(0)
+    records.putLong(1).putLong(1).putLong(length).putLong(offset)
+    records.putInt(0x07064b50).putInt(0).putLong(zip64At).putInt(1)
+    records.putInt(0x06054b50).putShort(0).putShort(0).putShort(-1).putShort(-1)
+    records.putInt(-1).putInt(-1).putShort(0)
+    val large = root.resolve("large.jar")
+    Files.newOutputStream(large).use {
+      it.write(bytes, 0, bytes.size - 22)
+      it.write(records.array())
+    }
+    val (_, directory) = assertNotNull(centralDirectory(large))
+    assertEquals(expected, directory)
   }
 
   @Test

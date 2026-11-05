@@ -8,10 +8,14 @@ package com.progmasoft.tazel.dsl
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
 import java.io.File
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
 import java.time.Duration
@@ -63,10 +67,9 @@ internal fun kotlinCompilerVersion(): String =
  * version, the JVM target, the compilation configuration (script name, imports, compiler options),
  * the classpath and the plugin JARs.
  *
- * A classpath entry is identified by the SHA-256 of what it holds, so a JAR that was replaced keeps
- * no compiled script of its own, whatever its size and modification time say; for Tazel's own
- * installation that is reading about a hundred megabytes, well below the cost of a compilation. A
- * plugin JAR is identified by the SHA-256 it was verified against.
+ * A classpath entry is identified by what it holds ([contentDigest]), so a JAR that was replaced
+ * keeps no compiled script of its own, whatever its size and modification time say. A plugin JAR is
+ * identified by the SHA-256 it was verified against.
  */
 fun scriptCacheKey(inputs: ScriptCacheInputs): String {
   val digest = MessageDigest.getInstance("SHA-256")
@@ -98,8 +101,89 @@ private fun fingerprint(entry: Path): String {
   }
 }
 
-/** The SHA-256 of a file, or of the names and contents of the files below a directory. */
+/**
+ * What a classpath entry holds: for a JAR, the SHA-256 of its size and central directory; for any
+ * other file, the SHA-256 of its bytes; for a directory, the SHA-256 of the names and contents of
+ * the files below it.
+ *
+ * The central directory of a JAR lists every entry with its name, sizes and CRC-32, so a JAR whose
+ * classes changed has another one; reading it takes a few kilobytes where the whole JAR is
+ * megabytes. It guards against a JAR that was replaced, not against one crafted to keep the CRCs:
+ * whoever can write Tazel's installation already runs code as its user.
+ */
 internal fun contentDigest(entry: Path): String {
+  if (Files.isRegularFile(entry)) {
+    centralDirectory(entry)?.let { (size, directory) ->
+      val digest = MessageDigest.getInstance("SHA-256")
+      digest.update("zip $size".toByteArray())
+      digest.update(0)
+      digest.update(directory)
+      return digest.digest().toHex()
+    }
+  }
+  return wholeDigest(entry)
+}
+
+private const val END_SIGNATURE = 0x06054b50
+private const val END_LENGTH = 22
+private const val MAXIMUM_COMMENT = 0xFFFF
+private const val ZIP64_LOCATOR_SIGNATURE = 0x07064b50
+private const val ZIP64_LOCATOR_LENGTH = 20
+private const val ZIP64_END_SIGNATURE = 0x06064b50
+private const val ZIP64_END_LENGTH = 56
+private const val CENTRAL_SIGNATURE = 0x02014b50
+private const val MAXIMUM_CENTRAL_DIRECTORY = 64 shl 20
+
+/**
+ * The size and central directory of [file], or `null` when it is not a ZIP file this reads: then
+ * its whole content stands for it.
+ */
+internal fun centralDirectory(file: Path): Pair<Long, ByteBuffer>? =
+  FileChannel.open(file, StandardOpenOption.READ).use { channel ->
+    val size = channel.size()
+    if (size < END_LENGTH) return null
+    val tailLength = minOf(size, (END_LENGTH + MAXIMUM_COMMENT).toLong()).toInt()
+    val tail = read(channel, size - tailLength, tailLength) ?: return null
+    // The end record is the last one whose comment reaches exactly to the end of the file.
+    val end =
+      (tailLength - END_LENGTH downTo 0).firstOrNull {
+        tail.getInt(it) == END_SIGNATURE &&
+          tail.getShort(it + 20).toInt() and 0xFFFF == tailLength - it - END_LENGTH
+      } ?: return null
+    var length = tail.getInt(end + 12).toLong() and 0xFFFFFFFFL
+    var offset = tail.getInt(end + 16).toLong() and 0xFFFFFFFFL
+    if (length == 0xFFFFFFFFL || offset == 0xFFFFFFFFL) {
+      val locatorAt = size - tailLength + end - ZIP64_LOCATOR_LENGTH
+      val locator = read(channel, locatorAt, ZIP64_LOCATOR_LENGTH) ?: return null
+      if (locator.getInt(0) != ZIP64_LOCATOR_SIGNATURE) return null
+      val zip64 = read(channel, locator.getLong(8), ZIP64_END_LENGTH) ?: return null
+      if (zip64.getInt(0) != ZIP64_END_SIGNATURE) return null
+      length = zip64.getLong(40)
+      offset = zip64.getLong(48)
+    }
+    if (length !in 0..MAXIMUM_CENTRAL_DIRECTORY || offset < 0 || offset + length > size) {
+      return null
+    }
+    val directory = read(channel, offset, length.toInt()) ?: return null
+    if (length > 0 && directory.getInt(0) != CENTRAL_SIGNATURE) return null
+    size to directory
+  }
+
+/** [length] bytes of [channel] from [position], little-endian, or `null` past its end. */
+private fun read(
+  channel: FileChannel,
+  position: Long,
+  length: Int,
+): ByteBuffer? {
+  if (position < 0) return null
+  val buffer = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN)
+  while (buffer.hasRemaining()) {
+    if (channel.read(buffer, position + buffer.position()) < 0) return null
+  }
+  return buffer.flip()
+}
+
+private fun wholeDigest(entry: Path): String {
   val digest = MessageDigest.getInstance("SHA-256")
   val buffer = ByteArray(64 * 1024)
   fun add(file: Path) =
