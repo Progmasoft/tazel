@@ -17,6 +17,8 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ArchiveLimitsTest {
   private val root = Files.createTempDirectory("tazel-archive-limits-")
@@ -40,6 +42,26 @@ class ArchiveLimitsTest {
     forEachEntry(archive("a" to SMALL.bytes / 2, "b" to SMALL.bytes / 2), SMALL) { _, contents ->
       contents.copyTo(OutputStream.nullOutputStream())
     }
+  }
+
+  /** A file the caller does not read is still unpacked, so it counts against the same limit. */
+  @Test
+  fun aFileLeftUnreadCountsAsWell() {
+    val archive = archive("a" to SMALL.bytes / 2 + 1, "b" to SMALL.bytes / 2 + 1)
+    val error = assertFailsWith<IOException> { forEachEntry(archive, SMALL) { _, _ -> } }
+    assertContains(error.message.orEmpty(), "more than ${SMALL.bytes} bytes")
+  }
+
+  /** A log longer than a client reads keeps its beginning and says how much it left out. */
+  @Test
+  fun aLongLogIsShortenedToWhatAClientReads() {
+    assertEquals("short", shortened("short"))
+    val log = "é".repeat((MAXIMUM_TEXT_ENTRY_BYTES / 2).toInt() + 1)
+    val kept = shortened(log)
+    assertTrue(kept.toByteArray().size <= MAXIMUM_TEXT_ENTRY_BYTES)
+    assertTrue(kept.startsWith("éé"))
+    assertContains(kept, "more bytes of the compiler's output were left out")
+    assertFalse('�' in kept)
   }
 
   @Test

@@ -16,6 +16,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
@@ -87,7 +88,8 @@ internal fun entryPath(
  * Calls [entry] with the name and the contents of each file of [archive], which came from another
  * machine. The contents of all files together share one limit of [limits], and the archive holds at
  * most as many files as it allows: a small archive of well compressed files would otherwise unpack
- * to far more than it is.
+ * to far more than it is. What [entry] leaves unread of a file is read through the same limit, so a
+ * file it ignores counts as well.
  */
 internal inline fun forEachEntry(
   archive: Path,
@@ -103,7 +105,10 @@ internal inline fun forEachEntry(
             "an archive from another machine holds more than ${limits.entries} entries"
           )
         }
-        if (!it.isDirectory) entry(it.name, contents)
+        if (!it.isDirectory) {
+          entry(it.name, contents)
+          contents.transferTo(OutputStream.nullOutputStream())
+        }
       }
   }
 }

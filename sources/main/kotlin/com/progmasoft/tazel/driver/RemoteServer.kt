@@ -179,7 +179,7 @@ class RemoteServer(
         zip.closeEntry()
       }
       text(EXIT_CODE_ENTRY, run.exitCode.toString())
-      text(LOG_ENTRY, run.output)
+      text(LOG_ENTRY, shortened(run.output))
       Files.walk(work).use { paths ->
         paths
           .filter(Files::isRegularFile)
@@ -232,3 +232,16 @@ internal fun isCompilerCommand(
 }
 
 private val REFUSED_OPTIONS = listOf("--sysroot", "--incremental")
+
+/**
+ * [log] as the log entry of an answer may hold it: a client reads at most
+ * [MAXIMUM_TEXT_ENTRY_BYTES], so a longer log keeps its beginning, where the first diagnostics are,
+ * and says how much it left out.
+ */
+internal fun shortened(log: String): String {
+  val bytes = log.toByteArray()
+  if (bytes.size <= MAXIMUM_TEXT_ENTRY_BYTES) return log
+  val kept = (MAXIMUM_TEXT_ENTRY_BYTES - 1024).toInt()
+  return bytes.copyOf(kept).decodeToString().trimEnd('\uFFFD') +
+    "\n[tazel: ${bytes.size - kept} more bytes of the compiler's output were left out]\n"
+}
