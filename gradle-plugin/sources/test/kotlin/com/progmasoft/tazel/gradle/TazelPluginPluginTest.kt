@@ -129,6 +129,7 @@ class TazelPluginPluginTest {
     assertTrue("tazelPlugin.pluginClass is required" in output, output)
   }
 
+  /** Who a plugin is comes from ViGet or from `localPlugin`, so the block cannot say it. */
   @Test
   fun theBlockHasNoPublisherNameOrVersion() {
     // Inside the block, Gradle reads `name` and `version` as those of the project; neither is a

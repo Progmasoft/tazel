@@ -15,16 +15,21 @@ internal const val LOCAL_PLUGIN_PUBLISHER = "<local>"
 internal const val LOCAL_PLUGIN_VERSION = "local"
 
 /**
- * The folder below `.tazel/build` that holds the steps of the plugin [coordinate] names: the
- * coordinate itself, with `local:` and the separators of a path turned into characters a file name
- * may hold.
+ * The folder below `.tazel/build` that holds the steps of the plugin [coordinate] names. ASCII
+ * letters, digits, `.` and `-` stand for themselves and every other byte of its UTF-8 spelling
+ * becomes `_` and two hex digits, so two coordinates never share a folder: `local:a/b.jar` is
+ * `local_3Aa_2Fb.jar` and `local:a_b.jar` is `local_3Aa_5Fb.jar`.
  */
-internal fun pluginFolder(coordinate: String) =
-  coordinate
-    .replace(Regex("^local:"), "local.")
-    .replace('/', '_')
-    .replace('\\', '_')
-    .replace(':', '_')
+internal fun pluginFolder(coordinate: String) = buildString {
+  for (byte in coordinate.toByteArray(Charsets.UTF_8)) {
+    val char = byte.toInt().toChar()
+    if (char in 'A'..'Z' || char in 'a'..'z' || char in '0'..'9' || char == '.' || char == '-') {
+      append(char)
+    } else {
+      append('_').append("%02X".format(byte.toInt() and 0xFF))
+    }
+  }
+}
 
 /** `Publisher.Name` of a plugin of ViGet, `local:<path>` of a local one. */
 internal fun pluginCoordinate(

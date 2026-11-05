@@ -34,6 +34,8 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class PluginInfrastructureTest {
+  private val fixture = PluginRequest("Publisher", "Fixture", "1.0.0")
+
   @BeforeTest
   fun reset() {
     ProjectRuntime.reset()
@@ -174,6 +176,7 @@ class PluginInfrastructureTest {
     }
   }
 
+  /** A cached plugin is who its `plugin.json` says; a JAR that names itself is refused. */
   @Test
   fun takesWhoAPluginIsFromViGetAndNeverFromItsJar() {
     val root = Files.createTempDirectory("tala-plugin-identity-")
@@ -183,7 +186,7 @@ class PluginInfrastructureTest {
       cachePluginJar(cache, identity = true)
       val named =
         assertFailsWith<ProjectConfigurationException> {
-          PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", "1.0.0")))
+          PluginResolver.resolve(root, listOf(fixture))
         }
       assertTrue("names publisher, name, version" in named.message.orEmpty(), named.message)
 
@@ -194,8 +197,7 @@ class PluginInfrastructureTest {
       val moved = cache.resolve("Other/Fixture/1.0.0/Fixture-1.0.0.jar")
       Files.createDirectories(moved.parent)
       Files.copy(artifact, moved)
-      val resolved =
-        PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", "1.0.0")))
+      val resolved = PluginResolver.resolve(root, listOf(fixture))
       assertEquals("Publisher.Fixture", resolved.single().coordinate)
       assertFailsWith<ProjectConfigurationException> {
         PluginResolver.resolve(root, listOf(PluginRequest("Other", "Fixture", "1.0.0")))
@@ -210,12 +212,33 @@ class PluginInfrastructureTest {
       )
       val changed =
         assertFailsWith<ProjectConfigurationException> {
-          PluginResolver.resolve(root, listOf(PluginRequest("Publisher", "Fixture", "1.0.0")))
+          PluginResolver.resolve(root, listOf(fixture))
         }
       assertTrue("another SHA-256" in changed.message.orEmpty(), changed.message)
+
+      // A field that is not a JSON string is a diagnostic of the record, not a crash.
+      PluginResolver.clearCache()
+      Files.writeString(
+        record,
+        """{"publisher":{"a":1},"name":"Fixture","version":"1.0.0","sha256":"${sha256(artifact)}"}""",
+      )
+      val malformed =
+        assertFailsWith<ProjectConfigurationException> {
+          PluginResolver.resolve(root, listOf(fixture))
+        }
+      assertTrue("has no string publisher" in malformed.message.orEmpty(), malformed.message)
     } finally {
       root.toFile().deleteRecursively()
     }
+  }
+
+  @Test
+  fun twoPluginsNeverShareAStepFolder() {
+    assertEquals("Publisher.Native", pluginFolder("Publisher.Native"))
+    assertEquals("local_3Aa_2Fb.jar", pluginFolder("local:a/b.jar"))
+    assertEquals("local_3Aa_5Fb.jar", pluginFolder("local:a_b.jar"))
+    assertEquals("local_3Aa_5Cb.jar", pluginFolder("local:a\\b.jar"))
+    assertEquals("local_3A_C3_BC.jar", pluginFolder("local:ü.jar"))
   }
 
   @Test
@@ -306,10 +329,6 @@ class PluginInfrastructureTest {
     return path
   }
 
-  /**
-   * Puts a fixture JAR into [cache] the way Tazel keeps one it fetched from ViGet, beside the
-   * record of what ViGet said about it.
-   */
   private fun cachePluginJar(
     cache: Path,
     version: String = "1.0.0",

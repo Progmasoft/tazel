@@ -168,7 +168,7 @@ class PluginBuildTest {
     )
     assertEquals(root, directory)
     assertEquals(mapOf("NATIVE_MODE" to "DEBUG"), environment)
-    assertTrue(Files.isRegularFile(root.resolve(".tazel/build/local.native.jar/compile/done")))
+    assertTrue(Files.isRegularFile(root.resolve(".tazel/build/local_3Anative.jar/compile/done")))
     assertTrue("Compiling" in recorder.stdout())
   }
 

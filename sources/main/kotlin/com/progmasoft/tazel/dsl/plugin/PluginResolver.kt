@@ -13,6 +13,7 @@ import java.math.BigInteger
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
@@ -20,22 +21,23 @@ import java.util.jar.JarFile
 import kotlin.streams.toList
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 object PluginResolver {
   private const val DESCRIPTOR = "META-INF/tazel-plugin.properties"
   private const val SERVICE = "META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin"
 
-  /**
-   * What ViGet said about a version when Tazel fetched it, kept beside its JAR in the cache. A
-   * plugin is who ViGet recorded when it was pushed; neither its JAR nor its folder says so.
-   */
+  // What ViGet said about a version when Tazel fetched it, kept beside its JAR in the cache: a
+  // plugin is who ViGet recorded when it was pushed, and neither its JAR nor its folder says so.
+  // The descriptor only describes a plugin, so it may name none of the identity keys.
   private const val RECORD = "plugin.json"
-
-  // The descriptor describes a plugin; who it is comes from ViGet or from localPlugin.
-  private val IDENTITY_KEYS = listOf("publisher", "name", "version")
+  private const val PUBLISHER = "publisher"
+  private const val NAME = "name"
+  private const val VERSION = "version"
+  private const val SHA256 = "sha256"
+  private val IDENTITY_KEYS = listOf(PUBLISHER, NAME, VERSION)
   private val CLASS_NAME = Regex("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
   private val indexCache = ConcurrentHashMap<String, CachedIndex>()
 
@@ -99,12 +101,25 @@ object PluginResolver {
         .resolve("$name-${chosen.version}.jar")
     registry.download(publisher, name, chosen, target)
     val record = buildJsonObject {
-      put("publisher", publisher)
-      put("name", name)
-      put("version", chosen.version)
-      put("sha256", chosen.sha256)
+      put(PUBLISHER, publisher)
+      put(NAME, name)
+      put(VERSION, chosen.version)
+      put(SHA256, chosen.sha256)
     }
-    Files.writeString(target.resolveSibling(RECORD), "$record\n")
+    // Moved into place whole, so a scan never reads half a record, and the move replaces whatever
+    // lies at that path rather than writing through a link.
+    val partial = Files.createTempFile(target.parent, RECORD, ".partial")
+    try {
+      Files.writeString(partial, "$record\n")
+      Files.move(
+        partial,
+        target.resolveSibling(RECORD),
+        StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING,
+      )
+    } finally {
+      Files.deleteIfExists(partial)
+    }
   }
 
   internal fun clearCache() = indexCache.clear()
@@ -154,7 +169,7 @@ object PluginResolver {
           paths
             .filter { path -> path.fileName.toString() == RECORD }
             .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
-            .map { record -> cached(root, record) }
+            .map { record -> pluginOfRecord(root, record) }
             .toList()
         }
         .sortedWith(compareBy(ResolvedPlugin::coordinate, ResolvedPlugin::version))
@@ -172,8 +187,7 @@ object PluginResolver {
         .reduce(0L) { left, right -> left xor right }
     }
 
-  /** The plugin a [record] of the cache describes, checked against the JAR beside it. */
-  private fun cached(
+  private fun pluginOfRecord(
     root: Path,
     record: Path,
   ): ResolvedPlugin {
@@ -186,14 +200,17 @@ object PluginResolver {
       } catch (error: IllegalArgumentException) {
         null
       } ?: throw invalid("is not a JSON object")
-    fun text(key: String) = fields[key]?.jsonPrimitive?.content ?: throw invalid("has no $key")
-    val publisher = requireModuleSegment(text("publisher"), "plugin publisher")
-    val name = requireModuleSegment(text("name"), "plugin name")
-    val version = requirePackageVersion(text("version"))
+    // Each field is a JSON string; the record is checked against the JAR beside it.
+    fun text(key: String) =
+      (fields[key] as? JsonPrimitive)?.takeIf(JsonPrimitive::isString)?.content
+        ?: throw invalid("has no string $key")
+    val publisher = requireModuleSegment(text(PUBLISHER), "plugin publisher")
+    val name = requireModuleSegment(text(NAME), "plugin name")
+    val version = requirePackageVersion(text(VERSION))
     val artifact = record.resolveSibling("$name-$version.jar")
     if (!Files.isRegularFile(artifact, LinkOption.NOFOLLOW_LINKS)) throw invalid("has no JAR")
     val plugin = inspect(root, artifact, publisher, name, version)
-    if (plugin.sha256 != text("sha256")) {
+    if (plugin.sha256 != text(SHA256)) {
       throw invalid("lists another SHA-256 than its JAR has")
     }
     return plugin
