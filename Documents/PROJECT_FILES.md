@@ -335,9 +335,10 @@ plugins {
 
 A plugin of ViGet is found in the cache of the project, `.tazel/plugins`; a plugin the cache lacks is fetched from
 `https://viget.progmasoft.com/dslplugins/tazel/<Publisher>/<Name>/`. A local plugin is a JAR inside the
-project directory. Either way the JAR describes itself in `META-INF/tazel-plugin.properties` (publisher, name, version,
-API version, the imports it adds to the project file) and provides exactly one `ProjectPlugin` service. Tazel checks the
-coordinate, the version, the API version and the SHA-256 digest before it loads the plugin; a `<plugin>.jar.sha256` file
+project directory. The JAR does not say who the plugin is: ViGet records its publisher, name and version when it is
+pushed, and a local plugin is known by its path. Its `META-INF/tazel-plugin.properties` holds the API version and the
+imports it adds to the project file, and it provides exactly one `ProjectPlugin` service. Tazel checks the version ViGet
+lists, the API version and the SHA-256 digest before it loads the plugin; a `<plugin>.jar.sha256` file
 beside the JAR pins the expected digest. A plugin has no stability.
 
 A plugin is written against the package `com.progmasoft.api.tazel.dsl.plugin`. It can register DSL extensions, contribute

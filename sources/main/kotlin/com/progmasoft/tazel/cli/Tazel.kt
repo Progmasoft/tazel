@@ -79,6 +79,7 @@ import com.progmasoft.tazel.dsl.detectHost
 import com.progmasoft.tazel.dsl.discoverProject
 import com.progmasoft.tazel.dsl.effectiveJobs
 import com.progmasoft.tazel.dsl.plugin.PluginBuildStep
+import com.progmasoft.tazel.dsl.plugin.pluginFolder
 import com.progmasoft.tazel.dsl.plugin.toPluginBuildMode
 import com.progmasoft.tazel.dsl.plugin.toPluginHost
 import com.progmasoft.tazel.dsl.plugin.toPluginSummary
@@ -546,7 +547,7 @@ class Tazel(
     val plan = project.plan
     val output = root.resolve(plan.outputDirectory).normalize()
     progress.working("${step.owner} ${step.name}")
-    val work = root.resolve(".tazel/build").resolve(step.owner).resolve(step.name)
+    val work = root.resolve(".tazel/build").resolve(pluginFolder(step.owner)).resolve(step.name)
     Files.createDirectories(work)
     Files.createDirectories(output)
     val services =

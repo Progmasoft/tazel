@@ -32,7 +32,6 @@ class TazelPluginPlugin : Plugin<Project> {
       repository.content { it.includeGroup(GROUP) }
     }
     val settings = project.extensions.create("tazelPlugin", TazelPluginExtension::class.java)
-    settings.version.convention(project.provider { project.version.toString() })
     project.extensions.create("tazelApi", TazelApiDependency::class.java, project)
 
     val descriptor =
@@ -40,9 +39,6 @@ class TazelPluginPlugin : Plugin<Project> {
         ->
         task.group = "build"
         task.description = "Writes the descriptor and the service entry of the Tazel plugin."
-        task.publisher.set(settings.publisher)
-        task.pluginName.set(settings.name)
-        task.version.set(settings.version)
         task.pluginClass.set(settings.pluginClass)
         task.imports.set(settings.imports)
         task.description_.set(settings.description)
@@ -63,7 +59,7 @@ class TazelPluginPlugin : Plugin<Project> {
     const val GROUP = "com.progmasoft.tazel"
 
     /** The plugin API of the Tazel this Gradle plugin belongs to. */
-    const val API_VERSION = 2
+    const val API_VERSION = 3
 
     /** The version of this Gradle plugin, which is the version of Tazel and of its API. */
     val VERSION: String by lazy {
@@ -78,16 +74,13 @@ class TazelPluginPlugin : Plugin<Project> {
   }
 }
 
-/** The `tazelPlugin { }` block: the identity of the plugin and what ViGet shows about it. */
+/**
+ * The `tazelPlugin { }` block: the class of the plugin and what ViGet shows about it. It does not
+ * say who the plugin is: the publisher, the name and the version are given when the plugin is
+ * pushed, `tazel plugin push --jar plugin.jar --name Plugin --version 0.1.0`, and ViGet records
+ * them.
+ */
 abstract class TazelPluginExtension {
-  /** The Progmasoft Account the plugin is published under. */
-  abstract val publisher: Property<String>
-
-  abstract val name: Property<String>
-
-  /** The version of the plugin; the version of the project unless set. */
-  abstract val version: Property<String>
-
   /** The class that implements `ProjectPlugin`. */
   abstract val pluginClass: Property<String>
 
