@@ -109,13 +109,16 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
       .prepareGet { result(slug, key) }
       .execute { response ->
         when (response.status) {
-          HttpStatusCode.OK -> Unit
-          HttpStatusCode.NotFound -> return@execute false
+          HttpStatusCode.OK -> {
+            val body = response.bodyAsChannel()
+            withContext(Dispatchers.IO) {
+              Files.newOutputStream(archive).use { body.copyLimited(it) }
+            }
+            true
+          }
+          HttpStatusCode.NotFound -> false
           else -> throw IOException("${settings.url} answered ${response.status.value}")
         }
-        val body = response.bodyAsChannel()
-        withContext(Dispatchers.IO) { Files.newOutputStream(archive).use { body.copyLimited(it) } }
-        true
       }
   }
 

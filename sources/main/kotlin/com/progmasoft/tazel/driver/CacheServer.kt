@@ -61,6 +61,7 @@ class CacheServer(private val settings: CacheServerSettings) : AutoCloseable {
   val port: Int
     get() = boundPort(server)
 
+  /** Creates the directory, starts listening and returns; requests are served until [close]. */
   fun start() {
     Files.createDirectories(settings.directory)
     server.start(wait = false)

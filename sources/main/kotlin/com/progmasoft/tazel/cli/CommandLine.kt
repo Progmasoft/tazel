@@ -476,10 +476,12 @@ private val selectionFlags = listOf("--vipkg", "-p", "--executable", "-e", "--li
 
 private const val NO_CACHE = "--no-cache"
 
-private val cacheServeFlags =
-  listOf("--directory", "--host", "--port", "--max-size", "--tls-keystore")
+/** What both servers take: where they listen and the key store of their TLS. */
+private val serverFlags = listOf("--host", "--port", "--tls-keystore")
 
-private val remoteServeFlags = listOf("--host", "--port", "--jobs", "-j", "--tls-keystore")
+private val cacheServeFlags = listOf("--directory", "--max-size") + serverFlags
+
+private val remoteServeFlags = listOf("--jobs", "-j") + serverFlags
 
 private val executionFlags =
   listOf(

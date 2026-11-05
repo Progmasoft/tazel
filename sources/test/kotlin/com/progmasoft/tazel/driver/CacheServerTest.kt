@@ -217,9 +217,10 @@ class CacheServerTest {
     val root = Files.createTempDirectory("tazel-tls-").toRealPath()
     try {
       val keyStore = root.resolve("server.p12")
+      val windows = System.getProperty("os.name").startsWith("Windows")
       val keytool =
-        Path.of(System.getProperty("java.home"), "bin", "keytool").toString() +
-          if (System.getProperty("os.name").startsWith("Windows")) ".exe" else ""
+        Path.of(System.getProperty("java.home"), "bin", if (windows) "keytool.exe" else "keytool")
+          .toString()
       val made =
         ProcessBuilder(
             keytool,

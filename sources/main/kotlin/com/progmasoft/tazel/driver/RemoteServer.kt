@@ -66,6 +66,7 @@ class RemoteServer(
   val port: Int
     get() = boundPort(server)
 
+  /** Starts listening and returns; requests are served until [close]. */
   fun start() {
     server.start(wait = false)
   }
