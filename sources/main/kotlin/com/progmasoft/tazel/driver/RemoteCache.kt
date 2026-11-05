@@ -26,6 +26,18 @@ import java.util.zip.ZipOutputStream
 /** The most a result of a remote cache may hold, packed or unpacked. */
 internal const val MAXIMUM_ARCHIVE_BYTES = 1L shl 30
 
+/** The most files an archive from another machine may hold. */
+internal const val MAXIMUM_ARCHIVE_ENTRIES = 65_536
+
+/** The most an entry of text in an archive, its arguments, exit code or log, may hold. */
+internal const val MAXIMUM_TEXT_ENTRY_BYTES = 16L shl 20
+
+/** How much an archive from another machine may unpack to: [bytes] in all, in [entries] files. */
+internal data class ArchiveLimits(
+  val bytes: Long = MAXIMUM_ARCHIVE_BYTES,
+  val entries: Int = MAXIMUM_ARCHIVE_ENTRIES,
+)
+
 /** Where results are shared between machines. Every failure is an [IOException]. */
 interface RemoteStore {
   /** Whether the store has the result, without fetching it. */
@@ -131,14 +143,18 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
   }
 }
 
-/** [stream], failing once it has given more than a result may hold. */
-internal fun limited(stream: InputStream) =
+/** [stream], failing once it has given more than [maximum] bytes. */
+internal fun limited(
+  stream: InputStream,
+  maximum: Long = MAXIMUM_ARCHIVE_BYTES,
+) =
   object : InputStream() {
-    private var left = MAXIMUM_ARCHIVE_BYTES
+    private var left = maximum
 
     private fun counted(count: Int): Int {
       if (count > 0) left -= count
-      if (left < 0) throw IOException("a result of the remote cache is too large")
+      if (left < 0)
+        throw IOException("an archive from another machine holds more than $maximum bytes")
       return count
     }
 
@@ -226,13 +242,17 @@ internal fun packResult(
 internal fun unpackResult(
   archive: Path,
   directory: Path,
+  limits: ArchiveLimits = ArchiveLimits(),
 ) {
   val base = directory.toAbsolutePath().normalize()
   ZipInputStream(Files.newInputStream(archive)).use { zip ->
     // One limit for the whole archive: many small files are as large as one big one.
-    val contents = limited(zip)
+    val contents = limited(zip, limits.bytes)
     generateSequence { zip.nextEntry }
-      .forEach { entry ->
+      .forEachIndexed { index, entry ->
+        if (index >= limits.entries) {
+          throw IOException("a result of the remote cache holds more than ${limits.entries} files")
+        }
         val name = entry.name
         val file = base.resolve(name).normalize()
         if (name.any { it in "/\\:" } || file.parent != base || !file.startsWith(base)) {

@@ -103,14 +103,13 @@ class RemoteServer(
       val sources = mutableListOf<String>()
       forEachEntry(request) { name, zip ->
         when {
-          name == ARGUMENTS_ENTRY ->
-            arguments = limited(zip).readAllBytes().decodeToString().split("\n")
+          name == ARGUMENTS_ENTRY -> arguments = entryText(zip).split("\n")
           name.startsWith(SOURCES_PREFIX) -> {
             val source = name.removePrefix(SOURCES_PREFIX)
             if (!isPlainPath(source)) throw IOException("the archive names '$source'")
             val file = entryPath(work, source)
             file.parent?.let(Files::createDirectories)
-            Files.copy(limited(zip), file)
+            Files.copy(zip, file)
             sources += source
           }
         }
