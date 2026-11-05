@@ -8,17 +8,19 @@ package com.progmasoft.api.tazel.dsl.plugin
 import java.nio.file.Path
 
 /** The version of this API; a plugin built for another one is not loaded. */
-const val PROJECT_PLUGIN_API_VERSION = 2
+const val PROJECT_PLUGIN_API_VERSION = 3
 
 /**
  * A plugin of the Tazel project file.
  *
- * Who the plugin is, its publisher, name, version and API version, is written once, in the
- * descriptor of its JAR, `META-INF/tazel-plugin.properties`; the class does not repeat it. The
- * service entry of the JAR, `META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin`,
- * names the class, which needs a public constructor without parameters. Tazel creates it for every
- * project that declares the plugin and calls [apply] before the project file runs. The project file
- * then uses the DSL the plugin defines, such as a `cmake { }` block; see [PluginExtensions].
+ * Who the plugin is, its publisher, name and version, is neither in its code nor in its JAR: ViGet
+ * records it when the plugin is pushed, and a local plugin is the file the project names. The
+ * descriptor of the JAR, `META-INF/tazel-plugin.properties`, holds its API version, the imports it
+ * adds and what ViGet shows about it. The service entry of the JAR,
+ * `META-INF/services/com.progmasoft.api.tazel.dsl.plugin.ProjectPlugin`, names the class, which
+ * needs a public constructor without parameters. Tazel creates it for every project that declares
+ * the plugin and calls [apply] before the project file runs. The project file then uses the DSL the
+ * plugin defines, such as a `cmake { }` block; see [PluginExtensions].
  *
  * A plugin runs with the same JVM permissions as Tazel. The integrity and the compatibility of its
  * JAR are checked before it is activated; its code is not sandboxed.
