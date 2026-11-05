@@ -8,11 +8,14 @@ package com.progmasoft.tazel.dsl
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
 import java.io.File
 import java.io.IOException
+import java.io.UncheckedIOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileVisitOption
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
@@ -20,6 +23,8 @@ import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.name
 import kotlin.script.experimental.api.CompiledScript
 import kotlin.script.experimental.jvm.impl.KJvmCompiledScript
@@ -71,7 +76,10 @@ internal fun kotlinCompilerVersion(): String =
  * keeps no compiled script of its own, whatever its size and modification time say. A plugin JAR is
  * identified by the SHA-256 it was verified against.
  */
-fun scriptCacheKey(inputs: ScriptCacheInputs): String {
+fun scriptCacheKey(
+  inputs: ScriptCacheInputs,
+  fingerprints: ClasspathFingerprints = ClasspathFingerprints(),
+): String {
   val digest = MessageDigest.getInstance("SHA-256")
   fun line(text: String) {
     digest.update(text.toByteArray(Charsets.UTF_8))
@@ -84,7 +92,7 @@ fun scriptCacheKey(inputs: ScriptCacheInputs): String {
   line("name ${inputs.scriptName}")
   inputs.imports.forEach { line("import $it") }
   inputs.compilerOptions.forEach { line("option $it") }
-  inputs.classpath.forEach { entry -> line("classpath ${fingerprint(entry)}") }
+  inputs.classpath.forEach { entry -> line("classpath ${fingerprints.of(entry)}") }
   inputs.plugins
     .sortedBy { it.coordinate }
     .forEach { line("plugin ${it.coordinate} ${it.version} ${it.apiVersion} ${it.sha256}") }
@@ -92,19 +100,36 @@ fun scriptCacheKey(inputs: ScriptCacheInputs): String {
   return digest.digest().toHex()
 }
 
-private fun fingerprint(entry: Path): String {
-  val absolute = entry.toAbsolutePath().normalize()
-  return try {
-    "$absolute ${contentDigest(absolute)}"
-  } catch (_: IOException) {
-    "$absolute missing"
-  }
+/**
+ * The fingerprints of classpath entries, each read once for as long as this is kept: a loader keeps
+ * one for the project files of one command, which share Tazel's installation.
+ */
+class ClasspathFingerprints {
+  private val known = ConcurrentHashMap<Path, String>()
+
+  internal fun of(entry: Path): String =
+    known.computeIfAbsent(entry.toAbsolutePath().normalize(), ::fingerprint)
 }
+
+/**
+ * An entry that is missing gives the same fingerprint each time; one that is there but cannot be
+ * read gives one no other run gives, so no compiled script is used or kept for it.
+ */
+private fun fingerprint(absolute: Path): String =
+  try {
+    "$absolute ${contentDigest(absolute)}"
+  } catch (_: NoSuchFileException) {
+    "$absolute missing"
+  } catch (_: IOException) {
+    "$absolute unreadable ${UUID.randomUUID()}"
+  } catch (_: UncheckedIOException) {
+    "$absolute unreadable ${UUID.randomUUID()}"
+  }
 
 /**
  * What a classpath entry holds: for a JAR, the SHA-256 of its size and central directory; for any
  * other file, the SHA-256 of its bytes; for a directory, the SHA-256 of the names and contents of
- * the files below it.
+ * the files below it, links followed, since the classes behind them are on the classpath too.
  *
  * The central directory of a JAR lists every entry with its name, sizes and CRC-32, so a JAR whose
  * classes changed has another one; reading it takes a few kilobytes where the whole JAR is
@@ -194,7 +219,7 @@ private fun wholeDigest(entry: Path): String {
     }
   if (Files.isDirectory(entry)) {
     val files =
-      Files.walk(entry)
+      Files.walk(entry, FileVisitOption.FOLLOW_LINKS)
         .use { paths -> paths.filter(Files::isRegularFile).toList() }
         .sortedBy { entry.relativize(it).toString() }
     for (file in files) {

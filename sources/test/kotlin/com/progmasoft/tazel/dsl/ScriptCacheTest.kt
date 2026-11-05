@@ -6,6 +6,7 @@
 package com.progmasoft.tazel.dsl
 
 import com.progmasoft.tazel.dsl.plugin.ResolvedPlugin
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
@@ -135,6 +136,37 @@ class ScriptCacheTest {
     Files.setLastModifiedTime(library, time)
     assertEquals(size, Files.size(library))
     assertNotEquals(key, scriptCacheKey(base))
+  }
+
+  /** One loader reads each classpath entry once; the next command reads it again. */
+  @Test
+  fun aClasspathEntryIsReadOncePerLoader() = inDirectory { root ->
+    val library = jar(root.resolve("library.jar"), mapOf("a/A.class" to "first"))
+    val base = inputs(listOf(library))
+    val fingerprints = ClasspathFingerprints()
+    val key = scriptCacheKey(base, fingerprints)
+    jar(library, mapOf("a/A.class" to "other"))
+    assertEquals(key, scriptCacheKey(base, fingerprints))
+    assertNotEquals(key, scriptCacheKey(base, ClasspathFingerprints()))
+  }
+
+  /** Classes behind a link inside a classpath directory are on the classpath, so they count. */
+  @Test
+  fun aLinkInAClasspathDirectoryIsFollowed() = inDirectory { root ->
+    val target = Files.createDirectories(root.resolve("target/b"))
+    Files.writeString(target.resolve("B.class"), "b")
+    val classes = Files.createDirectories(root.resolve("classes"))
+    try {
+      Files.createSymbolicLink(classes.resolve("b"), target)
+    } catch (_: IOException) {
+      return@inDirectory // This system does not let the user make links.
+    } catch (_: UnsupportedOperationException) {
+      return@inDirectory
+    }
+    val withDirectory = inputs(listOf(classes))
+    val key = scriptCacheKey(withDirectory)
+    Files.writeString(target.resolve("B.class"), "c")
+    assertNotEquals(key, scriptCacheKey(withDirectory))
   }
 
   /** A JAR whose end record defers to ZIP64 is read through its ZIP64 records. */
