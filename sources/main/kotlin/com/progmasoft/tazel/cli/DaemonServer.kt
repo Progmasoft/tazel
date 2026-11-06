@@ -193,9 +193,9 @@ internal class DaemonServer(
   ) {
     slots.acquire()
     runs.incrementAndGet()
+    val input = RequestInput()
     try {
       val sink = RequestSink(writer)
-      val input = RequestInput()
       thread(isDaemon = true, name = "tazel-daemon-input") { listen(reader, sink, input) }
       val timings = Timings.fromEnvironment(request.environment::get)
       val code =
@@ -211,6 +211,7 @@ internal class DaemonServer(
         writer.write(RunExit(code, phases.toMap()).frame())
       }
     } finally {
+      input.close()
       runs.decrementAndGet()
       slots.release()
     }

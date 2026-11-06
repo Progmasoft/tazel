@@ -41,6 +41,8 @@ class RunSelectionTest {
     demo()
     assertEquals(ExitCode.SUCCESS, run("run"))
     assertEquals(listOf(root.resolve("build/debug/Demo").toString()), ran())
+    // The program reads what the user types; the compiler that built it did not.
+    assertEquals(listOf(listOf(root.resolve("build/debug/Demo").toString())), interactive)
   }
 
   @Test

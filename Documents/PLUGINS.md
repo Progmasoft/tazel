@@ -213,7 +213,7 @@ runs the steps of its project before it compiles it. A step runs with a `BuildCo
 | `outputDirectory` | the absolute directory the build mode of the project writes artifacts to |
 | `workDirectory` | a directory of the step for intermediate files: `.tazel/build/<Publisher>.<Name>/<step>` of the project, the same in every build; for a local plugin, `<Publisher>.<Name>` is `local_3A` and its path, with every byte other than ASCII letters, digits, `.` and `-` written as `_` and two hex digits, so `native/c.jar` is `local_3Anative_2Fc.jar`. The step folders of two plugins never coincide |
 | `status(verb, message)`, `warn(message)` | prints a line in the output of Tazel |
-| `run(command, directory, environment)` | runs a program, with variables added to those of Tazel, and returns its exit code; what it prints goes to the output of Tazel |
+| `run(command, directory, environment)` | runs a program, with variables added to those of Tazel, and returns its exit code; what it prints goes to the output of Tazel, and its input is empty |
 | `capture(command, directory, environment)` | runs a program like `run`, but returns its exit code and what it printed instead of showing it: for a probe whose failure is an answer, or a program whose output the step reads |
 | `findProgram(name)` | the program on `PATH`, with the executable extension of the host, or `null` |
 | `fail(message)` | stops the build with the coordinate of the plugin, the name of the step and the message |

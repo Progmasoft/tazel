@@ -24,6 +24,7 @@ import java.nio.channels.SocketChannel
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.time.TimeMark
@@ -107,16 +108,31 @@ internal class RequestSink(private val writer: FrameWriter) {
   }
 }
 
-/** What the client types while a run is going on, for the programs the run starts. */
-internal class RequestInput {
+/**
+ * What the client types while a run is going on, for the programs the run starts. It holds at most
+ * [capacity] bytes that no program has read: [feed] then waits, as a pipe would, so a client that
+ * pipes more than a build reads waits for it instead of filling the daemon's memory.
+ */
+internal class RequestInput(private val capacity: Int = MAXIMUM_PENDING_INPUT) {
   private val chunks = LinkedBlockingQueue<ByteArray>()
+  private val room = Semaphore(capacity)
 
   @Volatile
   var ended = false
     private set
 
+  @Volatile private var closed = false
+
+  /** Queues [bytes], waiting for room until a program reads or the run is [close]d. */
   fun feed(bytes: ByteArray) {
-    if (bytes.isNotEmpty()) chunks += bytes
+    var offset = 0
+    while (offset < bytes.size && !closed) {
+      val count = minOf(bytes.size - offset, capacity)
+      if (room.tryAcquire(count, 100, TimeUnit.MILLISECONDS)) {
+        chunks += bytes.copyOfRange(offset, offset + count)
+        offset += count
+      }
+    }
   }
 
   fun end() {
@@ -124,12 +140,22 @@ internal class RequestInput {
     chunks += ByteArray(0)
   }
 
+  /** Ends the run's input: what is queued is dropped and [feed] stops waiting. */
+  fun close() {
+    closed = true
+    chunks.clear()
+    end()
+  }
+
   /** The next chunk, an empty array at the end of the input, or null when nothing came in time. */
   fun next(
     timeout: Long,
     unit: TimeUnit,
-  ): ByteArray? = chunks.poll(timeout, unit)
+  ): ByteArray? = chunks.poll(timeout, unit)?.also { room.release(it.size) }
 }
+
+/** How many bytes the client may have typed ahead of what the programs of a run read. */
+internal const val MAXIMUM_PENDING_INPUT = 1 shl 20
 
 /**
  * `System.out` and `System.err` of the daemon. A project file can print, and several runs are
@@ -277,8 +303,20 @@ internal class ForwardingProcesses(
     command: List<String>,
     directory: Path,
     environment: Map<String, String>,
+  ): Int = forwarded(command, builder(command, directory, environment), typed = false)
+
+  override fun runInteractive(
+    command: List<String>,
+    directory: Path,
+  ): Int = forwarded(command, builder(command, directory), typed = true)
+
+  /** Runs [command] with its output sent to the client and, when [typed], what the client types. */
+  private fun forwarded(
+    command: List<String>,
+    builder: ProcessBuilder,
+    typed: Boolean,
   ): Int {
-    val process = started(command, builder(command, directory, environment))
+    val process = started(command, builder)
     val stop = {
       process.destroyForcibly()
       Unit
@@ -287,11 +325,13 @@ internal class ForwardingProcesses(
     try {
       val output = pump(process.inputStream, stderr = false)
       val errors = pump(process.errorStream, stderr = true)
-      val typing = thread(isDaemon = true, name = "tazel-daemon-stdin") { feed(process) }
+      val typing =
+        if (typed) thread(isDaemon = true, name = "tazel-daemon-stdin") { feed(process) }
+        else null.also { process.outputStream.close() }
       val code = process.waitFor()
       output.join()
       errors.join()
-      typing.interrupt()
+      typing?.interrupt()
       return code
     } finally {
       sink.forget(stop)

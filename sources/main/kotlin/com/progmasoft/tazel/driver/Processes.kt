@@ -11,11 +11,23 @@ import java.util.concurrent.TimeUnit
 
 /** Starts the programs Tazel runs. A test replaces it to see the commands without running them. */
 interface Processes {
-  /** Runs [command] in [directory] on the streams of Tazel and returns its exit code. */
+  /**
+   * Runs [command] in [directory] with its output and errors on those of Tazel and returns its exit
+   * code. It reads nothing: a compiler or a build step has no business with what the user types.
+   */
   fun run(
     command: List<String>,
     directory: Path,
   ): Int
+
+  /**
+   * Runs [command] like [run], with the input of Tazel as well: the program `tazel run` starts and
+   * the commands of `tazel_custom.txt`, which the user runs to work with them.
+   */
+  fun runInteractive(
+    command: List<String>,
+    directory: Path,
+  ): Int = run(command, directory)
 
   /**
    * Runs [command] like [run] with the variables of [environment] added to those of Tazel. Only the
@@ -74,13 +86,27 @@ object SystemProcesses : Processes {
     directory: Path,
     environment: Map<String, String>,
   ): Int =
-    try {
+    started(
+      command,
       ProcessBuilder(command)
         .directory(directory.toFile())
-        .inheritIO()
-        .also { it.environment().putAll(environment) }
-        .start()
-        .waitFor()
+        .redirectInput(ProcessBuilder.Redirect.from(nullDevice()))
+        .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+        .redirectError(ProcessBuilder.Redirect.INHERIT)
+        .also { it.environment().putAll(environment) },
+    )
+
+  override fun runInteractive(
+    command: List<String>,
+    directory: Path,
+  ): Int = started(command, ProcessBuilder(command).directory(directory.toFile()).inheritIO())
+
+  private fun started(
+    command: List<String>,
+    builder: ProcessBuilder,
+  ): Int =
+    try {
+      builder.start().waitFor()
     } catch (error: java.io.IOException) {
       throw ProjectConfigurationException(
         "${command.first()} could not be started: ${error.message}"
