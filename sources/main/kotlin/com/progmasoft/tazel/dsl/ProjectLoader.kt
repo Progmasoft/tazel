@@ -129,6 +129,9 @@ class ProjectLoader(
 ) {
   private val host by lazy { timings.measure(Phase.SCRIPT_HOST) { BasicJvmScriptingHost() } }
 
+  /** The classpath is the same for every project file this loads, so it is read once. */
+  private val fingerprints = ClasspathFingerprints()
+
   fun load(location: ProjectLocation): LoadedProject {
     requireSupportedJava()
     val source =
@@ -280,7 +283,7 @@ class ProjectLoader(
     compilation: ScriptCompilationConfiguration,
   ): CompiledScript {
     val cache = this.cache
-    val key = cache?.let { scriptCacheKey(inputs) }
+    val key = cache?.let { scriptCacheKey(inputs, fingerprints) }
     if (cache != null && key != null) {
       timings
         .measure(Phase.CACHE_LOAD) { cache.load(key) }
