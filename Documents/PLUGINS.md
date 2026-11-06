@@ -71,7 +71,7 @@ rootProject.name = "cmake-plugin"
 // build.gradle.kts of the plugin
 plugins {
   kotlin("jvm") version "2.4.0"
-  id("com.progmasoft.tazel.plugin") version "0.4.0.4"
+  id("com.progmasoft.tazel.plugin") version "0.4.0.3"
 }
 
 repositories {
