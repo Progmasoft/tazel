@@ -8,6 +8,8 @@ package com.progmasoft.tazel.driver
 import com.progmasoft.tazel.dsl.Host
 import com.progmasoft.tazel.dsl.RemoteExecutionSettings
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -40,7 +42,7 @@ class RemoteCompilation(
       if (name.startsWith(OUTPUTS_PREFIX)) {
         val file = entryPath(root, name.removePrefix(OUTPUTS_PREFIX))
         file.parent?.let(Files::createDirectories)
-        Files.copy(limited(zip), file, REPLACE_EXISTING)
+        Files.copy(zip, file, REPLACE_EXISTING)
       }
     }
   }
@@ -77,16 +79,38 @@ internal fun entryPath(
   return file
 }
 
+/**
+ * Calls [entry] with the name and the contents of each file of [archive], which came from another
+ * machine. The contents of all files together share one limit of [limits], and the archive holds at
+ * most as many files as it allows: a small archive of well compressed files would otherwise unpack
+ * to far more than it is. What [entry] leaves unread of a file is read through the same limit, so a
+ * file it ignores counts as well.
+ */
 internal inline fun forEachEntry(
   archive: Path,
-  entry: (String, ZipInputStream) -> Unit,
+  limits: ArchiveLimits = ArchiveLimits(),
+  entry: (String, InputStream) -> Unit,
 ) {
   ZipInputStream(Files.newInputStream(archive)).use { zip ->
+    val contents = limited(zip, limits.bytes)
     generateSequence { zip.nextEntry }
-      .filterNot(ZipEntry::isDirectory)
-      .forEach { entry(it.name, zip) }
+      .forEachIndexed { index, it ->
+        if (index >= limits.entries) {
+          throw IOException(
+            "an archive from another machine holds more than ${limits.entries} entries"
+          )
+        }
+        if (!it.isDirectory) {
+          entry(it.name, contents)
+          contents.transferTo(OutputStream.nullOutputStream())
+        }
+      }
   }
 }
+
+/** The text of an entry of an archive, which may hold at most [MAXIMUM_TEXT_ENTRY_BYTES]. */
+internal fun entryText(contents: InputStream) =
+  limited(contents, MAXIMUM_TEXT_ENTRY_BYTES).readAllBytes().decodeToString()
 
 /** Sends the sources to `<url>/compile`, which answers with an archive; redirects are refused. */
 class HttpRemoteCompiler(private val settings: RemoteExecutionSettings) : RemoteCompiler {
@@ -150,8 +174,8 @@ class HttpRemoteCompiler(private val settings: RemoteExecutionSettings) : Remote
       var log = ""
       forEachEntry(answer) { name, zip ->
         when (name) {
-          EXIT_CODE_ENTRY -> exitCode = limited(zip).readAllBytes().decodeToString().toIntOrNull()
-          LOG_ENTRY -> log = limited(zip).readAllBytes().decodeToString()
+          EXIT_CODE_ENTRY -> exitCode = entryText(zip).toIntOrNull()
+          LOG_ENTRY -> log = entryText(zip)
         }
       }
       val code = exitCode ?: throw IOException("the answer of ${settings.url} has no exit code")
