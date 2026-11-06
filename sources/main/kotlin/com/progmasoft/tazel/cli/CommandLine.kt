@@ -237,21 +237,29 @@ sealed interface Command {
     override val name = CommandName.CACHE_KEYGEN
   }
 
-  /** Serves results from [directory] on [host] and [port], at most [maxGigabytes] of them. */
+  /**
+   * Serves results from [directory] on [host] and [port], at most [maxGigabytes] of them, with TLS
+   * when [tlsKeyStore] names a PKCS #12 key store.
+   */
   data class CacheServe(
     val directory: String,
     val host: String = "127.0.0.1",
     val port: Int = 7723,
     val maxGigabytes: Long = 10,
+    val tlsKeyStore: String? = null,
   ) : Command {
     override val name = CommandName.CACHE_SERVE
   }
 
-  /** Compiles for other machines on [host] and [port], [jobs] at a time. */
+  /**
+   * Compiles for other machines on [host] and [port], [jobs] at a time, with TLS when [tlsKeyStore]
+   * names a PKCS #12 key store.
+   */
   data class RemoteServe(
     val host: String = "127.0.0.1",
     val port: Int = 7724,
     val jobs: Int? = null,
+    val tlsKeyStore: String? = null,
   ) : Command {
     override val name = CommandName.REMOTE_SERVE
   }
@@ -468,9 +476,12 @@ private val selectionFlags = listOf("--vipkg", "-p", "--executable", "-e", "--li
 
 private const val NO_CACHE = "--no-cache"
 
-private val cacheServeFlags = listOf("--directory", "--host", "--port", "--max-size")
+/** What both servers take: where they listen and the key store of their TLS. */
+private val serverFlags = listOf("--host", "--port", "--tls-keystore")
 
-private val remoteServeFlags = listOf("--host", "--port", "--jobs", "-j")
+private val cacheServeFlags = listOf("--directory", "--max-size") + serverFlags
+
+private val remoteServeFlags = listOf("--jobs", "-j") + serverFlags
 
 private val executionFlags =
   listOf(
@@ -763,6 +774,7 @@ private class ArgumentReader(private val arguments: List<String>) {
     var host: String? = null
     var port: Int? = null
     var size: Long? = null
+    var keyStore: String? = null
     fun number(
       word: OptionWord,
       range: LongRange,
@@ -791,6 +803,10 @@ private class ArgumentReader(private val arguments: List<String>) {
           if (size != null) reject("--max-size is written twice")
           size = number(word, 1L..1_000_000L, "a number of gigabytes")
         }
+        "--tls-keystore" -> {
+          if (keyStore != null) reject("--tls-keystore is written twice")
+          keyStore = value(word)
+        }
         else ->
           reject(
             "'$argument' is not an argument of tazel cache serve",
@@ -804,6 +820,7 @@ private class ArgumentReader(private val arguments: List<String>) {
       host ?: defaults.host,
       port ?: defaults.port,
       size ?: defaults.maxGigabytes,
+      keyStore,
     )
   }
 
@@ -903,9 +920,14 @@ private class ArgumentReader(private val arguments: List<String>) {
     var host: String? = null
     var port: Int? = null
     var jobs: Int? = null
+    var keyStore: String? = null
     while (hasNext()) {
       val (argument, word) = nextOption()
       when (word?.flag) {
+        "--tls-keystore" -> {
+          if (keyStore != null) reject("--tls-keystore is written twice")
+          keyStore = value(word)
+        }
         "--host" -> host = value(word)
         "--port" ->
           port =
@@ -928,7 +950,7 @@ private class ArgumentReader(private val arguments: List<String>) {
       }
     }
     val defaults = Command.RemoteServe()
-    return Command.RemoteServe(host ?: defaults.host, port ?: defaults.port, jobs)
+    return Command.RemoteServe(host ?: defaults.host, port ?: defaults.port, jobs, keyStore)
   }
 
   private class Compiling(

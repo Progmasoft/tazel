@@ -7,12 +7,19 @@ package com.progmasoft.tazel.driver
 
 import com.progmasoft.tazel.dsl.RemoteCacheSettings
 import com.progmasoft.tazel.dsl.ResultKeys
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.head
+import io.ktor.client.request.header
+import io.ktor.client.request.prepareGet
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
+import io.ktor.client.request.url
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import java.io.InputStream
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -22,6 +29,8 @@ import java.time.Duration
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The most a result of a remote cache may hold, packed or unpacked. */
 internal const val MAXIMUM_ARCHIVE_BYTES = 1L shl 30
@@ -67,43 +76,27 @@ interface RemoteStore {
  * names.
  */
 class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
-  private val client =
-    HttpClient.newBuilder()
-      .connectTimeout(CONNECT_TIMEOUT)
-      .followRedirects(HttpClient.Redirect.NEVER)
-      .build()
-
-  private fun request(
+  private fun HttpRequestBuilder.result(
     slug: String,
     key: String,
-  ): HttpRequest.Builder {
-    val builder =
-      HttpRequest.newBuilder(URI.create("${settings.url}/$slug/$key")).timeout(REQUEST_TIMEOUT)
-    settings.token?.let { builder.header("Authorization", "Bearer $it") }
-    return builder
-  }
-
-  private fun <T> send(
-    request: HttpRequest,
-    body: HttpResponse.BodyHandler<T>,
-  ): HttpResponse<T> =
-    try {
-      client.send(request, body)
-    } catch (_: InterruptedException) {
-      Thread.currentThread().interrupt()
-      throw IOException("the request was interrupted")
+  ) {
+    url("${settings.url}/$slug/$key")
+    timeout {
+      connectTimeoutMillis = CONNECT_TIMEOUT.toMillis()
+      socketTimeoutMillis = SOCKET_TIMEOUT.toMillis()
     }
+    settings.token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+  }
 
   override fun contains(
     slug: String,
     key: String,
-  ): Boolean {
-    val request = request(slug, key).method("HEAD", HttpRequest.BodyPublishers.noBody()).build()
-    val response = send(request, HttpResponse.BodyHandlers.discarding())
-    return when (response.statusCode()) {
-      200 -> true
-      404 -> false
-      else -> throw IOException("${settings.url} answered ${response.statusCode()}")
+  ): Boolean = blocking {
+    val status = tazelClient.head { result(slug, key) }.status
+    when (status) {
+      HttpStatusCode.OK -> true
+      HttpStatusCode.NotFound -> false
+      else -> throw IOException("${settings.url} answered ${status.value}")
     }
   }
 
@@ -111,35 +104,45 @@ class HttpRemoteStore(private val settings: RemoteCacheSettings) : RemoteStore {
     slug: String,
     key: String,
     archive: Path,
-  ): Boolean {
-    val response = send(request(slug, key).GET().build(), HttpResponse.BodyHandlers.ofInputStream())
-    response.body().use { body ->
-      when (response.statusCode()) {
-        200 -> Unit
-        404 -> return false
-        else -> throw IOException("${settings.url} answered ${response.statusCode()}")
+  ): Boolean = blocking {
+    tazelClient
+      .prepareGet { result(slug, key) }
+      .execute { response ->
+        when (response.status) {
+          HttpStatusCode.OK -> {
+            val body = response.bodyAsChannel()
+            withContext(Dispatchers.IO) {
+              Files.newOutputStream(archive).use { body.copyLimited(it) }
+            }
+            true
+          }
+          HttpStatusCode.NotFound -> false
+          else -> throw IOException("${settings.url} answered ${response.status.value}")
+        }
       }
-      Files.newOutputStream(archive).use { limited(body).copyTo(it) }
-    }
-    return true
   }
 
   override fun publish(
     slug: String,
     key: String,
     archive: Path,
-  ) {
-    val body = HttpRequest.BodyPublishers.ofFile(archive)
-    val response =
-      send(request(slug, key).PUT(body).build(), HttpResponse.BodyHandlers.discarding())
-    if (response.statusCode() !in setOf(200, 201, 204)) {
-      throw IOException("${settings.url} answered ${response.statusCode()}")
+  ) = blocking {
+    val status =
+      tazelClient
+        .put {
+          result(slug, key)
+          setBody(fileContent(archive))
+        }
+        .status
+    if (status.value !in setOf(200, 201, 204)) {
+      throw IOException("${settings.url} answered ${status.value}")
     }
   }
 
   private companion object {
     val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
-    val REQUEST_TIMEOUT: Duration = Duration.ofMinutes(5)
+    /** How long the server may send nothing; a large result takes as long as it needs. */
+    val SOCKET_TIMEOUT: Duration = Duration.ofMinutes(5)
   }
 }
 

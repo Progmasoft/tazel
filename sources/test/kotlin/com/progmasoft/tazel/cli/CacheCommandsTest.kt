@@ -16,7 +16,8 @@ import kotlin.test.assertTrue
 /** `tazel cache` against projects on disk and a real server of the cache. */
 class CacheCommandsTest {
   private fun Fixture.served(block: Fixture.(url: String) -> Unit) {
-    val settings = CacheServerSettings(root.resolve("store"), "127.0.0.1", 0, 1L shl 30, "write")
+    val settings =
+      CacheServerSettings(root.resolve("store"), "127.0.0.1", 0, 1L shl 30, "write", "write")
     CacheServer(settings).use { server ->
       server.start()
       block("http://127.0.0.1:${server.port}")
