@@ -46,14 +46,33 @@ command fails with `resolved plugins were not declared by the script`.
 
 ## Building a plugin
 
-A plugin is built with Gradle and the Gradle plugin `com.progmasoft.tazel.plugin`, whose version is the version of Tazel
-the plugin is built for:
+A plugin is built with Gradle 9 and the Gradle plugin `com.progmasoft.tazel.plugin`, whose version is the version of
+Tazel the plugin is built for. Progmasoft publishes the Gradle plugin at `https://maven.progmasoft.com/tazel`, beside
+the API, so the settings of the build name that repository for plugins:
+
+```kotlin
+// settings.gradle.kts of the plugin
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    maven("https://maven.progmasoft.com/tazel") {
+      content { includeGroupByRegex("com\\.progmasoft\\.tazel(\\..*)?") }
+    }
+  }
+}
+
+rootProject.name = "cmake-plugin"
+```
 
 ```kotlin
 // build.gradle.kts of the plugin
 plugins {
   kotlin("jvm") version "2.4.0"
-  id("com.progmasoft.tazel.plugin") version "0.4.0"
+  id("com.progmasoft.tazel.plugin") version "0.4.0.4"
+}
+
+repositories {
+  mavenCentral()
 }
 
 version = "0.1.0"
@@ -77,7 +96,7 @@ dependencies {
 
 The Gradle plugin
 
-- adds the repository of the API, `https://maven.progmasoft.com/tazel`, for the group `com.progmasoft.tazel` only;
+- adds the repository of the API, `https://maven.progmasoft.com/tazel`, for the group `com.progmasoft.tazel` only; Kotlin and anything else come from the repositories of the build, here Maven Central;
 - makes `tazelApi()` mean `compileOnly` and `testImplementation` of `com.progmasoft.tazel:tazel-api` in its own version.
   The API is not bundled: Tazel provides it, and the Kotlin standard library, when it loads the plugin;
 - writes the descriptor and the service entry below from `tazelPlugin { }` into the JAR.
