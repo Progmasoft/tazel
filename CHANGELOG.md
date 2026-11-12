@@ -19,3 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
 - The plugin API, `com.progmasoft.tazel:tazel-api` (API version 1), and the Gradle plugin `com.progmasoft.tazel.plugin`,
   taken from the legacy Tazel. `tazelPlugin { }` now holds `group`, `name` and `version`, which the plugin descriptor
   records; the group must be a reversed domain and the version a Semantic Version.
+- `tazel build` and `tazel run` for C, C++, Objective-C, Objective-C++ and Zig targets, with `--release` and
+  `--triple`. Each translation unit is compiled on its own and again only when the depfile of the compiler or the
+  command line says it changed; libraries and programs are archived or linked when an input changed. Clang, GCC and
+  `zig cc` are found on PATH; Clang and `zig cc` build for other triples. Outputs go to `.tazel/out/<triple>/<mode>`.

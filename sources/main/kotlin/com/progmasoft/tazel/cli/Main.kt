@@ -39,16 +39,24 @@ internal val HELP =
   """
   Tazel builds C, C++, Objective-C, Objective-C++ and Zig with Kotlin project files.
 
-  Usage: tazel <command>
+  Usage: tazel <command> [options] [labels]
 
   Commands:
+    build     builds targets, such as tazel build //app/:greeter or tazel build //...
+    run       builds and runs one bin target; what follows -- goes to the program
     custom    runs a command of tazel_custom.txt, or lists them
     version   prints the version of Tazel
     help      prints this help
+
+  Options of build and run:
+    --release           builds in release mode; without it, debug
+    --triple <triple>   builds for that LLVM target triple; without it, this machine's
+
+  Without a label, build and run take the package of the current directory.
   """
     .trimIndent()
 
-private val COMMANDS = listOf("custom", "version", "help")
+private val COMMANDS = listOf("build", "run", "custom", "version", "help")
 
 /** Where a command runs and what it starts programs with; tests give their own. */
 internal class Environment(
@@ -84,6 +92,22 @@ internal fun run(
         out.appendLine("tazel ${tazelVersion()}")
         ExitCode.SUCCESS
       } else usage(err, "tazel version takes no arguments")
+    "build",
+    "run" ->
+      BuildCommands.guarded(err) {
+        refuseWithoutSandbox(environment.directory)
+        val command = arguments.first()
+        val options = buildOptions(command, arguments.drop(1))
+        val commands = BuildCommands(environment, out)
+        if (command == "run") {
+          commands.run(options)
+        } else {
+          if (options.programArguments.isNotEmpty()) {
+            throw Usage("tazel build takes nothing after --")
+          }
+          commands.build(options)
+        }
+      }
     // What follows `custom` belongs to the command it names, whatever it looks like.
     "custom" -> {
       val words = arguments.drop(1)
