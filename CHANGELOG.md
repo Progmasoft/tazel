@@ -9,3 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
 ## Unreleased
 
 - A Kotlin program for the JVM that prints its version and help.
+- Labels: `//:x`, `//dir/:x`, `:x`, `@name//:x`, and the patterns `//dir/...` and `//...`.
+- `MODULE.kts` and `BUILD.kts` are read: the module, its dependencies, `viget`, `cache` and `execution`;
+  `c`, `cpp`, `objc`, `objcpp` and `zig` targets of the four kinds, with `isPublic` per file. A setting that a
+  language or kind does not have is a compile error of the project file. A target block runs for each triple and
+  build mode; its labels are resolved and visibility is checked.
