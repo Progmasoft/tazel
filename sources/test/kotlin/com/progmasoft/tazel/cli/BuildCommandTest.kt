@@ -136,9 +136,12 @@ class BuildCommandTest {
     )
 
     // A comment recompiles both units that include the header; their objects come out the same,
-    // so neither the archive nor the program is made again.
+    // so neither the archive nor the program is made again. Release builds carry no debug
+    // information, which on some systems records the content of every header.
+    val (release, releaseOutput) = tazel(root, ".", processes, "build", "--release", "//...")
+    assertEquals(ExitCode.SUCCESS, release, releaseOutput.stderr())
     Files.writeString(header, "int sample_add(int a, int b); /* changed */\n")
-    val (comment, commentOutput) = tazel(root, ".", processes, "build", "//...")
+    val (comment, commentOutput) = tazel(root, ".", processes, "build", "--release", "//...")
     assertEquals(ExitCode.SUCCESS, comment, commentOutput.stderr())
     assertContains(commentOutput.stdout(), "2 command(s) run")
 
