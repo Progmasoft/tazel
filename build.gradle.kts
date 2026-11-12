@@ -55,7 +55,10 @@ sourceSets {
     kotlin.srcDir("sources/main/kotlin")
     resources.srcDir("sources/main/resources")
   }
-  test { kotlin.srcDir("sources/test/kotlin") }
+  test {
+    kotlin.srcDir("sources/test/kotlin")
+    resources.srcDir("sources/test/resources")
+  }
 }
 
 spotless {
