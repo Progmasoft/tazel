@@ -88,16 +88,10 @@ class CcCommands(private val plan: BuildPlan, private val compiler: CcCompiler) 
           val destination =
             staged.resolve(settings.includePrefix?.let { "$it/$relative" } ?: relative)
           Files.createDirectories(destination.parent)
-          if (
-            !Files.exists(destination) ||
-              Files.getLastModifiedTime(destination) != Files.getLastModifiedTime(file)
-          ) {
-            Files.copy(
-              file,
-              destination,
-              java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-              java.nio.file.StandardCopyOption.COPY_ATTRIBUTES,
-            )
+          // A staged header is rewritten only when its bytes differ, so what includes it is
+          // recompiled only for a real change.
+          if (!Files.isRegularFile(destination) || Files.mismatch(file, destination) != -1L) {
+            Files.copy(file, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
           }
         }
       }
