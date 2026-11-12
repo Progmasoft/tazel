@@ -14,3 +14,6 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
   `c`, `cpp`, `objc`, `objcpp` and `zig` targets of the four kinds, with `isPublic` per file. A setting that a
   language or kind does not have is a compile error of the project file. A target block runs for each triple and
   build mode; its labels are resolved and visibility is checked.
+- The plugin API, `com.progmasoft.tazel:tazel-api` (API version 1), and the Gradle plugin `com.progmasoft.tazel.plugin`,
+  taken from the legacy Tazel. `tazelPlugin { }` now holds `group`, `name` and `version`, which the plugin descriptor
+  records; the group must be a reversed domain and the version a Semantic Version.
