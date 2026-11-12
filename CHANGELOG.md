@@ -16,3 +16,6 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
   build mode; its labels are resolved and visibility is checked.
 - `tazel custom`: Tazel Custom Commands from `tazel_custom.txt`, and Tazel Options from `tazel_options.txt`, taken
   from the legacy Tazel with their tests; a sandbox asked for stops a custom command, since Tazel has no MicroVM to start.
+- The plugin API, `com.progmasoft.tazel:tazel-api` (API version 1), and the Gradle plugin `com.progmasoft.tazel.plugin`,
+  taken from the legacy Tazel. `tazelPlugin { }` now holds `group`, `name` and `version`, which the plugin descriptor
+  records; the group must be a reversed domain and the version a Semantic Version.

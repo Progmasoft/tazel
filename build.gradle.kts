@@ -63,13 +63,13 @@ sourceSets {
 
 spotless {
   kotlin {
-    target("sources/**/*.kt")
+    target("sources/**/*.kt", "api/sources/**/*.kt", "gradle-plugin/sources/**/*.kt")
     ktfmt().googleStyle()
     trimTrailingWhitespace()
     endWithNewline()
   }
   kotlinGradle {
-    target("*.gradle.kts")
+    target("*.gradle.kts", "api/*.gradle.kts", "gradle-plugin/*.gradle.kts")
     ktlint()
     trimTrailingWhitespace()
     endWithNewline()

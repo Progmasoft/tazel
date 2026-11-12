@@ -4,3 +4,11 @@
  */
 
 rootProject.name = "tazel"
+
+// The API of plugins, which Tazel implements and plugins compile against.
+include("tazel-api")
+project(":tazel-api").projectDir = file("api")
+
+// The Gradle plugin com.progmasoft.tazel.plugin, which builds plugins.
+include("tazel-gradle-plugin")
+project(":tazel-gradle-plugin").projectDir = file("gradle-plugin")
