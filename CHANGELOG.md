@@ -14,3 +14,5 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
   `c`, `cpp`, `objc`, `objcpp` and `zig` targets of the four kinds, with `isPublic` per file. A setting that a
   language or kind does not have is a compile error of the project file. A target block runs for each triple and
   build mode; its labels are resolved and visibility is checked.
+- `tazel custom`: Tazel Custom Commands from `tazel_custom.txt`, and Tazel Options from `tazel_options.txt`, taken
+  from the legacy Tazel with their tests; a sandbox asked for stops a custom command, since Tazel has no MicroVM to start.
