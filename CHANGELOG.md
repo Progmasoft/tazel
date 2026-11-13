@@ -29,3 +29,10 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
   split into shards with `TEST_TOTAL_SHARDS` and `TEST_SHARD_INDEX`, stopped at its timeout (from `size` unless set),
   run up to three times when `flaky`, with tests tagged `EXCLUSIVE` alone and `MANUAL` ones only when named. A test
   that passed is not run again while its program, data, arguments and environment are the same, unless `NO_CACHE`.
+- `tazel fmt` formats the sources, header directories and textual headers of the selected targets, on every triple
+  they are built for, with clang-format (C, C++, Objective-C, Objective-C++) and `zig fmt`; `--check` reports what is
+  not formatted and changes nothing. Each tool reads its own configuration, such as `.clang-format`.
+- `tazel lint` writes the compilation database of the selected targets and their libraries to
+  `.tazel/out/<triple>/<mode>/compile_commands.json`, copies it to `.tazel/compile_commands.json`, and runs clang-tidy
+  on each C-family translation unit of the selected targets; `--fix` applies its fixes, one unit at a time. Zig
+  targets are skipped. For both commands, what follows `--` goes to the tool.

@@ -45,6 +45,10 @@ internal val HELP =
     build     builds targets, such as tazel build //app/:greeter or tazel build //...
     run       builds and runs one bin target; what follows -- goes to the program
     test      builds and runs test targets; what follows -- goes to every test
+    fmt       formats the sources and headers of targets with clang-format and zig fmt;
+              --check reports instead of formatting
+    lint      checks the C-family sources of targets with clang-tidy; --fix applies its fixes;
+              writes compile_commands.json
     custom    runs a command of tazel_custom.txt, or lists them
     version   prints the version of Tazel
     help      prints this help
@@ -58,7 +62,7 @@ internal val HELP =
   """
     .trimIndent()
 
-private val COMMANDS = listOf("build", "run", "test", "custom", "version", "help")
+private val COMMANDS = listOf("build", "run", "test", "fmt", "lint", "custom", "version", "help")
 
 /** Where a command runs and what it starts programs with; tests give their own. */
 internal class Environment(
@@ -94,6 +98,14 @@ internal fun run(
         out.appendLine("tazel ${tazelVersion()}")
         ExitCode.SUCCESS
       } else usage(err, "tazel version takes no arguments")
+    "fmt",
+    "lint" ->
+      BuildCommands.guarded(err) {
+        val command = arguments.first()
+        val options = buildOptions(command, arguments.drop(1))
+        val commands = SourceCommands(environment, out)
+        if (command == "fmt") commands.format(options) else commands.lint(options)
+      }
     "build",
     "run",
     "test" ->
