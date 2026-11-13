@@ -12,6 +12,7 @@ import com.progmasoft.tazel.driver.SystemProcesses
 import com.progmasoft.tazel.dsl.TargetTriple
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -126,16 +127,32 @@ class BuildCommandTest {
     assertEquals(ExitCode.SUCCESS, again, againOutput.stderr())
     assertContains(againOutput.stdout(), "0 command(s) run")
 
-    // A header change recompiles what includes it, and relinks.
+    // A touch changes no content: nothing runs.
     val header = root.resolve("core/include/core.h")
-    Files.writeString(header, "int sample_add(int a, int b); /* changed */\n")
-    Files.setLastModifiedTime(
-      header,
-      java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 5_000),
+    Files.setLastModifiedTime(header, FileTime.fromMillis(System.currentTimeMillis() + 60_000))
+    assertContains(
+      tazel(root, ".", processes, "build", "//...").second.stdout(),
+      "0 command(s) run",
     )
-    val (changed, changedOutput) = tazel(root, ".", processes, "build", "//...")
-    assertEquals(ExitCode.SUCCESS, changed, changedOutput.stderr())
-    assertContains(changedOutput.stdout(), "4 command(s) run")
+
+    // A comment recompiles both units that include the header; their objects come out the same,
+    // so neither the archive nor the program is made again. Release builds carry no debug
+    // information, which on some systems records the content of every header.
+    val (release, releaseOutput) = tazel(root, ".", processes, "build", "--release", "//...")
+    assertEquals(ExitCode.SUCCESS, release, releaseOutput.stderr())
+    Files.writeString(header, "int sample_add(int a, int b); /* changed */\n")
+    val (comment, commentOutput) = tazel(root, ".", processes, "build", "--release", "//...")
+    assertEquals(ExitCode.SUCCESS, comment, commentOutput.stderr())
+    assertContains(commentOutput.stdout(), "2 command(s) run")
+
+    // A change of code recompiles its unit, archives and relinks.
+    Files.writeString(
+      root.resolve("core/src/core.c"),
+      "#include <sample/core.h>\nint sample_add(int a, int b) { return b + a + SAMPLE_OFFSET - 1; }\n",
+    )
+    val (code, codeOutput) = tazel(root, ".", processes, "build", "//...")
+    assertEquals(ExitCode.SUCCESS, code, codeOutput.stderr())
+    assertContains(codeOutput.stdout(), "Archiving")
 
     val (ran, ranOutput) = tazel(root, "app", processes, "run", "--", "extra")
     assertEquals(ExitCode.SUCCESS, ran, ranOutput.stderr())

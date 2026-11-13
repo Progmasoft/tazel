@@ -88,16 +88,10 @@ class CcCommands(private val plan: BuildPlan, private val compiler: CcCompiler) 
           val destination =
             staged.resolve(settings.includePrefix?.let { "$it/$relative" } ?: relative)
           Files.createDirectories(destination.parent)
-          if (
-            !Files.exists(destination) ||
-              Files.getLastModifiedTime(destination) != Files.getLastModifiedTime(file)
-          ) {
-            Files.copy(
-              file,
-              destination,
-              java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-              java.nio.file.StandardCopyOption.COPY_ATTRIBUTES,
-            )
+          // A staged header is rewritten only when its bytes differ, so what includes it is
+          // recompiled only for a real change.
+          if (!Files.isRegularFile(destination) || Files.mismatch(file, destination) != -1L) {
+            Files.copy(file, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
           }
         }
       }
@@ -116,6 +110,11 @@ class CcCommands(private val plan: BuildPlan, private val compiler: CcCompiler) 
     command += compiler.targetFlags
     command += listOf("-c", source.toString(), "-o", objectFile.toString())
     command += listOf("-MD", "-MF", depfile.toString())
+    // For Windows targets Clang stamps objects with the time by default; without the stamp the same
+    // source gives the same object, so an unchanged object stops the actions after it.
+    if (os == Os.WINDOWS && compiler.compiler == com.progmasoft.tazel.dsl.Compiler.CLANG) {
+      command += "-mno-incremental-linker-compatible"
+    }
     if (cpp) {
       settings.cppStandard?.let { command += "-std=" + cppStandard(it, settings.gnuExtensions) }
     } else {

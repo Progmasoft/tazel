@@ -25,9 +25,10 @@ class BuildFailure(message: String) : Exception(message)
 data class BuildResult(val products: Map<TargetLabel, Path>, val commandsRun: Int)
 
 /**
- * Builds the targets of a [BuildPlan]: each translation unit is compiled on its own and only when
- * its object is out of date (by the depfile the compiler writes and the command line it ran with);
- * a library or program is archived or linked when one of its inputs changed.
+ * Builds the targets of a [BuildPlan] as actions: each translation unit is compiled on its own,
+ * then each library is archived and each program linked. An action runs only when its command line,
+ * environment or the content of a file it read changed, or an output it wrote is gone or altered
+ * (see [ActionCache]); what a compiler includes comes from the depfile it writes.
  */
 class Builder(
   private val plan: BuildPlan,
@@ -41,6 +42,8 @@ class Builder(
 ) {
   private val fileSets = FileSets(ignoreCase = host.os == Os.WINDOWS)
   private val commandsRun = AtomicInteger()
+  private val digests = Digests()
+  private val cache = ActionCache(digests)
 
   fun build(): BuildResult {
     val units = mutableListOf<BuildUnit<Unit>>()
@@ -73,17 +76,20 @@ class Builder(
       val objectFile = commands.objectOf(target, source)
       BuildUnit("compile ${target.label} $source", "compile $source", after) {
         val depfile = objectFile.resolveSibling(objectFile.fileName.toString() + ".d")
-        val command = commands.compile(target, source, objectFile, depfile)
-        if (!UpToDate.checkObject(objectFile, depfile, command, target.packageDirectory)) {
-          Files.createDirectories(objectFile.parent)
-          run(
-            "Compiling",
-            "${target.label} ${target.packageDirectory.relativize(source)}",
-            command,
+        Files.createDirectories(objectFile.parent)
+        val action =
+          Action(
+            commands.compile(target, source, objectFile, depfile),
             target.packageDirectory,
-            objectFile,
+            inputs = listOf(source),
+            outputs = listOf(objectFile, depfile),
+            discovered = {
+              depfileInputs(Files.readString(depfile)).map {
+                target.packageDirectory.resolve(it).normalize()
+              }
+            },
           )
-        }
+        run("Compiling", "${target.label} ${target.packageDirectory.relativize(source)}", action)
       }
     }
     val objects = sources.map { commands.objectOf(target, it) }
@@ -93,15 +99,26 @@ class Builder(
         "link ${target.label}",
         compiles.map { it.id }.toSet() + after,
       ) {
-        val inputs = objects + target.libraries.map { it.product }
+        val settings = target.target.settings
+        val scripts =
+          listOfNotNull(settings.linkerScript, settings.defFile).map {
+            target.packageDirectory.resolve(it).normalize()
+          }
         val (verb, command) =
           if (target.kind == TargetKind.STATICLIB) "Archiving" to commands.archive(target, objects)
           else "Linking" to commands.link(target, objects)
-        if (!UpToDate.check(target.product, command, inputs)) {
+        val action =
+          Action(
+            command,
+            target.packageDirectory,
+            inputs = objects + target.libraries.map { it.product } + scripts,
+            outputs = listOf(target.product),
+          )
+        // ar adds to an archive that is there, so an archive is made anew.
+        run(verb, target.label.toString(), action) {
           if (target.kind == TargetKind.STATICLIB) Files.deleteIfExists(target.product)
-          run(verb, target.label.toString(), command, target.packageDirectory, target.product)
-          if (target.kind == TargetKind.SHAREDLIB) linkUnversioned(target)
         }
+        if (target.kind == TargetKind.SHAREDLIB) linkUnversioned(target)
         copyData(target)
       }
     return compiles + final
@@ -112,7 +129,26 @@ class Builder(
     return listOf(
       BuildUnit(finalUnit(target.label), "zig ${target.label}", after) {
         val command = zigCommand(target)
-        run("Building", target.label.toString(), command, target.packageDirectory, target.product)
+        val root =
+          target.packageDirectory
+            .resolve((target.target.settings.sources.single() as FilePath).path)
+            .normalize()
+        // Zig writes no depfile: every Zig file beside and below the root file is an input.
+        val zigFiles =
+          Files.walk(root.parent).use { files ->
+            files
+              .filter { Files.isRegularFile(it) && it.toString().endsWith(".zig") }
+              .sorted()
+              .toList()
+          }
+        val action =
+          Action(
+            command,
+            target.packageDirectory,
+            inputs = zigFiles + target.libraries.map { it.product },
+            outputs = listOf(target.product),
+          )
+        run("Building", target.label.toString(), action)
         copyData(target)
       }
     )
@@ -166,6 +202,8 @@ class Builder(
     if (plan.triple.os == Os.WINDOWS) return
     val name = target.target.settings.outputName ?: target.label.name
     val plain = target.product.resolveSibling(OutputNames.sharedLibrary(name, plan.triple.os, null))
+    if (Files.isSymbolicLink(plain) && Files.readSymbolicLink(plain) == target.product.fileName)
+      return
     Files.deleteIfExists(plain)
     try {
       Files.createSymbolicLink(plain, target.product.fileName)
@@ -182,34 +220,33 @@ class Builder(
         target.product.resolveSibling(
           target.packageDirectory.relativize(file).toString().replace("..", "__")
         )
-      Files.createDirectories(destination.parent)
-      Files.copy(
-        file,
-        destination,
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.COPY_ATTRIBUTES,
-      )
+      copyIfChanged(file, destination)
     }
   }
 
-  private fun run(
-    verb: String,
-    what: String,
-    command: List<String>,
-    directory: Path,
-    output: Path,
-  ) {
+  /** Copies [source] to [destination] unless it already holds the same bytes. */
+  private fun copyIfChanged(source: Path, destination: Path) {
+    if (Files.isRegularFile(destination) && digests.of(destination) == digests.of(source)) return
+    Files.createDirectories(destination.parent)
+    Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING)
+  }
+
+  /** Runs [action] unless it is current; [before] prepares its outputs. */
+  private fun run(verb: String, what: String, action: Action, before: () -> Unit = {}) {
+    if (cache.current(action)) return
     synchronized(out) { out.appendLine("%12s %s".format(verb, what)) }
-    UpToDate.forget(output)
+    cache.forget(action)
+    before()
     commandsRun.incrementAndGet()
-    val result = processes.runGathered(command, directory)
-    if (result.output.isNotBlank())
+    val result = processes.runGatheredWith(action.command, action.directory, action.environment)
+    if (result.output.isNotBlank()) {
       synchronized(out) { out.append(result.output.trimEnd()).appendLine() }
+    }
     if (result.exitCode != 0) {
       throw BuildFailure(
-        "$what: ${Path.of(command.first()).fileName} exited with ${result.exitCode}"
+        "$what: ${Path.of(action.command.first()).fileName} exited with ${result.exitCode}"
       )
     }
-    UpToDate.record(output, command)
+    cache.record(action)
   }
 }

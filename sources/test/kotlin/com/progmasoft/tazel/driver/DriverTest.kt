@@ -30,26 +30,45 @@ class DriverTest {
   }
 
   @Test
-  fun anOutputIsCurrentUntilItsCommandOrAnInputChanges() {
-    val directory = Files.createTempDirectory("tazel-up-to-date")
+  fun anActionIsCurrentUntilItsCommandOrTheContentOfAFileChanges() {
+    val directory = Files.createTempDirectory("tazel-actions")
     val input = Files.writeString(directory.resolve("a.c"), "int a;")
+    val header = Files.writeString(directory.resolve("a.h"), "int b;")
     val output = Files.writeString(directory.resolve("a.o"), "object")
-    Files.setLastModifiedTime(input, FileTime.fromMillis(1_000_000))
-    Files.setLastModifiedTime(output, FileTime.fromMillis(2_000_000))
-    val command = listOf("cc", "-c", "a.c")
-    assertFalse(UpToDate.check(output, command, listOf(input)), "never recorded")
-    UpToDate.record(output, command)
-    assertTrue(UpToDate.check(output, command, listOf(input)))
-    assertFalse(UpToDate.check(output, command + "-O2", listOf(input)), "another command")
-    Files.setLastModifiedTime(input, FileTime.fromMillis(3_000_000))
-    assertFalse(UpToDate.check(output, command, listOf(input)), "a newer input")
-    Files.setLastModifiedTime(input, FileTime.fromMillis(1_000_000))
-    assertFalse(
-      UpToDate.check(output, command, listOf(directory.resolve("gone.h"))),
-      "a missing input",
-    )
-    UpToDate.forget(output)
-    assertFalse(UpToDate.check(output, command, listOf(input)), "forgotten")
+    fun action(
+      command: List<String> = listOf("cc", "-c", "a.c"),
+      environment: Map<String, String> = emptyMap(),
+    ) =
+      Action(
+        command,
+        directory,
+        listOf(input),
+        listOf(output),
+        environment,
+        discovered = { listOf(header) },
+      )
+    val cache = ActionCache()
+    assertFalse(cache.current(action()), "never recorded")
+    cache.record(action())
+    assertTrue(cache.current(action()))
+    assertFalse(cache.current(action(listOf("cc", "-c", "a.c", "-O2"))), "another command")
+    assertFalse(cache.current(action(environment = mapOf("LANG" to "C"))), "another environment")
+
+    // A touch changes no content, so nothing is redone.
+    Files.setLastModifiedTime(input, FileTime.fromMillis(System.currentTimeMillis() + 60_000))
+    Files.setLastModifiedTime(header, FileTime.fromMillis(System.currentTimeMillis() + 60_000))
+    assertTrue(ActionCache().current(action()), "touched only")
+
+    Files.writeString(header, "int b; int c;")
+    assertFalse(ActionCache().current(action()), "a discovered input changed")
+    Files.writeString(header, "int b;")
+    assertTrue(ActionCache().current(action()), "back to what it was")
+
+    Files.writeString(output, "altered")
+    assertFalse(ActionCache().current(action()), "an output was altered")
+    Files.writeString(output, "object")
+    cache.forget(action())
+    assertFalse(ActionCache().current(action()), "forgotten")
   }
 
   @Test
