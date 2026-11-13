@@ -25,3 +25,7 @@ Versions follow [Semantic Versioning](https://semver.org). The earlier Tazel, 0.
   output it wrote is gone or altered. Touching a file reruns nothing, and an object rebuilt to the same bytes reruns
   neither its archive nor its program. Clang, GCC and
   `zig cc` are found on PATH; Clang and `zig cc` build for other triples. Outputs go to `.tazel/out/<triple>/<mode>`.
+- `tazel test` builds and runs test targets: each in its output directory beside its data, with its args and env,
+  split into shards with `TEST_TOTAL_SHARDS` and `TEST_SHARD_INDEX`, stopped at its timeout (from `size` unless set),
+  run up to three times when `flaky`, with tests tagged `EXCLUSIVE` alone and `MANUAL` ones only when named. A test
+  that passed is not run again while its program, data, arguments and environment are the same, unless `NO_CACHE`.

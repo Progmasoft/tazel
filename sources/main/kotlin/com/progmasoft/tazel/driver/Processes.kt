@@ -8,6 +8,7 @@ package com.progmasoft.tazel.driver
 import com.progmasoft.tazel.dsl.ProjectException
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.nanoseconds
 
 /** Starts the programs Tazel runs. A test replaces it to see the commands without running them. */
 interface Processes {
@@ -34,6 +35,24 @@ interface Processes {
     environment: Map<String, String>,
   ): GatheredRun = runGathered(command, directory)
 
+  /**
+   * Runs [command] in [directory] with [environment] added, for at most [timeout], writing its
+   * output and errors to [log]; a program still running then is stopped with its children. A
+   * stand-in may run it without a limit.
+   */
+  fun runLogged(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
+    log: Path,
+    timeout: kotlin.time.Duration,
+  ): TimedRun {
+    val started = System.nanoTime()
+    val result = runGatheredWith(command, directory, environment)
+    java.nio.file.Files.writeString(log, result.output)
+    return TimedRun(result.exitCode, (System.nanoTime() - started).nanoseconds)
+  }
+
   /** Runs [command] and returns what it wrote to its output, or null when it failed. */
   fun capture(command: List<String>): String?
 
@@ -56,6 +75,12 @@ interface Processes {
     line: (String) -> Unit,
   ): Int = runGathered(command, directory).also { it.output.lines().forEach(line) }.exitCode
 }
+
+/** How a program with a time limit ended: its exit code, or `null` when it ran out of time. */
+data class TimedRun(
+  val exitCode: Int?,
+  val elapsed: kotlin.time.Duration,
+)
 
 /** The exit code of a program and everything it wrote, output and errors in the order written. */
 data class GatheredRun(
@@ -126,6 +151,36 @@ object SystemProcesses : Processes {
     } catch (error: java.io.IOException) {
       throw ProjectException("${command.first()} could not be started: ${error.message}")
     }
+
+  override fun runLogged(
+    command: List<String>,
+    directory: Path,
+    environment: Map<String, String>,
+    log: Path,
+    timeout: kotlin.time.Duration,
+  ): TimedRun {
+    val started = System.nanoTime()
+    val process =
+      try {
+        ProcessBuilder(command)
+          .directory(directory.toFile())
+          .also { it.environment().putAll(environment) }
+          .redirectErrorStream(true)
+          .redirectOutput(log.toFile())
+          .redirectInput(ProcessBuilder.Redirect.from(nullDevice()))
+          .start()
+      } catch (error: java.io.IOException) {
+        throw ProjectException("${command.first()} could not be started: ${error.message}")
+      }
+    val finished = process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+    if (!finished) {
+      process.descendants().forEach { it.destroyForcibly() }
+      process.destroyForcibly()
+      process.waitFor()
+    }
+    val elapsed = (System.nanoTime() - started).nanoseconds
+    return TimedRun(if (finished) process.exitValue() else null, elapsed)
+  }
 
   override fun capture(command: List<String>): String? =
     try {

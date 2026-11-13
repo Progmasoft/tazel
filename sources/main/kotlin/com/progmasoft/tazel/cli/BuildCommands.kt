@@ -9,10 +9,13 @@ import com.progmasoft.tazel.driver.BuildFailure
 import com.progmasoft.tazel.driver.BuildPlan
 import com.progmasoft.tazel.driver.Builder
 import com.progmasoft.tazel.driver.CcToolchain
+import com.progmasoft.tazel.driver.FileSets
+import com.progmasoft.tazel.driver.TestRunner
 import com.progmasoft.tazel.dsl.BuildMode
 import com.progmasoft.tazel.dsl.ProjectException
 import com.progmasoft.tazel.dsl.TargetKind
 import com.progmasoft.tazel.dsl.TargetTriple
+import com.progmasoft.tazel.dsl.TestTag
 import com.progmasoft.tazel.label.LabelException
 import com.progmasoft.tazel.label.Labels
 import com.progmasoft.tazel.label.PackageId
@@ -61,7 +64,14 @@ internal fun buildOptions(command: String, arguments: List<String>): BuildOption
 /** A command line that is wrong; it exits with [ExitCode.USAGE]. */
 internal class Usage(message: String) : Exception(message)
 
-/** `tazel build` and `tazel run`. */
+/** What a command selects targets for. */
+internal enum class Purpose {
+  BUILD,
+  RUN,
+  TEST,
+}
+
+/** `tazel build`, `tazel run` and `tazel test`. */
 internal class BuildCommands(
   private val environment: Environment,
   private val out: Appendable,
@@ -70,20 +80,20 @@ internal class BuildCommands(
   private val host = TargetTriple.host()
 
   fun build(options: BuildOptions): Int {
-    val (module, labels, triple) = select(options, run = false)
+    val (module, labels, triple) = select(options, Purpose.BUILD)
     build(module, labels, triple, options.mode)
     return ExitCode.SUCCESS
   }
 
   fun run(options: BuildOptions): Int {
-    val (module, labels, triple) = select(options, run = true)
+    val (module, labels, triple) = select(options, Purpose.RUN)
     if (triple.text != host.text) {
       throw Stop("tazel run runs programs of this machine ($host), not of $triple")
     }
     val label = labels.single()
-    val products = build(module, labels, triple, options.mode)
+    val plan = build(module, labels, triple, options.mode)
     val settings = module.configure(label, triple, options.mode).settings
-    val program = products.getValue(label)
+    val program = plan.targets.single { it.label == label }.product
     return environment.processes.runWith(
       listOf(program.toString()) + settings.args + options.programArguments,
       environment.directory,
@@ -91,12 +101,37 @@ internal class BuildCommands(
     )
   }
 
+  /** Builds the selected tests, then runs them; see [TestRunner]. */
+  fun test(options: BuildOptions): Int {
+    val (module, labels, triple) = select(options, Purpose.TEST)
+    if (triple.text != host.text) {
+      throw Stop("tazel test runs tests of this machine ($host), not of $triple")
+    }
+    val plan = build(module, labels, triple, options.mode)
+    val execution = module.file.execution
+    val tests = plan.targets.filter { it.label in labels }
+    val results =
+      TestRunner(
+          environment.processes,
+          out,
+          execution.jobs ?: Runtime.getRuntime().availableProcessors(),
+          FileSets(ignoreCase = host.os == com.progmasoft.tazel.dsl.Os.WINDOWS),
+        )
+        .run(tests, options.programArguments)
+    val failed = results.count { !it.status.passed }
+    out.appendLine(
+      "%12s %d test(s): %d passed, %d failed"
+        .format("Tested", results.size, results.size - failed, failed)
+    )
+    return if (failed == 0) ExitCode.SUCCESS else ExitCode.FAILURE
+  }
+
   private fun build(
     module: Module,
     labels: List<TargetLabel>,
     triple: TargetTriple,
     mode: BuildMode,
-  ): Map<TargetLabel, java.nio.file.Path> {
+  ): BuildPlan {
     val plan = BuildPlan(module, triple, mode)
     labels.forEach(plan::add)
     val execution = module.file.execution
@@ -121,7 +156,7 @@ internal class BuildCommands(
       "%12s %d target(s) for %s, %s; %d command(s) run"
         .format("Built", plan.targets.size, triple, mode.name.lowercase(), result.commandsRun)
     )
-    return result.products
+    return plan
   }
 
   private data class Selected(
@@ -130,7 +165,7 @@ internal class BuildCommands(
     val triple: TargetTriple,
   )
 
-  private fun select(options: BuildOptions, run: Boolean): Selected {
+  private fun select(options: BuildOptions, purpose: Purpose): Selected {
     val root = loader.findRoot(environment.directory)
     val module = loader.load(root)
     val triple = options.triple?.let(TargetTriple::parse) ?: host
@@ -157,11 +192,28 @@ internal class BuildCommands(
         throw Stop("$selection is not built for $triple; name one of its triples with --triple")
       }
       // Without a label, only the package of the directory is meant, not the ones below it.
-      labels +=
+      val meant =
         if (options.selections.isEmpty()) forTriple.filter { it.packageId == current }
         else forTriple
+      labels +=
+        if (purpose != Purpose.TEST) meant
+        else if (selection is TargetLabel) {
+          if (module.declaration(selection).second.kind != TargetKind.TEST) {
+            throw Stop("$selection is not a test target")
+          }
+          meant
+        } else {
+          // A pattern takes the tests, except those tagged MANUAL.
+          meant.filter { label ->
+            module.declaration(label).second.kind == TargetKind.TEST &&
+              TestTag.MANUAL !in module.configure(label, triple, options.mode).settings.tags
+          }
+        }
     }
-    if (run) {
+    if (purpose == Purpose.TEST && labels.isEmpty()) {
+      throw Stop("no tests to run in ${written.joinToString()}")
+    }
+    if (purpose == Purpose.RUN) {
       val bins = labels.distinct().filter { module.declaration(it).second.kind == TargetKind.BIN }
       return when {
         options.selections.size > 1 -> throw Usage("tazel run takes one label")

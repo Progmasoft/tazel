@@ -44,19 +44,21 @@ internal val HELP =
   Commands:
     build     builds targets, such as tazel build //app/:greeter or tazel build //...
     run       builds and runs one bin target; what follows -- goes to the program
+    test      builds and runs test targets; what follows -- goes to every test
     custom    runs a command of tazel_custom.txt, or lists them
     version   prints the version of Tazel
     help      prints this help
 
-  Options of build and run:
+  Options of build, run and test:
     --release           builds in release mode; without it, debug
     --triple <triple>   builds for that LLVM target triple; without it, this machine's
 
-  Without a label, build and run take the package of the current directory.
+  Without a label, build, run and test take the package of the current directory.
+  A pattern such as //... takes no test tagged MANUAL.
   """
     .trimIndent()
 
-private val COMMANDS = listOf("build", "run", "custom", "version", "help")
+private val COMMANDS = listOf("build", "run", "test", "custom", "version", "help")
 
 /** Where a command runs and what it starts programs with; tests give their own. */
 internal class Environment(
@@ -93,7 +95,8 @@ internal fun run(
         ExitCode.SUCCESS
       } else usage(err, "tazel version takes no arguments")
     "build",
-    "run" ->
+    "run",
+    "test" ->
       BuildCommands.guarded(err) {
         refuseWithoutSandbox(environment.directory)
         val command = arguments.first()
@@ -101,6 +104,8 @@ internal fun run(
         val commands = BuildCommands(environment, out)
         if (command == "run") {
           commands.run(options)
+        } else if (command == "test") {
+          commands.test(options)
         } else {
           if (options.programArguments.isNotEmpty()) {
             throw Usage("tazel build takes nothing after --")
