@@ -24,25 +24,37 @@ import com.progmasoft.tazel.label.TargetLabel
 import com.progmasoft.tazel.project.Module
 import com.progmasoft.tazel.project.ModuleLoader
 
-/** What `tazel build` and `tazel run` were given on the command line. */
+/** What `tazel build`, `run`, `test`, `fmt` and `lint` were given on the command line. */
 internal data class BuildOptions(
   val mode: BuildMode,
   val triple: String?,
   val selections: List<String>,
-  /** After `--`: what `tazel run` passes to the program. */
+  /** After `--`: what `tazel run` passes to the program, or `fmt` and `lint` to their tools. */
   val programArguments: List<String>,
+  /** `tazel fmt --check`: report what is not formatted instead of formatting it. */
+  val check: Boolean = false,
+  /** `tazel lint --fix`: apply the fixes clang-tidy offers. */
+  val fix: Boolean = false,
 )
 
 /** Reads the options of `tazel build` and `tazel run`; [command] names it in messages. */
 internal fun buildOptions(command: String, arguments: List<String>): BuildOptions {
   var mode = BuildMode.DEBUG
   var triple: String? = null
+  var check = false
+  var fix = false
   val selections = mutableListOf<String>()
   var index = 0
   while (index < arguments.size) {
     when (val argument = arguments[index]) {
-      "--" -> return BuildOptions(mode, triple, selections, arguments.drop(index + 1))
+      "--" -> return BuildOptions(mode, triple, selections, arguments.drop(index + 1), check, fix)
       "--release" -> mode = BuildMode.RELEASE
+      "--check" ->
+        if (command == "fmt") check = true
+        else throw Usage("tazel $command has no option --check; tazel fmt has")
+      "--fix" ->
+        if (command == "lint") fix = true
+        else throw Usage("tazel $command has no option --fix; tazel lint has")
       "--triple" -> {
         triple =
           arguments.getOrNull(index + 1)
@@ -58,7 +70,7 @@ internal fun buildOptions(command: String, arguments: List<String>): BuildOption
     }
     index++
   }
-  return BuildOptions(mode, triple, selections, emptyList())
+  return BuildOptions(mode, triple, selections, emptyList(), check, fix)
 }
 
 /** A command line that is wrong; it exits with [ExitCode.USAGE]. */
@@ -69,6 +81,7 @@ internal enum class Purpose {
   BUILD,
   RUN,
   TEST,
+  FORMAT,
 }
 
 /** `tazel build`, `tazel run` and `tazel test`. */
@@ -159,13 +172,13 @@ internal class BuildCommands(
     return plan
   }
 
-  private data class Selected(
+  internal data class Selected(
     val module: Module,
     val labels: List<TargetLabel>,
     val triple: TargetTriple,
   )
 
-  private fun select(options: BuildOptions, purpose: Purpose): Selected {
+  internal fun select(options: BuildOptions, purpose: Purpose): Selected {
     val root = loader.findRoot(environment.directory)
     val module = loader.load(root)
     val triple = options.triple?.let(TargetTriple::parse) ?: host
@@ -187,7 +200,10 @@ internal class BuildCommands(
           throw Usage(error.message.orEmpty())
         }
       val selected = module.select(selection)
-      val forTriple = selected.filter { triple in module.triplesOf(it, options.mode, host) }
+      // Formatting does not compile, so it takes the targets of every triple.
+      val forTriple =
+        if (purpose == Purpose.FORMAT) selected
+        else selected.filter { triple in module.triplesOf(it, options.mode, host) }
       if (selection is TargetLabel && forTriple.isEmpty()) {
         throw Stop("$selection is not built for $triple; name one of its triples with --triple")
       }
