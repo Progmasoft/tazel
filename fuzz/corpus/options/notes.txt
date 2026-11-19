@@ -1,0 +1,13 @@
+# comment
+<# comment #>
+
+sandboxing-with-microvm: true; # When false, Tazel runs with full privileges, and Tazel Custom Commands do not run in a MicroVM; they run on the host system. When true, a MicroVM is used with hardware virtualization (VT-x, AMD-V, etc.). Every potentially dangerous operation (Tazel Plugins, Tazel Custom Commands, etc.) is executed inside a Tazel MicroVM.
+microvm-network: true; # Default: false
+microvm-memory: 2048; # In MiB. Default: "auto". Users can explicitly specify automatic allocation using "auto", 'auto', or `auto`.
+microvm-cpus: 1; # Default: "auto". Users can explicitly specify automatic allocation using "auto", 'auto', or `auto`.
+
+# Applies not only to commands like `tazel build`, but also to Tazel Custom Commands.
+
+# A .NET <-> Objective-C bridge is established for the Tazel MicroVM.
+# The main Tazel process must remain alive even if the Sandbox Worker crashes.
+platform: linux-amd64; # USER, 2026-11-19. Default: the host's. `--platform <name>` on the command line wins. One of linux-amd64, linux-aarch64, windows-x64, windows-arm64, macos-x86_64, macos-arm64, freebsd-amd64, freebsd-aarch64, openbsd-amd64, openbsd-aarch64, dragonfly-bsd-amd64. It selects the toolchain and does not change what BUILD.csx declares; it chooses the toolchain whose TargetPlatform it is.

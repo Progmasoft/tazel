@@ -1,0 +1,26 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The tazel command. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>tazel</AssemblyName>
+    <RootNamespace>Progmasoft.Tazel</RootNamespace>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Include="NuGet.Versioning" />
+    <PackageReference Include="Lzma.Net" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
+    <InternalsVisibleTo Include="Progmasoft.Tazel.Benchmarks" />
+    <InternalsVisibleTo Include="Progmasoft.Tazel.Fuzz" />
+  </ItemGroup>
+</Project>

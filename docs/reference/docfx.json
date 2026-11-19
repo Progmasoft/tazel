@@ -1,0 +1,15 @@
+{
+  "metadata": [
+    {
+      "src": [{ "src": "../..", "files": ["src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj"] }],
+      "dest": "api",
+      "properties": { "TargetFramework": "net10.0" }
+    }
+  ],
+  "build": {
+    "content": [{ "files": ["api/*.yml", "index.md", "toc.yml"] }],
+    "dest": "../../artifacts/reference",
+    "globalMetadata": { "_appTitle": "Tazel project files", "_enableSearch": true },
+    "warningsAsErrors": true
+  }
+}

@@ -1,0 +1,20 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+
+# Changelog
+
+## Unreleased
+
+The first version of Tazel, written in C# for .NET 10.
+
+- Project files are C# scripts: `MODULE.csx` at the root of a module, `BUILD.csx` in each package, run with the C#
+  scripting of Roslyn.
+- Targets of the families `CC`, `ObjectiveC` and `Zig`, labels as in Bazel (`//dir:x`), visibility per target, and
+  `TargetConstraints` that `//...` follows.
+- Toolchains as in Bazel, with features of flags per action, registered in `MODULE.csx`; this machine's clang, gcc or
+  zig without one.
+- `tazel build`, `test`, `run`, `clean`, `package`, `custom`, `version` and `help`, with `--platform`, `--mode`,
+  `--feature`, `--no-feature` and the options for the compilers and the linker.
+- An action cache by content, depfiles for headers, parallel actions, runfiles, sharded and flaky tests.
+- Reproducible `.tazel.tar.xz` archives of modules, and dependencies on them checked by SHA-256.
+- `tazel_options.txt` (with `platform:`) and `tazel_custom.txt`.

@@ -1,0 +1,130 @@
+// SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+// SPDX-License-Identifier: MIT
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Progmasoft.Tazel.Output;
+
+namespace Progmasoft.Tazel.Driver;
+
+/// <summary>
+/// Runs the actions of a build, at most <c>jobs</c> at a time, each once all it reads has been made. After a failure no
+/// action starts unless <c>keepGoing</c> asks for it; those running are let finish, so no compiler is left writing
+/// behind the back of the command.
+/// </summary>
+internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Reporter reporter)
+{
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<BuildAction, bool> _made = new();
+    private int _done;
+    private int _failed;
+
+    /// <summary>Whether <paramref name="action"/> was made, now or by an earlier build.</summary>
+    public bool Succeeded(BuildAction action) => _made.ContainsKey(action);
+
+    /// <summary>How many actions failed.</summary>
+    public int Failed => _failed;
+
+    /// <summary>Runs <paramref name="goals"/> and what they need; true when all of them were made.</summary>
+    public async Task<bool> RunAsync(IReadOnlyCollection<BuildAction> goals, CancellationToken cancel)
+    {
+        var all = Closure(goals);
+        var total = all.Count;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        using var slots = new SemaphoreSlim(Math.Max(1, jobs));
+        var tasks = new Dictionary<BuildAction, Lazy<Task<bool>>>();
+        foreach (var action in all)
+        {
+            tasks[action] = new Lazy<Task<bool>>(() => RunOneAsync(action), LazyThreadSafetyMode.ExecutionAndPublication);
+        }
+
+        var results = await Task.WhenAll(goals.Select(goal => tasks[goal].Value)).ConfigureAwait(false);
+        return results.All(result => result);
+
+        async Task<bool> RunOneAsync(BuildAction action)
+        {
+            var ready = await Task.WhenAll(action.Prerequisites.Select(prerequisite => tasks[prerequisite].Value))
+                .ConfigureAwait(false);
+            if (!ready.All(result => result) || stop.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            await slots.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                if (stop.IsCancellationRequested)
+                {
+                    return false;
+                }
+
+                if (cache.IsCurrent(action))
+                {
+                    action.After?.Invoke();
+                    Interlocked.Increment(ref _done);
+                    _made[action] = true;
+                    return true;
+                }
+
+                foreach (var output in action.Outputs)
+                {
+                    var full = action.Full(output);
+                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                    File.Delete(full);
+                }
+
+                cache.Forget(action);
+                var result = await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
+                    .ConfigureAwait(false);
+                var missing = action.Outputs.FirstOrDefault(output => !File.Exists(action.Full(output)));
+                if (result.ExitCode != 0 || missing is not null)
+                {
+                    var hint = missing is not null && action.MissingOutputHints.TryGetValue(missing, out var said) ? $"; {said}" : "";
+                    var output = result.ExitCode == 0 ? result.Output + $"{missing} was not written{hint}\n" : result.Output;
+                    Interlocked.Increment(ref _failed);
+                    reporter.ActionFailed(action.Description, action.Command, output);
+                    if (!keepGoing)
+                    {
+                        await stop.CancelAsync().ConfigureAwait(false);
+                    }
+
+                    return false;
+                }
+
+                cache.Record(action);
+                action.After?.Invoke();
+                _made[action] = true;
+                reporter.ActionDone(Interlocked.Increment(ref _done), total, action.Description, result.Output);
+                return true;
+            }
+            finally
+            {
+                slots.Release();
+            }
+        }
+    }
+
+    private static List<BuildAction> Closure(IEnumerable<BuildAction> goals)
+    {
+        var seen = new HashSet<BuildAction>();
+        var order = new List<BuildAction>();
+        var stack = new Stack<BuildAction>(goals);
+        while (stack.Count > 0)
+        {
+            var action = stack.Pop();
+            if (seen.Add(action))
+            {
+                order.Add(action);
+                foreach (var prerequisite in action.Prerequisites)
+                {
+                    stack.Push(prerequisite);
+                }
+            }
+        }
+
+        return order;
+    }
+}

@@ -1,0 +1,95 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+
+# Commands
+
+| Command | What it does |
+| --- | --- |
+| `tazel build [labels]` | builds the targets of the labels; without a label, those of the package of the current directory |
+| `tazel test [labels]` | builds the tests of the labels and runs them |
+| `tazel run <label> [-- arguments]` | builds one executable or test and runs it |
+| `tazel clean [--expunge]` | removes the outputs, the test logs and zig's cache; `--expunge` removes all of `.tazel` |
+| `tazel package` | writes `.tazel/package/$group.$module-$version.tazel.tar.xz` and its `.sha256sums` |
+| `tazel custom <name> [arguments]` | runs a command of the `tazel_custom.txt` of the current directory |
+| `tazel version`, `tazel help [command]` | print the version, or what Tazel or one command does |
+
+## Options
+
+Long options take their value after whitespace, `=` or `:`: `--platform linux-aarch64`, `--platform=linux-aarch64`,
+`--platform:linux-aarch64`. A list goes after `=` or `:`, separated by commas without spaces, and `\,` is a comma of a
+value; a value after whitespace is one value. A list and a repeated option keep their order:
+`--compiler-options=-O2,-g` is `--compiler-options -O2 --compiler-options -g`. Options may stand anywhere before `--`.
+A misspelt command, option or value gets a hint that keeps how it was written: `--color:awlyas` suggests
+`--color:always`.
+
+| Option | Commands | |
+| --- | --- | --- |
+| `--color always\|auto\|never` | all | colors |
+| `--progress always\|auto\|never` | all | the `[done/total]` counter of a build |
+| `--quiet` | all | only problems and the output of what was run |
+| `--help`, `-h` | all | the help of the command |
+| `--mode debug\|release` | build, run, test | `debug` is the default |
+| `--platform <name>` | build, run, test | the platform to build for |
+| `--jobs <n>` | build, run, test | how many actions run at once |
+| `--keep-going` | build, run, test | go on with what does not depend on a failed action |
+| `--feature <name>`, `--no-feature <name>` | build, run, test | turn a toolchain feature on or off for every target |
+| `--compiler-options <option>` | build, run, test | every C, C++, Objective-C and Objective-C++ file |
+| `--c-compiler-options <option>` | build, run, test | .c and .m files |
+| `--cpp-compiler-options <option>` | build, run, test | .cpp, .cc, .cxx and .mm files |
+| `--linker-options <option>` | build, run, test | every link |
+| `--zig-compiler-options <option>` | build, run, test | every zig command |
+
+The options for the compilers and the linker come after the target's own settings, so the command line wins where
+the compiler takes the last flag, and they are part of the key of each action.
+
+The platform comes from `--platform`, else from `tazel_options.txt`, else it is this machine's. `--jobs` and
+`--keep-going` win over `Execution` of `MODULE.csx`.
+
+## Builds, tests and runs
+
+Each action is a command started directly, without a shell, in the root of the module, with a small environment:
+`PATH`, the temporary directory, `HOME`, the SDK variables of macOS and Windows, and `LC_ALL=C`. Outputs go to
+`.tazel/out/<platform>-<mode>/`. An action keeps a record beside its first output; it runs again only when its
+command line, its environment, an input or an output changed by content. The headers a compilation read come from
+its depfile.
+
+A test runs in its runfiles directory, `<program>.runfiles`, where its `RuntimeData` is at its path in the module. Its
+environment is `PATH`, its `InheritedEnvironmentVariables`, `TEST_TMPDIR`, `TEST_SRCDIR`, `TEST_TARGET`, the shard
+variables and its `EnvironmentVariables`. Its log is `.tazel/testlogs/<package>/<name>/test.log`. A test tagged
+`exclusive` runs alone.
+
+`tazel run` runs the program in its runfiles directory with Tazel's environment and the program's
+`EnvironmentVariables`, its `Arguments` and what follows `--`, and returns its exit status.
+
+## tazel_options.txt
+
+```text
+# comment
+<# comment #>
+sandboxing-with-microvm: false;
+microvm-network: false;
+microvm-memory: 2048;     # MiB, or "auto"
+microvm-cpus: "auto";
+platform: linux-amd64;
+```
+
+The nearest `tazel_options.txt` at or above the current directory holds, except that a sandbox asked for by any file
+above stays asked for. This Tazel has no MicroVM to start, so with `sandboxing-with-microvm: true` it refuses every
+command that would run what a project brings (`build`, `run`, `test`, `package`, `custom`) rather than run it on this
+machine.
+
+## tazel_custom.txt
+
+```text
+build-no-cache: ("tazel" 'build' `--no-cache`);
+fetch:
+    ("cargo" "fetch")
+    ("tazel" "fetch");
+npm-dev-sh: s('npm dev');
+build with: ("tazel" "build" <1> <2>);
+```
+
+A command is a name of one or more words, a colon, and steps that run in order until one fails. `("program" "arg")`
+starts a program directly; `s("line")` gives one line to the shell (CMD on Windows, `sh` elsewhere). Strings take
+double quotes, single quotes or backticks and have no escapes. `<N>` is the Nth argument after the name, `<*>` all of
+them. The longest name that fits the command line wins, and `--` ends the name.

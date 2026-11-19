@@ -1,0 +1,226 @@
+// SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+// SPDX-License-Identifier: MIT
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+
+namespace Progmasoft.Tazel.Dsl.Custom.Lexer;
+
+/// <summary>The kinds of <see cref="Token"/>.</summary>
+public enum TokenKind
+{
+    /// <summary>A word.</summary>
+    Name,
+
+    /// <summary>A string in double quotes, single quotes or backticks.</summary>
+    String,
+
+    /// <summary><c>&lt;N&gt;</c> or <c>&lt;*&gt;</c>; its text is what stands between the brackets.</summary>
+    Placeholder,
+
+    /// <summary><c>:</c>.</summary>
+    Colon,
+
+    /// <summary><c>;</c>.</summary>
+    Semicolon,
+
+    /// <summary><c>(</c>.</summary>
+    Open,
+
+    /// <summary><c>)</c>.</summary>
+    Close,
+}
+
+/// <summary>One word of the file, with where it starts.</summary>
+/// <param name="Kind">What it is.</param>
+/// <param name="Text">Its text; for a string, what stands between the quotes.</param>
+/// <param name="Line">Its line, from 1.</param>
+/// <param name="Column">Its column, from 1.</param>
+public sealed record Token(TokenKind Kind, string Text, int Line, int Column);
+
+/// <summary>
+/// Splits the text of <c>tazel_custom.txt</c> or <c>tazel_options.txt</c>: comments go, and whitespace of any kind
+/// only separates. <c>#</c> starts a comment to the end of the line, <c>&lt;# ... #&gt;</c> a comment of any length.
+/// </summary>
+/// <param name="text">The text.</param>
+/// <param name="file">The file, for messages.</param>
+public sealed class CustomLexer(string text, string file)
+{
+    private int _position;
+    private int _line = 1;
+    private int _column = 1;
+
+    /// <summary>Every token of the text, in order; a character that starts no token is an error.</summary>
+    public IReadOnlyList<Token> Tokens()
+    {
+        var tokens = new List<Token>();
+        while (_position < text.Length)
+        {
+            var letter = text[_position];
+            if (char.IsWhiteSpace(letter))
+            {
+                Advance();
+            }
+            else if (At("<#"))
+            {
+                SkipBlockComment();
+            }
+            else if (letter == '#')
+            {
+                while (_position < text.Length && text[_position] != '\n')
+                {
+                    Advance();
+                }
+            }
+            else if (letter is '"' or '\'' or '`')
+            {
+                tokens.Add(QuotedString());
+            }
+            else if (letter == '<')
+            {
+                tokens.Add(Placeholder());
+            }
+            else if (IsNameLetter(letter))
+            {
+                tokens.Add(Name());
+            }
+            else
+            {
+                var kind = letter switch
+                {
+                    ':' => TokenKind.Colon,
+                    ';' => TokenKind.Semicolon,
+                    '(' => TokenKind.Open,
+                    ')' => TokenKind.Close,
+                    _ => throw Fail($"'{letter}' has no meaning here", _line, _column),
+                };
+                tokens.Add(new Token(kind, letter.ToString(), _line, _column));
+                Advance();
+            }
+        }
+
+        return tokens;
+    }
+
+    private static bool IsNameLetter(char letter) => char.IsLetterOrDigit(letter) || letter is '-' or '_' or '.';
+
+    private bool At(string what) => string.CompareOrdinal(text, _position, what, 0, what.Length) == 0;
+
+    private CustomCommandsException Fail(string message, int line, int column) =>
+        new($"{file}:{line}:{column}: {message}");
+
+    private char Advance()
+    {
+        var letter = text[_position++];
+        if (letter == '\n')
+        {
+            _line++;
+            _column = 1;
+        }
+        else
+        {
+            _column++;
+        }
+
+        return letter;
+    }
+
+    private void SkipBlockComment()
+    {
+        var (line, column) = (_line, _column);
+        Advance();
+        Advance();
+        while (_position < text.Length)
+        {
+            if (At("#>"))
+            {
+                Advance();
+                Advance();
+                return;
+            }
+
+            Advance();
+        }
+
+        throw Fail("this comment has no closing #>", line, column);
+    }
+
+    // A string has no escapes: it ends at the next quote of its own kind, whatever comes between.
+    private Token QuotedString()
+    {
+        var (line, column) = (_line, _column);
+        var quote = Advance();
+        var begin = _position;
+        while (_position < text.Length && text[_position] != quote)
+        {
+            Advance();
+        }
+
+        if (_position == text.Length)
+        {
+            throw Fail($"this string has no closing {quote}", line, column);
+        }
+
+        var value = text[begin.._position];
+        Advance();
+        return new Token(TokenKind.String, value, line, column);
+    }
+
+    private Token Placeholder()
+    {
+        var (line, column) = (_line, _column);
+        Advance();
+        var begin = _position;
+        while (_position < text.Length && text[_position] != '>' && !char.IsWhiteSpace(text[_position]))
+        {
+            Advance();
+        }
+
+        if (_position == text.Length || text[_position] != '>')
+        {
+            throw Fail("expected <N> or <*>", line, column);
+        }
+
+        var value = text[begin.._position];
+        Advance();
+        var valid = value == "*" ||
+            (value.Length > 0 && value[0] != '0' && value.Length <= 3 && IsDigits(value) &&
+                int.Parse(value, CultureInfo.InvariantCulture) <= CustomCommandFiles.MaxArguments);
+        if (!valid)
+        {
+            throw Fail(
+                $"<{value}> is not an argument: <N> runs from 1 to {CustomCommandFiles.MaxArguments}, " +
+                "and <*> is all of them",
+                line,
+                column);
+        }
+
+        return new Token(TokenKind.Placeholder, value, line, column);
+    }
+
+    private static bool IsDigits(string value)
+    {
+        foreach (var letter in value)
+        {
+            if (letter is < '0' or > '9')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private Token Name()
+    {
+        var (line, column) = (_line, _column);
+        var begin = _position;
+        while (_position < text.Length && IsNameLetter(text[_position]))
+        {
+            Advance();
+        }
+
+        return new Token(TokenKind.Name, text[begin.._position], line, column);
+    }
+}

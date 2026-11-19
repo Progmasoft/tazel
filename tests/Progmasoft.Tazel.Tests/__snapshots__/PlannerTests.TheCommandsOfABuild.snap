@@ -1,0 +1,211 @@
+﻿[
+  {
+    "Description": "Compiling //:app src/main.cc",
+    "Arguments": [
+      "-g",
+      "-Wall",
+      "-I.",
+      "-Iinclude",
+      "-DMATH_API=1",
+      "-DFROM_COMMAND_LINE",
+      "-MD",
+      "-MF",
+      ".tazel/out/linux-amd64-debug/_objs/app/src/main.cc.o.d",
+      "-c",
+      "src/main.cc",
+      "-o",
+      ".tazel/out/linux-amd64-debug/_objs/app/src/main.cc.o"
+    ],
+    "Inputs": [
+      "src/main.cc",
+      "include/math.hpp"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/_objs/app/src/main.cc.o"
+    ]
+  },
+  {
+    "Description": "Compiling //:math src/a.cpp",
+    "Arguments": [
+      "-g",
+      "-Wall",
+      "-fPIC",
+      "-I.",
+      "-Iinclude",
+      "-DMATH_API=1",
+      "-DMATH_BUILD=1",
+      "-std=c++23",
+      "-DFROM_COMMAND_LINE",
+      "-MD",
+      "-MF",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/a.cpp.o.d",
+      "-c",
+      "src/a.cpp",
+      "-o",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/a.cpp.o"
+    ],
+    "Inputs": [
+      "src/a.cpp",
+      "include/math.hpp"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/_objs/math/src/a.cpp.o"
+    ]
+  },
+  {
+    "Description": "Compiling //:math src/b.cpp",
+    "Arguments": [
+      "-g",
+      "-Wall",
+      "-fPIC",
+      "-I.",
+      "-Iinclude",
+      "-DMATH_API=1",
+      "-DMATH_BUILD=1",
+      "-std=c++23",
+      "-DFROM_COMMAND_LINE",
+      "-MD",
+      "-MF",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/b.cpp.o.d",
+      "-c",
+      "src/b.cpp",
+      "-o",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/b.cpp.o"
+    ],
+    "Inputs": [
+      "src/b.cpp",
+      "include/math.hpp"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/_objs/math/src/b.cpp.o"
+    ]
+  },
+  {
+    "Description": "Archiving //:math",
+    "Arguments": [
+      "rcsD",
+      ".tazel/out/linux-amd64-debug/libmath.a",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/a.cpp.o",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/b.cpp.o"
+    ],
+    "Inputs": [
+      ".tazel/out/linux-amd64-debug/_objs/math/src/a.cpp.o",
+      ".tazel/out/linux-amd64-debug/_objs/math/src/b.cpp.o"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/libmath.a"
+    ]
+  },
+  {
+    "Description": "Compiling //:shared src/shared.c",
+    "Arguments": [
+      "-g",
+      "-fPIC",
+      "-I.",
+      "-Iinclude",
+      "-DMATH_API=1",
+      "-std=c17",
+      "-DFROM_COMMAND_LINE",
+      "-MD",
+      "-MF",
+      ".tazel/out/linux-amd64-debug/_objs/shared/src/shared.c.o.d",
+      "-c",
+      "src/shared.c",
+      "-o",
+      ".tazel/out/linux-amd64-debug/_objs/shared/src/shared.c.o"
+    ],
+    "Inputs": [
+      "src/shared.c",
+      "include/math.hpp"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/_objs/shared/src/shared.c.o"
+    ]
+  },
+  {
+    "Description": "Linking //:shared",
+    "Arguments": [
+      "-g",
+      "-flto",
+      "-shared",
+      "-Wl,-soname,libshared.so.1",
+      "-o",
+      ".tazel/out/linux-amd64-debug/libshared.so.1.2.0",
+      ".tazel/out/linux-amd64-debug/_objs/shared/src/shared.c.o",
+      "-Wl,--whole-archive",
+      ".tazel/out/linux-amd64-debug/libmath.a",
+      "-Wl,--no-whole-archive",
+      "-lm",
+      "-Wl,--as-needed"
+    ],
+    "Inputs": [
+      ".tazel/out/linux-amd64-debug/_objs/shared/src/shared.c.o",
+      ".tazel/out/linux-amd64-debug/libmath.a"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/libshared.so.1.2.0"
+    ]
+  },
+  {
+    "Description": "Linking //:app",
+    "Arguments": [
+      "-g",
+      "-o",
+      ".tazel/out/linux-amd64-debug/app",
+      ".tazel/out/linux-amd64-debug/_objs/app/src/main.cc.o",
+      "-Wl,--whole-archive",
+      ".tazel/out/linux-amd64-debug/libmath.a",
+      "-Wl,--no-whole-archive",
+      ".tazel/out/linux-amd64-debug/libshared.so.1.2.0",
+      "-Wl,-rpath,$ORIGIN",
+      "-lm",
+      "-Wl,--as-needed"
+    ],
+    "Inputs": [
+      ".tazel/out/linux-amd64-debug/_objs/app/src/main.cc.o",
+      ".tazel/out/linux-amd64-debug/libmath.a",
+      ".tazel/out/linux-amd64-debug/libshared.so.1.2.0"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/app"
+    ]
+  },
+  {
+    "Description": "Compiling //:zapp",
+    "Arguments": [
+      "build-exe",
+      "--cache-dir",
+      ".tazel/zig-cache",
+      "-femit-bin=.tazel/out/linux-amd64-debug/zapp",
+      "-lc",
+      ".tazel/out/linux-amd64-debug/libmath.a",
+      "-lm",
+      "-Wl,--as-needed",
+      "-O",
+      "Debug",
+      "-I.",
+      "-Iinclude",
+      "-cflags",
+      "-g",
+      "-std=c17",
+      "-DFROM_COMMAND_LINE",
+      "--",
+      "zig/shim.c",
+      "--dep",
+      "core=core",
+      "-Mroot=zig/main.zig",
+      "-O",
+      "Debug",
+      "-Mcore=zig/core.zig"
+    ],
+    "Inputs": [
+      "zig/main.zig",
+      "zig/core.zig",
+      "zig/shim.c",
+      ".tazel/out/linux-amd64-debug/libmath.a"
+    ],
+    "Outputs": [
+      ".tazel/out/linux-amd64-debug/zapp"
+    ]
+  }
+]

@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+# SPDX-License-Identifier: MIT
+
+# The readers of what users write, under libFuzzer through SharpFuzz: one minute per target on a pull request,
+# thirty minutes every night. The corpus is kept in the cache, and a crashing input is kept as an artifact.
+name: Fuzzing
+
+on:
+  pull_request:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzzing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [custom, options, label, depfile, command-line]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Build and instrument
+        run: |
+          dotnet tool restore
+          dotnet publish fuzz/Progmasoft.Tazel.Fuzz -c Release -o artifacts/fuzz
+          dotnet sharpfuzz artifacts/fuzz/tazel.dll
+
+      - name: Install libfuzzer-dotnet
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/libfuzzer-dotnet" https://github.com/Metalnem/libfuzzer-dotnet/releases/download/v2025.05.02.0904/libfuzzer-dotnet-ubuntu
+          echo "c2c2a90d94c409a4af339a0d4f244e0442c5a5d249be0f1252ba07871f285958  $RUNNER_TEMP/libfuzzer-dotnet" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/libfuzzer-dotnet"
+
+      - name: Restore the corpus
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: artifacts/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Fuzz
+        env:
+          TARGET: ${{ matrix.target }}
+          SECONDS_TO_RUN: ${{ github.event_name == 'pull_request' && '60' || '1800' }}
+        run: |
+          mkdir -p "artifacts/corpus/$TARGET" artifacts/crashes
+          cp -n "fuzz/corpus/$TARGET"/* "artifacts/corpus/$TARGET/"
+          "$RUNNER_TEMP/libfuzzer-dotnet" --target_path=artifacts/fuzz/Progmasoft.Tazel.Fuzz --target_arg="$TARGET" \
+            -max_total_time="$SECONDS_TO_RUN" -timeout=10 -artifact_prefix=artifacts/crashes/ "artifacts/corpus/$TARGET"
+
+      - name: Keep the crashing input
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: crash-${{ matrix.target }}
+          path: artifacts/crashes/
+          retention-days: 30
