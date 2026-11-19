@@ -20,7 +20,7 @@ public sealed class PlannerTests
 {
     private static string ModuleWithToolchain(string root) => TemporaryModule.ModuleFile + """
 
-        toolchains = Toolchains.Define("//toolchains:fake");
+        toolchains = Toolchains.Define("//toolchains:fake", "//toolchains:zig");
         """;
 
     private static string Toolchain(string root) => $$"""

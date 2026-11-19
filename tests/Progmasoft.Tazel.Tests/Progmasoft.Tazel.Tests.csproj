@@ -6,6 +6,8 @@
     <IsTestProject>true</IsTestProject>
     <!-- Tests are not an API; their names say what they check. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Snapshots are found beside the test's source file, so its path stays the real one in CI builds too. -->
+    <DeterministicSourcePaths>false</DeterministicSourcePaths>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Progmasoft.Tazel/Progmasoft.Tazel.csproj" />

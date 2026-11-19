@@ -54,10 +54,19 @@ public sealed class BuildCommandTests
         .Write("math_test.cpp", "#include \"math.hpp\"\nint main() { return add(2, 2) == 4 ? 0 : 1; }\n")
         .Write("failing.cpp", "int main() { return 3; }\n");
 
+    /// <summary>Skips a test that needs a C++ compiler with its headers.</summary>
+    private static void SkipWithoutCompiler()
+    {
+        Assert.SkipWhen(Host.Which("clang++") is null && Host.Which("g++") is null, "no C++ compiler on PATH");
+        // clang on Windows takes the C and C++ headers of MSVC from the environment that vcvars sets.
+        Assert.SkipWhen(OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("INCLUDE") is null,
+            "no MSVC environment (INCLUDE) for the headers of clang on Windows");
+    }
+
     [Fact]
     public async Task BuildsRunsAndTestsAModule()
     {
-        Assert.SkipWhen(Host.Which("clang++") is null && Host.Which("g++") is null, "no C++ compiler on PATH");
+        SkipWithoutCompiler();
         using var module = Sample();
         var (status, output) = await module.TazelAsync(".", "build", "//...");
         Assert.True(status == 0, output);
@@ -85,13 +94,13 @@ public sealed class BuildCommandTests
     [Fact]
     public async Task ACompilerErrorStopsTheBuildWithItsCommand()
     {
-        Assert.SkipWhen(Host.Which("clang++") is null && Host.Which("g++") is null, "no C++ compiler on PATH");
+        SkipWithoutCompiler();
         using var module = Sample();
         module.Write("math.cpp", "this is not C++\n");
         var (status, output) = await module.TazelAsync(".", "build", "//:app");
         Assert.Equal(1, status);
-        Assert.Contains("FAILED Compiling //:math math.cpp", output, StringComparison.Ordinal);
-        Assert.Contains("-c math.cpp", output, StringComparison.Ordinal);
+        Assert.True(output.Contains("FAILED Compiling //:math math.cpp", StringComparison.Ordinal), output);
+        Assert.True(output.Contains("-c math.cpp", StringComparison.Ordinal), output);
     }
 
     [Fact]

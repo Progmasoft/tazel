@@ -54,6 +54,16 @@ jobs:
           tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP/zig" --strip-components=1
           echo "$RUNNER_TEMP/zig" >> "$GITHUB_PATH"
 
+      # clang on Windows takes the headers and libraries of MSVC from the environment vcvars64 sets.
+      - name: Load the MSVC environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >NUL && set" | ForEach-Object {
+            if ($_ -match '^(INCLUDE|LIB|LIBPATH|PATH)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
+          }
+
       # Warnings are errors in every project (Directory.Build.props).
       - name: Build
         run: dotnet build Tazel.slnx -c Release
