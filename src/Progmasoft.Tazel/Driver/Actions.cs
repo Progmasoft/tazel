@@ -236,37 +236,41 @@ internal static class Depfiles
         var body = text[(colon + 1)..];
         var inputs = new List<string>();
         var current = new StringBuilder();
-        for (var index = 0; index < body.Length; index++)
+        var index = 0;
+        while (index < body.Length)
         {
-            var c = body[index];
-            if (c == '\\' && index + 1 < body.Length && body[index + 1] == ' ')
+            var rest = body.AsSpan(index);
+            var step = 1;
+            if (rest.StartsWith("\\ "))
             {
                 current.Append(' ');
-                index++;
+                step = 2;
             }
-            else if (c == '\\' && index + 1 < body.Length && body[index + 1] == '\n')
+            else if (rest.StartsWith("\\\n"))
             {
                 Flush();
-                index++;
+                step = 2;
             }
-            else if (c == '\\' && index + 2 < body.Length && body[index + 1] == '\r' && body[index + 2] == '\n')
+            else if (rest.StartsWith("\\\r\n"))
             {
                 Flush();
-                index += 2;
+                step = 3;
             }
-            else if (c == '$' && index + 1 < body.Length && body[index + 1] == '$')
+            else if (rest.StartsWith("$$"))
             {
                 current.Append('$');
-                index++;
+                step = 2;
             }
-            else if (char.IsWhiteSpace(c))
+            else if (char.IsWhiteSpace(rest[0]))
             {
                 Flush();
             }
             else
             {
-                current.Append(c);
+                current.Append(rest[0]);
             }
+
+            index += step;
         }
 
         Flush();

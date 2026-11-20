@@ -28,9 +28,28 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         typeof(Commands).Assembly.GetName().Version is { } version ? new Version(version.Major, version.Minor, version.Build) : new Version(0, 1, 0);
 
     /// <summary>Runs <paramref name="command"/>; the result is the exit status of tazel.</summary>
-    public async Task<int> RunAsync(Command command, CancellationToken cancel)
+    public Task<int> RunAsync(Command command, CancellationToken cancel)
     {
         ArgumentNullException.ThrowIfNull(command);
+        return command switch
+        {
+            BuildCommand build => BuildAsync(build.Labels, build.Flags, BuildKind.Build, null, cancel),
+            TestCommand test => BuildAsync(test.Labels, test.Flags, BuildKind.Test, null, cancel),
+            CoverageCommand coverage => BuildAsync(coverage.Labels, coverage.Flags, BuildKind.Coverage, null, cancel),
+            RunCommand run => BuildAsync(run.Label is null ? [] : [run.Label], run.Flags, BuildKind.Run, run.Arguments, cancel),
+            QueryCommand query => QueryAsync(query, cancel),
+            FetchCommand => FetchAsync(),
+            VendorCommand => VendorAsync(cancel),
+            PortalModulesCommand portal => PortalModulesAsync(portal, cancel),
+            PackageCommand => PackageAsync(),
+            CustomCommandLine custom => CustomAsync(custom, cancel),
+            _ => Task.FromResult(RunAtOnce(command)),
+        };
+    }
+
+    /// <summary>The commands that only print or remove, and need nothing to wait for.</summary>
+    private int RunAtOnce(Command command)
+    {
         switch (command)
         {
             case VersionCommand:
@@ -39,36 +58,16 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             case HelpCommand help:
                 reporter.Plain(Help.Text(help.Topic, help.Long));
                 return 0;
-            case CoverageCommand coverage:
-                return await BuildAsync(coverage.Labels, coverage.Flags, BuildKind.Coverage, null, cancel).ConfigureAwait(false);
-            case QueryCommand query:
-                return await QueryAsync(query, cancel).ConfigureAwait(false);
             case ExplainCommand explain:
                 Explain(explain);
                 return 0;
-            case FetchCommand:
-                return await FetchAsync().ConfigureAwait(false);
-            case VendorCommand:
-                return await VendorAsync(cancel).ConfigureAwait(false);
-            case PortalModulesCommand portal:
-                return await PortalModulesAsync(portal, cancel).ConfigureAwait(false);
+            case CleanCommand clean:
+                return Clean(clean.Expunge);
             case DaemonCommand daemon:
-                reporter.Error(ErrorCodes.NoDaemon, $"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon", null,
+                reporter.Error(ErrorCodes.NoDaemon,
+                    $"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon", null,
                     "Tazel is a morning person: awake at once, every time, no daemon needed.");
                 return 1;
-            case CleanCommand clean:
-                return Clean(clean);
-            case PackageCommand:
-                return await PackageAsync().ConfigureAwait(false);
-            case CustomCommandLine custom:
-                return await CustomAsync(custom, cancel).ConfigureAwait(false);
-            case BuildCommand build:
-                return await BuildAsync(build.Labels, build.Flags, BuildKind.Build, null, cancel).ConfigureAwait(false);
-            case TestCommand test:
-                return await BuildAsync(test.Labels, test.Flags, BuildKind.Test, null, cancel).ConfigureAwait(false);
-            case RunCommand run:
-                return await BuildAsync(run.Label is null ? [] : [run.Label], run.Flags, BuildKind.Run, run.Arguments, cancel)
-                    .ConfigureAwait(false);
             default:
                 throw new InvalidOperationException($"no handler for {command.GetType().Name}");
         }
@@ -116,11 +115,11 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         }
     }
 
-    private int Clean(CleanCommand clean)
+    private int Clean(bool expunge)
     {
         var root = ModuleFiles.FindRoot(workingDirectory);
         var state = Path.Combine(root, ModuleFiles.StateDirectory);
-        var removed = clean.Expunge
+        var removed = expunge
             ? [state]
             : new[] { "out", "testlogs", "coverage", "zig-cache", "package", "downloads" }.Select(name => Path.Combine(state, name)).ToArray();
         foreach (var directory in removed.Where(Directory.Exists))
@@ -128,7 +127,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             Directory.Delete(directory, recursive: true);
         }
 
-        reporter.Success(clean.Expunge ? $"removed {state}" : "removed the outputs");
+        reporter.Success(expunge ? $"removed {state}" : "removed the outputs");
         return 0;
     }
 

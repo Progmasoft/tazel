@@ -43,10 +43,13 @@ public sealed record EnvEntry(string Name, EnvValue Value, int Line);
 public static class TazelEnvsFile
 {
     /// <summary>The file, beside the MODULE.csx of a module.</summary>
-    public const string FileName = "tazel_envs.txt";
+    public static string FileName { get; } = "tazel_envs.txt";
+
+    /// <summary>The entries of <paramref name="text"/>, named tazel_envs.txt in messages.</summary>
+    public static IReadOnlyList<EnvEntry> Parse(string text) => Parse(text, FileName);
 
     /// <summary>The entries of <paramref name="text"/>; <paramref name="file"/> names it in messages.</summary>
-    public static IReadOnlyList<EnvEntry> Parse(string text, string file = FileName)
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file)
     {
         ArgumentNullException.ThrowIfNull(text);
         var tokens = new CustomLexer(text, file).Tokens();

@@ -18,7 +18,7 @@ namespace Progmasoft.Tazel.Tests;
 /// <summary>The command lines a build makes, for a toolchain of files that are never run, so they are the same everywhere.</summary>
 public sealed class PlannerTests
 {
-    private static string ModuleWithToolchain(string root) => TemporaryModule.ModuleFile + """
+    private static string ModuleWithToolchain() => TemporaryModule.ModuleFile + """
 
         toolchains = Toolchains.Define("//toolchains:fake", "//toolchains:zig");
         """;
@@ -99,7 +99,7 @@ public sealed class PlannerTests
     public async Task TheCommandsOfABuild()
     {
         using var module = new TemporaryModule();
-        module.Write("MODULE.csx", ModuleWithToolchain(module.Root))
+        module.Write("MODULE.csx", ModuleWithToolchain())
             .Write("toolchains/BUILD.csx", Toolchain(module.Root))
             .Write("BUILD.csx", Build)
             .Write("src/a.cpp", "").Write("src/b.cpp", "").Write("src/shared.c", "").Write("src/main.cc", "")
@@ -136,7 +136,7 @@ public sealed class PlannerTests
     public async Task AFeatureATargetNamesMustBeInItsToolchain()
     {
         using var module = new TemporaryModule();
-        module.Write("MODULE.csx", ModuleWithToolchain(module.Root))
+        module.Write("MODULE.csx", ModuleWithToolchain())
             .Write("toolchains/BUILD.csx", Toolchain(module.Root))
             .Write("BUILD.csx", "using Progmasoft.Tazel.Dsl.Build.Prelude;\nCC.StaticLibrary(\"x\", new() { Features = [CC.Enable(\"asan\")] });")
             .Write("tools/cc", "").Write("tools/c++", "").Write("tools/llvm-ar", "").Write("tools/zig", "");

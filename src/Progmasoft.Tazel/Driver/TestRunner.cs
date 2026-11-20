@@ -106,95 +106,127 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
         return outcomes.OrderBy(o => o.Label, StringComparer.Ordinal).ToList();
     }
 
+    /// <summary>Where a test's runs go: its runfiles, its log directory, and the file that remembers its pass.</summary>
+    private sealed record TestRun(
+        ProjectTarget Target, ITestSettings Settings, TargetProducts Products, string Runfiles, string Logs, string Passed, string? Key)
+    {
+        public string Label => Target.Label.ToString();
+
+        public string LogFile => Path.Combine(Logs, "test.log");
+    }
+
     private async Task<TestOutcome> RunOneAsync(ProjectTarget target, TargetProducts products, CancellationToken cancel)
     {
         var settings = (ITestSettings)target.Settings;
         var runfiles = Runfiles.Prepare(target, products, layout);
-        var logDirectory = layout.Full($"{layout.TestLogs}/{Sanitize(target.Label.ToString())}");
-        var passedFile = Path.Combine(layout.Full(layout.TestLogs), ".passed", Sanitize(target.Label.ToString()).Replace('/', '_'));
+        var name = Sanitize(target.Label.ToString());
         // Coverage needs the run itself, and a test tagged no-cache runs every time.
         var key = coverage || target.Settings.Tags.Contains("no-cache", StringComparer.Ordinal)
             ? null
             : CacheKey(target, settings, products, runfiles);
-        if (key is not null && File.Exists(passedFile) &&
-            await File.ReadAllTextAsync(passedFile, cancel).ConfigureAwait(false) == key &&
-            File.Exists(Path.Combine(logDirectory, "test.log")))
+        var run = new TestRun(target, settings, products, runfiles, layout.Full($"{layout.TestLogs}/{name}"),
+            Path.Combine(layout.Full(layout.TestLogs), ".passed", name.Replace('/', '_')), key);
+        if (await CachedAsync(run, cancel).ConfigureAwait(false) is { } cached)
         {
-            var previous = await File.ReadAllTextAsync(Path.Combine(logDirectory, "test.log"), cancel).ConfigureAwait(false);
-            return new TestOutcome(target.Label.ToString(), TestStatus.Cached, TimeSpan.Zero, previous);
+            return cached;
         }
 
-        if (File.Exists(passedFile))
+        if (File.Exists(run.Passed))
         {
-            File.Delete(passedFile);
+            File.Delete(run.Passed);
         }
 
-        if (Directory.Exists(logDirectory))
+        if (Directory.Exists(run.Logs))
         {
-            Directory.Delete(logDirectory, recursive: true);
+            Directory.Delete(run.Logs, recursive: true);
         }
 
-        Directory.CreateDirectory(logDirectory);
-        var timeout = settings.Timeout ?? TimeoutOf(settings.TestSize);
+        Directory.CreateDirectory(run.Logs);
         var attempts = settings.Flaky ? 3 : 1;
         var watch = Stopwatch.StartNew();
         var log = new StringBuilder();
+        var timedOut = false;
         for (var attempt = 1; attempt <= attempts; attempt++)
         {
-            var failed = false;
-            var timedOut = false;
-            for (var shard = 0; shard < settings.ShardCount; shard++)
-            {
-                var environment = Environment(target, settings, logDirectory, shard, runfiles);
-                if (coverage)
-                {
-                    // Each process of the test writes its own profile; tazel coverage merges them.
-                    environment["LLVM_PROFILE_FILE"] = System.IO.Path.Combine(logDirectory, $"coverage-{shard}-%p.profraw");
-                }
-
-                Runfiles.AddLibraryPath(environment, products, layout);
-                var command = new List<string> { layout.Full(products.Executable!) };
-                command.AddRange(settings.Arguments);
-                var result = await Processes.RunAsync(command, runfiles, environment, timeout, cancel).ConfigureAwait(false);
-                if (settings.ShardCount > 1)
-                {
-                    log.Append(CultureInfo.InvariantCulture, $"--- shard {shard + 1} of {settings.ShardCount} ---\n");
-                }
-
-                log.Append(result.Output);
-                if (result.TimedOut)
-                {
-                    log.Append(CultureInfo.InvariantCulture, $"the test ran out of its {timeout.TotalSeconds:0} s\n");
-                    timedOut = true;
-                }
-
-                failed |= result.ExitCode != 0;
-            }
-
-            await File.WriteAllTextAsync(Path.Combine(logDirectory, "test.log"), log.ToString(), cancel).ConfigureAwait(false);
+            var (failed, outOfTime) = await AttemptAsync(run, log, cancel).ConfigureAwait(false);
+            timedOut = outOfTime;
+            await File.WriteAllTextAsync(run.LogFile, log.ToString(), cancel).ConfigureAwait(false);
             if (!failed)
             {
-                var status = attempt == 1 ? TestStatus.Passed : TestStatus.Flaky;
-                // A flaky pass is not remembered: the next run should show whether it is flaky still.
-                if (key is not null && status == TestStatus.Passed)
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(passedFile)!);
-                    await File.WriteAllTextAsync(passedFile, key, cancel).ConfigureAwait(false);
-                }
-
-                return new TestOutcome(target.Label.ToString(), status, watch.Elapsed, log.ToString());
+                return await PassedAsync(run, attempt == 1 ? TestStatus.Passed : TestStatus.Flaky, watch.Elapsed, log, cancel)
+                    .ConfigureAwait(false);
             }
 
-            if (attempt == attempts)
+            if (attempt < attempts)
             {
-                return new TestOutcome(target.Label.ToString(), timedOut ? TestStatus.TimedOut : TestStatus.Failed,
-                    watch.Elapsed, log.ToString());
+                log.Append(CultureInfo.InvariantCulture, $"--- attempt {attempt} failed; the test is flaky, so it runs again ---\n");
             }
-
-            log.Append(CultureInfo.InvariantCulture, $"--- attempt {attempt} failed; the test is flaky, so it runs again ---\n");
         }
 
-        throw new InvalidOperationException("a test ended without an outcome");
+        return new TestOutcome(run.Label, timedOut ? TestStatus.TimedOut : TestStatus.Failed, watch.Elapsed, log.ToString());
+    }
+
+    /// <summary>The outcome of a test that passed with the same key, or null when it has to run.</summary>
+    private static async Task<TestOutcome?> CachedAsync(TestRun run, CancellationToken cancel)
+    {
+        if (run.Key is null || !File.Exists(run.Passed) || !File.Exists(run.LogFile) ||
+            await File.ReadAllTextAsync(run.Passed, cancel).ConfigureAwait(false) != run.Key)
+        {
+            return null;
+        }
+
+        var previous = await File.ReadAllTextAsync(run.LogFile, cancel).ConfigureAwait(false);
+        return new TestOutcome(run.Label, TestStatus.Cached, TimeSpan.Zero, previous);
+    }
+
+    /// <summary>A test that passed; a first-time pass is remembered, a flaky one is not, so the next run shows it.</summary>
+    private static async Task<TestOutcome> PassedAsync(
+        TestRun run, TestStatus status, TimeSpan elapsed, StringBuilder log, CancellationToken cancel)
+    {
+        if (run.Key is not null && status == TestStatus.Passed)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(run.Passed)!);
+            await File.WriteAllTextAsync(run.Passed, run.Key, cancel).ConfigureAwait(false);
+        }
+
+        return new TestOutcome(run.Label, status, elapsed, log.ToString());
+    }
+
+    /// <summary>One attempt: every shard of the test, each with its own environment.</summary>
+    private async Task<(bool Failed, bool TimedOut)> AttemptAsync(TestRun run, StringBuilder log, CancellationToken cancel)
+    {
+        var settings = run.Settings;
+        var timeout = settings.Timeout ?? TimeoutOf(settings.TestSize);
+        var failed = false;
+        var timedOut = false;
+        for (var shard = 0; shard < settings.ShardCount; shard++)
+        {
+            var environment = Environment(run.Target, settings, run.Logs, shard, run.Runfiles);
+            if (coverage)
+            {
+                // Each process of the test writes its own profile; tazel coverage merges them.
+                environment["LLVM_PROFILE_FILE"] = Path.Combine(run.Logs, $"coverage-{shard}-%p.profraw");
+            }
+
+            Runfiles.AddLibraryPath(environment, run.Products, layout);
+            List<string> command = [layout.Full(run.Products.Executable!), .. settings.Arguments];
+            var result = await Processes.RunAsync(command, run.Runfiles, environment, timeout, cancel).ConfigureAwait(false);
+            if (settings.ShardCount > 1)
+            {
+                log.Append(CultureInfo.InvariantCulture, $"--- shard {shard + 1} of {settings.ShardCount} ---\n");
+            }
+
+            log.Append(result.Output);
+            if (result.TimedOut)
+            {
+                log.Append(CultureInfo.InvariantCulture, $"the test ran out of its {timeout.TotalSeconds:0} s\n");
+                timedOut = true;
+            }
+
+            failed |= result.ExitCode != 0;
+        }
+
+        return (failed, timedOut);
     }
 
     /// <summary>

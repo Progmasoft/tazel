@@ -47,23 +47,38 @@ public sealed class TazelVersion
     public Version? Upper { get; }
 
     /// <summary>Only MAJOR.MINOR.PATCH.</summary>
-    public static TazelVersion Exactly(int major, int minor, int patch = 0) =>
+    public static TazelVersion Exactly(int major, int minor) => Exactly(major, minor, 0);
+
+    /// <inheritdoc cref="Exactly(int, int)"/>
+    public static TazelVersion Exactly(int major, int minor, int patch) =>
         new(VersionComparison.Exactly, Make(major, minor, patch), null);
 
     /// <summary>MAJOR.MINOR.PATCH or later.</summary>
-    public static TazelVersion AtLeast(int major, int minor, int patch = 0) =>
+    public static TazelVersion AtLeast(int major, int minor) => AtLeast(major, minor, 0);
+
+    /// <inheritdoc cref="AtLeast(int, int)"/>
+    public static TazelVersion AtLeast(int major, int minor, int patch) =>
         new(VersionComparison.AtLeast, Make(major, minor, patch), null);
 
     /// <summary>Later than MAJOR.MINOR.PATCH.</summary>
-    public static TazelVersion GreaterThan(int major, int minor, int patch = 0) =>
+    public static TazelVersion GreaterThan(int major, int minor) => GreaterThan(major, minor, 0);
+
+    /// <inheritdoc cref="GreaterThan(int, int)"/>
+    public static TazelVersion GreaterThan(int major, int minor, int patch) =>
         new(VersionComparison.GreaterThan, Make(major, minor, patch), null);
 
     /// <summary>MAJOR.MINOR.PATCH or earlier.</summary>
-    public static TazelVersion AtMost(int major, int minor, int patch = 0) =>
+    public static TazelVersion AtMost(int major, int minor) => AtMost(major, minor, 0);
+
+    /// <inheritdoc cref="AtMost(int, int)"/>
+    public static TazelVersion AtMost(int major, int minor, int patch) =>
         new(VersionComparison.AtMost, Make(major, minor, patch), null);
 
     /// <summary>Earlier than MAJOR.MINOR.PATCH.</summary>
-    public static TazelVersion LessThan(int major, int minor, int patch = 0) =>
+    public static TazelVersion LessThan(int major, int minor) => LessThan(major, minor, 0);
+
+    /// <inheritdoc cref="LessThan(int, int)"/>
+    public static TazelVersion LessThan(int major, int minor, int patch) =>
         new(VersionComparison.LessThan, Make(major, minor, patch), null);
 
     /// <summary>From MAJOR.MINOR to MAJOR.MINOR, both included.</summary>

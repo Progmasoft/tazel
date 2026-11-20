@@ -13,69 +13,83 @@ internal static class TargetChecks
 {
     public static void Check(ProjectTarget target)
     {
+        ArgumentNullException.ThrowIfNull(target);
         var place = target.Place;
-        switch (target.Settings)
+        if (target.Settings is ZigModuleSettings zig)
         {
-            case ZigModuleSettings zig:
-                if (zig.RootSourceFile.Length == 0)
-                {
-                    throw new ProjectException($"{place}: {target.Label} needs its RootSourceFile");
-                }
-
-                if (!zig.RootSourceFile.EndsWith(".zig", StringComparison.Ordinal))
-                {
-                    throw new ProjectException($"{place}: the RootSourceFile '{zig.RootSourceFile}' is not a .zig file");
-                }
-
-                foreach (var name in zig.ModuleImports.Keys)
-                {
-                    if (name.Length == 0 || !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
-                    {
-                        throw new ProjectException($"{place}: '{name}' cannot be the name of an @import");
-                    }
-                }
-
-                break;
-            case CCSettings cc:
-                foreach (var option in cc.PreprocessorDefinitions.Concat(cc.LocalPreprocessorDefinitions))
-                {
-                    if (option.Length == 0 || option.StartsWith('-'))
-                    {
-                        throw new ProjectException($"{place}: '{option}' is not a macro; write NAME or NAME=value");
-                    }
-                }
-
-                break;
+            CheckZig(target, zig, place);
+        }
+        else if (target.Settings is CCSettings cc)
+        {
+            CheckMacros(cc, place);
         }
 
         if (target.Settings is ITestSettings test)
         {
-            if (test.ShardCount < 1)
-            {
-                throw new ProjectException($"{place}: ShardCount is at least 1");
-            }
-
-            if (test.Timeout is { } timeout && timeout <= TimeSpan.Zero)
-            {
-                throw new ProjectException($"{place}: Timeout must be longer than nothing");
-            }
+            CheckTest(test, place);
         }
 
         if (target.Family == Family.Plugin)
         {
-            foreach (var output in ((PluginApi.Steps.StepSettings)target.Settings).Outputs)
-            {
-                if (output.Length == 0 || System.IO.Path.IsPathRooted(output) || output.Contains('\\', StringComparison.Ordinal) ||
-                    output.Split('/').Any(part => part is "" or "." or ".."))
-                {
-                    throw new ProjectException($"{place}: the output '{output}' must be a path below the step's output directory");
-                }
-            }
+            CheckStepOutputs((PluginApi.Steps.StepSettings)target.Settings, place);
         }
 
         if (target.Family == Family.Zig && target.Settings is not ZigModuleSettings)
         {
             throw new ProjectException($"{place}: {target.Label} has settings of another family");
+        }
+    }
+
+    private static void CheckZig(ProjectTarget target, ZigModuleSettings zig, string place)
+    {
+        if (zig.RootSourceFile.Length == 0)
+        {
+            throw new ProjectException($"{place}: {target.Label} needs its RootSourceFile");
+        }
+
+        if (!zig.RootSourceFile.EndsWith(".zig", StringComparison.Ordinal))
+        {
+            throw new ProjectException($"{place}: the RootSourceFile '{zig.RootSourceFile}' is not a .zig file");
+        }
+
+        var bad = zig.ModuleImports.Keys.FirstOrDefault(name => name.Length == 0 || !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'));
+        if (bad is not null)
+        {
+            throw new ProjectException($"{place}: '{bad}' cannot be the name of an @import");
+        }
+    }
+
+    private static void CheckMacros(CCSettings cc, string place)
+    {
+        var bad = cc.PreprocessorDefinitions.Concat(cc.LocalPreprocessorDefinitions)
+            .FirstOrDefault(option => option.Length == 0 || option.StartsWith('-'));
+        if (bad is not null)
+        {
+            throw new ProjectException($"{place}: '{bad}' is not a macro; write NAME or NAME=value");
+        }
+    }
+
+    private static void CheckTest(ITestSettings test, string place)
+    {
+        if (test.ShardCount < 1)
+        {
+            throw new ProjectException($"{place}: ShardCount is at least 1");
+        }
+
+        if (test.Timeout is { } timeout && timeout <= TimeSpan.Zero)
+        {
+            throw new ProjectException($"{place}: Timeout must be longer than nothing");
+        }
+    }
+
+    private static void CheckStepOutputs(PluginApi.Steps.StepSettings step, string place)
+    {
+        var bad = step.Outputs.FirstOrDefault(output =>
+            output.Length == 0 || System.IO.Path.IsPathRooted(output) || output.Contains('\\', StringComparison.Ordinal) ||
+            output.Split('/').Any(part => part is "" or "." or ".."));
+        if (bad is not null)
+        {
+            throw new ProjectException($"{place}: the output '{bad}' must be a path below the step's output directory");
         }
     }
 }

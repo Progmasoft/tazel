@@ -53,45 +53,47 @@ internal sealed class Selector(Workspace workspace, Platform platform)
                 throw new ProjectException(error.Message, error);
             }
 
-            switch (selection)
+            if (selection is TargetLabel label)
             {
-                case TargetLabel label:
-                    if (!workspace.Targets.TryGetValue(label, out var target))
-                    {
-                        var package = workspace.Packages.Contains(label.Package)
-                            ? $"its package has no target '{label.Name}'"
-                            : $"there is no package {label.Package}";
-                        throw new ProjectException($"{label} is not a target: {package}");
-                    }
+                var target = Named(label, wanted, kind);
+                if (!selected.Contains(target))
+                {
+                    selected.Add(target);
+                }
+            }
+            else if (selection is PackagePattern pattern)
+            {
+                if (!workspace.Packages.Any(pattern.Covers))
+                {
+                    throw new ProjectException($"{pattern} names no package");
+                }
 
-                    if (!wanted(target))
-                    {
-                        throw new ProjectException($"{label} is not {kind}");
-                    }
-
-                    if (Incompatibility(target) is { } reason)
-                    {
-                        throw new ProjectException($"{label} does not build for {platform.Name()}: {reason}");
-                    }
-
-                    if (!selected.Contains(target))
-                    {
-                        selected.Add(target);
-                    }
-
-                    break;
-                case PackagePattern pattern:
-                    if (!workspace.Packages.Any(pattern.Covers))
-                    {
-                        throw new ProjectException($"{pattern} names no package");
-                    }
-
-                    AddPattern(selected, target => pattern.Covers(target.Label.Package), wanted);
-                    break;
+                AddPattern(selected, target => pattern.Covers(target.Label.Package), wanted);
             }
         }
 
         return selected;
+    }
+
+    /// <summary>The target <paramref name="label"/> names, which must be there, wanted and buildable for the platform.</summary>
+    private ProjectTarget Named(TargetLabel label, Func<ProjectTarget, bool> wanted, string kind)
+    {
+        if (!workspace.Targets.TryGetValue(label, out var target))
+        {
+            var package = workspace.Packages.Contains(label.Package)
+                ? $"its package has no target '{label.Name}'"
+                : $"there is no package {label.Package}";
+            throw new ProjectException($"{label} is not a target: {package}");
+        }
+
+        if (!wanted(target))
+        {
+            throw new ProjectException($"{label} is not {kind}");
+        }
+
+        return Incompatibility(target) is { } reason
+            ? throw new ProjectException($"{label} does not build for {platform.Name()}: {reason}")
+            : target;
     }
 
     /// <summary>Why <paramref name="target"/> does not build for the platform, or null when it does.</summary>

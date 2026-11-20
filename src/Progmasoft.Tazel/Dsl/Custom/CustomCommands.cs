@@ -42,13 +42,13 @@ public sealed class CustomCommandsException : Exception
 public static class CustomCommandFiles
 {
     /// <summary>The file that holds the commands of <c>tazel custom</c>, in the directory they run in.</summary>
-    public const string FileName = "tazel_custom.txt";
+    public static string FileName { get; } = "tazel_custom.txt";
 
     /// <summary>The most words <c>tazel custom</c> takes, those of the name of the command included.</summary>
-    public const int MaxArguments = 191;
+    public static int MaxArguments { get; } = 191;
 
     /// <summary>Ends the name of a custom command on the command line; what follows it is arguments.</summary>
-    public const string NameEnd = "--";
+    public static string NameEnd { get; } = "--";
 }
 
 /// <summary>One argument of a program in a custom command.</summary>

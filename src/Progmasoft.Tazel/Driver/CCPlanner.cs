@@ -235,6 +235,50 @@ internal sealed partial class Planner
         products.AlwaysLink = settings.AlwaysLink;
     }
 
+    /// <summary>The flags and names of a shared library: its file, what dependents link with, its soname links.</summary>
+    private (string Output, Action? After) SharedLibraryOutput(
+        ProjectTarget target, CCSharedLibrarySettings settings, TargetProducts products, string directory, List<string> command)
+    {
+        var version = settings.LibraryVersion;
+        var (file, linkWith, soname) = SharedLibraryNames(directory, target.Label.Name, version);
+        var os = Options.Platform.GetOS();
+        if (os == OS.MacOS)
+        {
+            command.AddRange(["-dynamiclib", "-install_name", $"@rpath/{soname}"]);
+            if (version is not null)
+            {
+                command.AddRange(["-current_version", version.ToString(Math.Min(3, FieldCount(version))),
+                    "-compatibility_version", $"{version.Major}.0.0"]);
+            }
+        }
+        else
+        {
+            command.Add("-shared");
+            if (os != OS.Windows && soname is not null)
+            {
+                command.Add($"-Wl,-soname,{soname}");
+            }
+        }
+
+        products.Library = linkWith;
+        products.IsShared = true;
+        return (file, SonameLinks(file, soname, target.Label.Name));
+    }
+
+    /// <summary>The file and flags of an executable.</summary>
+    private string ExecutableOutput(
+        ProjectTarget target, CCSettings settings, TargetProducts products, string directory, List<string> command)
+    {
+        var output = $"{directory}/{ExecutableName(target.Label.Name)}";
+        products.Executable = output;
+        if (settings is CCExecutableSettings { LinkingMode: LinkingMode.FullyStatic })
+        {
+            command.Add("-static");
+        }
+
+        return output;
+    }
+
     private void PlanLink(
         ProjectTarget target, CCToolchain toolchain, IReadOnlyList<Feature> features, TargetProducts products,
         string directory, List<string> objects, List<BuildAction> compiles, bool shared)
@@ -243,42 +287,9 @@ internal sealed partial class Planner
         var command = new List<string>(toolchain.Linker.Command);
         command.AddRange(ModeFlags());
         command.AddRange(Flags(features, shared ? CCAction.CppLinkSharedLibrary : CCAction.CppLinkExecutable));
-        string output;
-        Action? after = null;
-        if (shared)
-        {
-            var version = ((CCSharedLibrarySettings)settings).LibraryVersion;
-            var (file, linkWith, soname) = SharedLibraryNames(directory, target.Label.Name, version);
-            output = file;
-            var os = Options.Platform.GetOS();
-            command.Add(os == OS.MacOS ? "-dynamiclib" : "-shared");
-            if (os == OS.MacOS)
-            {
-                command.AddRange(["-install_name", $"@rpath/{soname}"]);
-                if (version is not null)
-                {
-                    command.AddRange(["-current_version", version.ToString(Math.Min(3, FieldCount(version))),
-                        "-compatibility_version", $"{version.Major}.0.0"]);
-                }
-            }
-            else if (os != OS.Windows && soname is not null)
-            {
-                command.Add($"-Wl,-soname,{soname}");
-            }
-
-            products.Library = linkWith;
-            products.IsShared = true;
-            after = SonameLinks(file, soname, target.Label.Name);
-        }
-        else
-        {
-            output = $"{directory}/{ExecutableName(target.Label.Name)}";
-            products.Executable = output;
-            if (settings is CCExecutableSettings { LinkingMode: LinkingMode.FullyStatic })
-            {
-                command.Add("-static");
-            }
-        }
+        var (output, after) = shared
+            ? SharedLibraryOutput(target, (CCSharedLibrarySettings)settings, products, directory, command)
+            : (ExecutableOutput(target, settings, products, directory, command), null);
 
         command.AddRange(["-o", output]);
         command.AddRange(objects);

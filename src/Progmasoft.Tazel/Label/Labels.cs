@@ -76,11 +76,9 @@ public static partial class Labels
 {
     /// <summary>A target label; <c>:name</c> is a target of <paramref name="current"/>. Patterns are refused.</summary>
     public static TargetLabel Target(string text, PackageId current) =>
-        Selection(text, current) switch
-        {
-            TargetLabel label => label,
-            _ => throw new LabelException($"'{text}' names packages, not one target; write //dir:name"),
-        };
+        Selection(text, current) is TargetLabel label
+            ? label
+            : throw new LabelException($"'{text}' names packages, not one target; write //dir:name");
 
     /// <summary>A target label or a package pattern; <c>:name</c> is a target of <paramref name="current"/>.</summary>
     public static Selection Selection(string text, PackageId current)

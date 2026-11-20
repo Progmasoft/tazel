@@ -69,33 +69,19 @@ internal static class Host
     private static Platform Detect()
     {
         var arm = RuntimeInformation.OSArchitecture == Architecture.Arm64;
-        if (OperatingSystem.IsWindows())
-        {
-            return arm ? Platform.WindowsArm64 : Platform.WindowsX64;
-        }
-
-        if (OperatingSystem.IsMacOS())
-        {
-            return arm ? Platform.MacOSArm64 : Platform.MacOSX86_64;
-        }
-
-        if (OperatingSystem.IsFreeBSD())
-        {
-            return arm ? Platform.FreeBSDAarch64 : Platform.FreeBSDAmd64;
-        }
-
         var description = RuntimeInformation.OSDescription;
-        if (description.Contains("OpenBSD", StringComparison.OrdinalIgnoreCase))
-        {
-            return arm ? Platform.OpenBSDAarch64 : Platform.OpenBSDAmd64;
-        }
-
-        if (description.Contains("DragonFly", StringComparison.OrdinalIgnoreCase))
-        {
-            return Platform.DragonFlyBSDAmd64;
-        }
-
-        return arm ? Platform.LinuxAarch64 : Platform.LinuxAmd64;
+        // The first system that is this one names the platform; Linux is what is left.
+        (bool Here, Platform Arm, Platform Other)[] systems =
+        [
+            (OperatingSystem.IsWindows(), Platform.WindowsArm64, Platform.WindowsX64),
+            (OperatingSystem.IsMacOS(), Platform.MacOSArm64, Platform.MacOSX86_64),
+            (OperatingSystem.IsFreeBSD(), Platform.FreeBSDAarch64, Platform.FreeBSDAmd64),
+            (description.Contains("OpenBSD", StringComparison.OrdinalIgnoreCase), Platform.OpenBSDAarch64, Platform.OpenBSDAmd64),
+            (description.Contains("DragonFly", StringComparison.OrdinalIgnoreCase), Platform.DragonFlyBSDAmd64, Platform.DragonFlyBSDAmd64),
+            (true, Platform.LinuxAarch64, Platform.LinuxAmd64),
+        ];
+        var (_, armPlatform, otherPlatform) = systems.First(system => system.Here);
+        return arm ? armPlatform : otherPlatform;
     }
 }
 

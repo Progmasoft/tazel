@@ -12,17 +12,20 @@ using Progmasoft.Tazel.Output;
 namespace Progmasoft.Tazel.Cli;
 
 /// <summary>A command line that cannot be taken, with a hint when there is one.</summary>
-internal sealed class CommandLineException : Exception
+public sealed class CommandLineException : Exception
 {
+    /// <summary>What cannot be taken, and how to put it right.</summary>
     public CommandLineException(string message)
         : base(message)
     {
     }
 
+    /// <summary>Nothing to say.</summary>
     public CommandLineException()
     {
     }
 
+    /// <summary>What cannot be taken, and why.</summary>
     public CommandLineException(string message, Exception inner)
         : base(message, inner)
     {
@@ -129,7 +132,7 @@ internal static class CommandLine
         List,
     }
 
-    private sealed record Option(string Long, Kind Kind, IReadOnlyList<string>? Values, params string[] Commands);
+    private sealed record Option(string Long, Kind Kind, IReadOnlyList<string>? Values, params string[] Scope);
 
     private static readonly string[] Building = ["build", "run", "test", "coverage", "cquery", "aquery"];
 
@@ -202,7 +205,7 @@ internal static class CommandLine
         command ??= "help";
         foreach (var (option, _, written) in seen)
         {
-            if (option.Commands.Length > 0 && !option.Commands.Contains(command, StringComparer.Ordinal))
+            if (option.Scope.Length > 0 && !option.Scope.Contains(command, StringComparer.Ordinal))
             {
                 throw new CommandLineException($"{written} is not an option of tazel {command}");
             }
@@ -303,14 +306,17 @@ internal static class CommandLine
         ArgumentNullException.ThrowIfNull(text);
         var items = new List<string>();
         var current = new StringBuilder();
-        for (var i = 0; i < text.Length; i++)
+        var i = 0;
+        while (i < text.Length)
         {
-            if (text[i] == '\\' && i + 1 < text.Length && text[i + 1] == ',')
+            if (text.AsSpan(i).StartsWith("\\,"))
             {
                 current.Append(',');
-                i++;
+                i += 2;
+                continue;
             }
-            else if (text[i] == ',')
+
+            if (text[i] == ',')
             {
                 items.Add(current.ToString());
                 current.Clear();
@@ -319,6 +325,8 @@ internal static class CommandLine
             {
                 current.Append(text[i]);
             }
+
+            i++;
         }
 
         items.Add(current.ToString());

@@ -24,7 +24,7 @@ public sealed record Allocation(int? Amount)
 public sealed record TazelOptions
 {
     /// <summary>The file of the options of Tazel, in a directory a command runs in or above it.</summary>
-    public const string FileName = "tazel_options.txt";
+    public static string FileName { get; } = "tazel_options.txt";
 
     /// <summary>
     /// Whether what a project brings to run, custom commands and the build among it, runs inside a MicroVM.
@@ -86,10 +86,12 @@ public static class TazelOptionsFile
         ["sandboxing-with-microvm", "microvm-network", "microvm-memory", "microvm-cpus", "platform"];
 
     /// <summary>
-    /// Reads the text of a <c>tazel_options.txt</c>, with the comments and strings of <c>tazel_custom.txt</c>;
-    /// <paramref name="file"/> names it in messages.
+    /// Reads the text of a <c>tazel_options.txt</c>, with the comments and strings of <c>tazel_custom.txt</c>.
     /// </summary>
-    public static TazelOptions Parse(string text, string file = TazelOptions.FileName)
+    public static TazelOptions Parse(string text) => Parse(text, TazelOptions.FileName);
+
+    /// <summary>The options of <paramref name="text"/>; <paramref name="file"/> names it in messages.</summary>
+    public static TazelOptions Parse(string text, string file)
     {
         IReadOnlyList<Token> tokens;
         try

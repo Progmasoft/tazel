@@ -295,7 +295,10 @@ public sealed class PluginReference
 public static class Plugin
 {
     /// <summary>The plugin <paramref name="group"/>.<paramref name="name"/>, at a version or the highest.</summary>
-    public static PluginReference From(string group, string name, string? version = null) =>
+    public static PluginReference From(string group, string name) => From(group, name, null);
+
+    /// <inheritdoc cref="From(string, string)"/>
+    public static PluginReference From(string group, string name, string? version) =>
         new(group, name, version, null);
 }
 
