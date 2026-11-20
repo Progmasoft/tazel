@@ -103,6 +103,7 @@ internal sealed class Workspace
         var main = await LoadModuleAsync(root, null, tazelVersion).ConfigureAwait(false);
         var workspace = new Workspace(main);
         await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
+        await workspace.LoadPortalModulesAsync(tazelVersion, offline: false).ConfigureAwait(false);
         await workspace.LoadPackagesAsync(main, build, status ?? (_ => { })).ConfigureAwait(false);
         foreach (var module in workspace.External.Values)
         {
@@ -161,9 +162,9 @@ internal sealed class Workspace
         {
             if (dependency.Portal is { } portal)
             {
-                throw new ProjectException(
-                    $"{module.Shown(ModuleFiles.ModuleFile)}: {portal.Group}:{portal.Name}:{portal.Version} is a module of " +
-                    "Tazel Portal Modules, and this Tazel fetches no modules; use LocalModule.From with its archive");
+                // Modules of Tazel Portal are resolved together, once every local module is loaded.
+                PortalRequests.Add((portal.Group, portal.Name, portal.Version, portal.Alias, module.Shown(ModuleFiles.ModuleFile)));
+                continue;
             }
 
             var local = dependency.Local!;
@@ -183,6 +184,53 @@ internal sealed class Workspace
             External[local.Name] = loaded;
             await LoadDependenciesAsync(loaded, tazelVersion).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>The modules of Tazel Portal Modules the project files ask for, before resolution.</summary>
+    private List<(string Group, string Module, string Version, string? Alias, string Place)> PortalRequests { get; } = [];
+
+    /// <summary>The modules of Tazel Portal Modules the build uses, at the versions the resolution chose.</summary>
+    public List<ResolvedModule> PortalModules { get; } = [];
+
+    /// <summary>Resolves the modules of Tazel Portal Modules, then fetches and loads each.</summary>
+    private async Task LoadPortalModulesAsync(Version tazelVersion, bool offline)
+    {
+        if (PortalRequests.Count == 0)
+        {
+            return;
+        }
+
+        using var client = new Portal.PortalModulesClient(vendor: System.IO.Path.Combine(Main.Root, PortalDependencies.VendorDirectory));
+        var resolved = await PortalDependencies.ResolveAsync(PortalRequests, client, System.Threading.CancellationToken.None)
+            .ConfigureAwait(false);
+        foreach (var module in resolved)
+        {
+            if (External.ContainsKey(module.Repository))
+            {
+                throw new ProjectException($"{module.Key} would be @{module.Repository}, the name of a local module; give it an Alias");
+            }
+
+            var root = await PortalDependencies.FetchAsync(Main.Root, module, offline ? null : client,
+                System.Threading.CancellationToken.None).ConfigureAwait(false);
+            External[module.Repository] = await LoadModuleAsync(root, module.Repository, tazelVersion).ConfigureAwait(false);
+            PortalModules.Add(module);
+        }
+    }
+
+    /// <summary>The modules of Tazel Portal Modules that <paramref name="directory"/>'s module needs, resolved but not fetched.</summary>
+    public static async Task<(LoadedModule Main, IReadOnlyList<ResolvedModule> Modules)> ResolvePortalAsync(
+        string directory, Version tazelVersion, Portal.PortalModulesClient client)
+    {
+        var main = await LoadMainModuleAsync(directory, tazelVersion).ConfigureAwait(false);
+        var workspace = new Workspace(main);
+        await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
+        if (workspace.PortalRequests.Count == 0)
+        {
+            return (main, []);
+        }
+
+        return (main, await PortalDependencies.ResolveAsync(workspace.PortalRequests, client, System.Threading.CancellationToken.None)
+            .ConfigureAwait(false));
     }
 
     /// <summary>The plugins each module loaded, by its repository (null for the main module).</summary>

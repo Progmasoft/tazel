@@ -21,7 +21,7 @@ using Progmasoft.Tazel.Project;
 namespace Progmasoft.Tazel.Cli;
 
 /// <summary>Carries out a command line read by <see cref="CommandLine"/>.</summary>
-internal sealed class Commands(Reporter reporter, string workingDirectory)
+internal sealed partial class Commands(Reporter reporter, string workingDirectory)
 {
     /// <summary>The version of this Tazel.</summary>
     public static Version TazelVersion { get; } =
@@ -37,8 +37,18 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
                 reporter.Plain($"tazel {TazelVersion.ToString(3)} (.NET {Environment.Version}, {Host.Platform.Name()})");
                 return 0;
             case HelpCommand help:
-                reporter.Plain(Help.Text(help.Topic));
+                reporter.Plain(Help.Text(help.Topic, help.Long));
                 return 0;
+            case CoverageCommand coverage:
+                return await BuildAsync(coverage.Labels, coverage.Flags, BuildKind.Coverage, null, cancel).ConfigureAwait(false);
+            case QueryCommand query:
+                return await QueryAsync(query, cancel).ConfigureAwait(false);
+            case FetchCommand:
+                return await FetchAsync().ConfigureAwait(false);
+            case VendorCommand:
+                return await VendorAsync(cancel).ConfigureAwait(false);
+            case PortalModulesCommand portal:
+                return await PortalModulesAsync(portal, cancel).ConfigureAwait(false);
             case DaemonCommand daemon:
                 reporter.Error($"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon");
                 return 1;
@@ -64,6 +74,7 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
     {
         Build,
         Test,
+        Coverage,
         Run,
     }
 
@@ -107,7 +118,7 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
         var state = Path.Combine(root, ModuleFiles.StateDirectory);
         var removed = clean.Expunge
             ? [state]
-            : new[] { "out", "testlogs", "zig-cache", "package" }.Select(name => Path.Combine(state, name)).ToArray();
+            : new[] { "out", "testlogs", "coverage", "zig-cache", "package", "downloads" }.Select(name => Path.Combine(state, name)).ToArray();
         foreach (var directory in removed.Where(Directory.Exists))
         {
             Directory.Delete(directory, recursive: true);
@@ -210,12 +221,14 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
             CppCompilerOptions = flags.CppCompilerOptions,
             LinkerOptions = flags.LinkerOptions,
             ZigCompilerOptions = flags.ZigCompilerOptions,
+            Coverage = kind == BuildKind.Coverage,
         };
 
         var selector = new Selector(workspace, platform);
         var selected = kind switch
         {
-            BuildKind.Test => selector.Select(labels, workingDirectory, target => target.Kind == TargetKind.Test, "a test"),
+            BuildKind.Test or BuildKind.Coverage =>
+                selector.Select(labels, workingDirectory, target => target.Kind == TargetKind.Test, "a test"),
             BuildKind.Run => selector.Select(labels, workingDirectory, target => target.IsRunnable, "an executable or a test"),
             _ => selector.Select(labels, workingDirectory, _ => true, "a target"),
         };
@@ -239,18 +252,25 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
         reporter.Status($"building {selected.Count} target{(selected.Count == 1 ? "" : "s")}");
         var digests = new Digests();
         var cacheSettings = workspace.Main.Globals.cache?.Settings;
-        var executor = new Executor(buildOptions.Jobs, buildOptions.KeepGoing || kind == BuildKind.Test,
+        var executor = new Executor(buildOptions.Jobs, buildOptions.KeepGoing || kind is BuildKind.Test or BuildKind.Coverage,
             new ActionCache(digests, enabled: cacheSettings?.Local ?? true), reporter);
         var built = await executor.RunAsync(goals, cancel).ConfigureAwait(false);
         switch (kind)
         {
-            case BuildKind.Test:
+            case BuildKind.Test or BuildKind.Coverage:
                 var tests = planned.Select(entry => (entry.Target, entry.Products,
                     Built: entry.Products.Main is { } main && executor.Succeeded(main))).ToList();
-                var outcomes = await new TestRunner(planner.Layout, buildOptions.Jobs, reporter).RunAsync(tests, cancel)
-                    .ConfigureAwait(false);
+                var outcomes = await new TestRunner(planner.Layout, buildOptions.Jobs, reporter, buildOptions.Coverage)
+                    .RunAsync(tests, cancel).ConfigureAwait(false);
                 reporter.TestSummary(outcomes);
-                return outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Flaky) ? 0 : 1;
+                var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Flaky);
+                if (kind == BuildKind.Coverage)
+                {
+                    var reported = await CoverageReport.WriteAsync(planner, chooser, tests, reporter, cancel).ConfigureAwait(false);
+                    return passed && reported ? 0 : 1;
+                }
+
+                return passed ? 0 : 1;
             case BuildKind.Run:
                 if (!built)
                 {

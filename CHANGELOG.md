@@ -18,6 +18,10 @@ The first version of Tazel, written in C# for .NET 10.
 - An action cache by content, depfiles for headers, parallel actions, runfiles, sharded and flaky tests.
 - Reproducible `.tazel.tar.xz` archives of modules, and dependencies on them checked by SHA-256.
 - `tazel_options.txt` (with `platform:`) and `tazel_custom.txt`.
+- `tazel coverage` (LLVM source-based, an LCOV report), `tazel query`, `cquery` and `aquery`, `tazel fetch`,
+  `tazel vendor`, and `tazel portal-modules search` and `info`; `tazel help --long`.
+- Modules of Tazel Portal Modules as dependencies: each at the highest version asked for, checked by SHA-256,
+  from `vendor/` first.
 - Plugins: `Progmasoft.Tazel.PluginApi`, the project SDK `Progmasoft.Tazel.PluginSdk` that packs a plugin with
   `dotnet pack`, the template `dotnet new tazel-plugin`, local plugins loaded each into its own load context, and build
   steps that plugins and `BUILD.csx` files declare.

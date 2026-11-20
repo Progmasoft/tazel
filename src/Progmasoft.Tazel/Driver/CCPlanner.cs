@@ -153,6 +153,12 @@ internal sealed partial class Planner
                 }
             }
 
+            if (Options.Coverage)
+            {
+                RequireClang(toolchain, target);
+                command.AddRange(["-fprofile-instr-generate", "-fcoverage-mapping"]);
+            }
+
             command.AddRange(Options.CompilerOptions);
             command.AddRange(cxx ? Options.CppCompilerOptions : Options.CCompilerOptions);
             command.AddRange(["-MD", "-MF", objectFile + ".d", "-c", source, "-o", objectFile]);
@@ -289,6 +295,11 @@ internal sealed partial class Planner
             _ => Files.None,
         };
         var extraFiles = FileSets.Resolve(extra, target.PackageDirectory, Layout.MainRoot, target.Place);
+        if (Options.Coverage)
+        {
+            command.Add("-fprofile-instr-generate");
+        }
+
         command.AddRange(Options.LinkerOptions);
         var link = new BuildAction
         {
@@ -337,6 +348,17 @@ internal sealed partial class Planner
         }
 
         return toolchain.Features.Where(feature => on.Contains(feature.Name)).ToList();
+    }
+
+    /// <summary>LLVM source-based coverage needs clang; gcc and zig cc write another format.</summary>
+    private static void RequireClang(CCToolchain toolchain, ProjectTarget target)
+    {
+        if (!Path.GetFileNameWithoutExtension(toolchain.C.Program).Contains("clang", StringComparison.Ordinal) ||
+            toolchain.C.Prefix.Count > 0)
+        {
+            throw new ProjectException(
+                $"tazel coverage needs clang, and {target.Label} is built with {toolchain.C} of {toolchain.Name}");
+        }
     }
 
     private static IEnumerable<string> Flags(IReadOnlyList<Feature> features, CCAction action) =>

@@ -59,7 +59,7 @@ internal static class Runfiles
 }
 
 /// <summary>Runs tests: each with a small environment, its own temporary directory, a timeout, and retries when flaky.</summary>
-internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporter)
+internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporter, bool coverage = false)
 {
     /// <summary>The timeout of a size, as in Bazel.</summary>
     public static TimeSpan TimeoutOf(TestSize size) => size switch
@@ -128,6 +128,12 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
             for (var shard = 0; shard < settings.ShardCount; shard++)
             {
                 var environment = Environment(target, settings, logDirectory, shard, runfiles);
+                if (coverage)
+                {
+                    // Each process of the test writes its own profile; tazel coverage merges them.
+                    environment["LLVM_PROFILE_FILE"] = System.IO.Path.Combine(logDirectory, $"coverage-{shard}-%p.profraw");
+                }
+
                 Runfiles.AddLibraryPath(environment, products, layout);
                 var command = new List<string> { layout.Full(products.Executable!) };
                 command.AddRange(settings.Arguments);

@@ -76,7 +76,34 @@ internal sealed record CustomCommandLine(OutputOptions Output, IReadOnlyList<str
 
 internal sealed record VersionCommand(OutputOptions Output) : Command(Output);
 
-internal sealed record HelpCommand(OutputOptions Output, string? Topic) : Command(Output);
+internal sealed record HelpCommand(OutputOptions Output, string? Topic, bool Long = false) : Command(Output);
+
+internal sealed record CoverageCommand(OutputOptions Output, IReadOnlyList<string> Labels, BuildFlags Flags) : Command(Output);
+
+/// <summary>Which query: of the target graph, of the configured targets, or of the actions.</summary>
+internal enum QueryKind
+{
+    Query,
+    CQuery,
+    AQuery,
+}
+
+internal sealed record QueryCommand(OutputOptions Output, QueryKind Kind, string Expression, BuildFlags Flags, string Format)
+    : Command(Output);
+
+internal sealed record FetchCommand(OutputOptions Output) : Command(Output);
+
+internal sealed record VendorCommand(OutputOptions Output) : Command(Output);
+
+/// <summary>Searching Tazel Portal Modules, or the versions of one module.</summary>
+internal enum PortalAction
+{
+    Search,
+    Info,
+}
+
+internal sealed record PortalModulesCommand(OutputOptions Output, PortalAction Action, string Query, bool Exact)
+    : Command(Output);
 
 internal sealed record DaemonCommand(OutputOptions Output, string Action) : Command(Output);
 
@@ -90,7 +117,8 @@ internal static class CommandLine
 {
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
-        ["build", "run", "test", "clean", "package", "custom", "version", "help", "dotnet"];
+        ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
+            "portal-modules", "version", "help", "dotnet"];
 
     private enum Kind
     {
@@ -101,7 +129,7 @@ internal static class CommandLine
 
     private sealed record Option(string Long, Kind Kind, IReadOnlyList<string>? Values, params string[] Commands);
 
-    private static readonly string[] Building = ["build", "run", "test"];
+    private static readonly string[] Building = ["build", "run", "test", "coverage", "cquery", "aquery"];
 
     private static readonly Option[] Options =
     [
@@ -121,6 +149,9 @@ internal static class CommandLine
         new("linker-options", Kind.List, null, Building),
         new("zig-compiler-options", Kind.List, null, Building),
         new("expunge", Kind.Flag, null, "clean"),
+        new("long", Kind.Flag, null, "help"),
+        new("exact", Kind.Flag, null, "portal-modules"),
+        new("output", Kind.Value, ["label", "label_kind"], "query", "cquery", "aquery"),
     ];
 
     /// <summary>Reads <paramref name="arguments"/>.</summary>
@@ -184,6 +215,13 @@ internal static class CommandLine
             return new HelpCommand(output, command);
         }
 
+        if (command == "portal-modules")
+        {
+            // After -- a query may start with a dash.
+            positional.AddRange(afterDashes);
+            afterDashes.Clear();
+        }
+
         if (afterDashes.Count > 0 && command != "run")
         {
             throw new CommandLineException($"tazel {command} takes nothing after --; only tazel run passes arguments on");
@@ -203,6 +241,28 @@ internal static class CommandLine
                 }
 
                 return new RunCommand(output, positional.FirstOrDefault(), Flags(seen), afterDashes);
+            case "coverage":
+                return new CoverageCommand(output, positional, Flags(seen));
+            case "query" or "cquery" or "aquery":
+                if (positional.Count == 0)
+                {
+                    throw new CommandLineException($"tazel {command} needs an expression, such as deps(//app:greeter)");
+                }
+
+                return new QueryCommand(output, command switch
+                {
+                    "query" => QueryKind.Query,
+                    "cquery" => QueryKind.CQuery,
+                    _ => QueryKind.AQuery,
+                }, string.Join(' ', positional), Flags(seen), Last(seen, "output") ?? "label");
+            case "fetch":
+                NoPositional(command, positional);
+                return new FetchCommand(output);
+            case "vendor":
+                NoPositional(command, positional);
+                return new VendorCommand(output);
+            case "portal-modules":
+                return PortalModules(output, positional, seen.Any(entry => entry.Option.Long == "exact"));
             case "clean":
                 NoPositional(command, positional);
                 return new CleanCommand(output, seen.Any(entry => entry.Option.Long == "expunge"));
@@ -229,7 +289,7 @@ internal static class CommandLine
             default:
                 return positional.Count > 1
                     ? throw new CommandLineException("tazel help takes one command")
-                    : new HelpCommand(output, positional.FirstOrDefault());
+                    : new HelpCommand(output, positional.FirstOrDefault(), seen.Any(entry => entry.Option.Long == "long"));
         }
     }
 
@@ -320,6 +380,12 @@ internal static class CommandLine
             return;
         }
 
+        if (argument == "-e")
+        {
+            seen.Add((Options.First(o => o.Long == "exact"), [], "-e"));
+            return;
+        }
+
         throw new CommandLineException($"{argument} is not an option; tazel help lists them");
     }
 
@@ -387,6 +453,37 @@ internal static class CommandLine
         flags.LinkerOptions.AddRange(All(seen, "linker-options"));
         flags.ZigCompilerOptions.AddRange(All(seen, "zig-compiler-options"));
         return flags;
+    }
+
+    private static PortalModulesCommand PortalModules(OutputOptions output, List<string> positional, bool exact)
+    {
+        var actions = new[] { "search", "info" };
+        if (positional.Count == 0 || !actions.Contains(positional[0], StringComparer.Ordinal))
+        {
+            var near = positional.Count > 0 ? Suggestions.Nearest(positional[0], actions) : null;
+            throw new CommandLineException(
+                $"tazel portal-modules takes search or info{(near is null ? "" : $"; did you mean {near}?")}");
+        }
+
+        if (positional.Count != 2)
+        {
+            throw new CommandLineException($"tazel portal-modules {positional[0]} takes one module: module or group:module");
+        }
+
+        var query = positional[1];
+        var colon = query.IndexOf(':', StringComparison.Ordinal);
+        if (exact && colon <= 0)
+        {
+            throw new CommandLineException(
+                $"with -e or --exact, tazel portal-modules {positional[0]} needs the group too: group:{query.TrimStart(':')}");
+        }
+
+        if (colon >= 0 && (colon == 0 || colon == query.Length - 1 || query.IndexOf(':', colon + 1) >= 0))
+        {
+            throw new CommandLineException($"'{query}' is not module or group:module");
+        }
+
+        return new PortalModulesCommand(output, positional[0] == "search" ? PortalAction.Search : PortalAction.Info, query, exact);
     }
 
     private static void NoPositional(string command, List<string> positional)
