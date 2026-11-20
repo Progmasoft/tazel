@@ -98,9 +98,201 @@ jobs:
       - name: Build
         run: dotnet build Tazel.slnx -c Release
 
+      # On macOS a run has stopped the whole machine, so that the job ended without a log. There each test class runs
+      # in a step of its own; a step's log is kept when it ends, so the class at fault is the first step without one.
+      - name: Test ActionCacheTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.ActionCacheTests
+
+      - name: Test ArchiveTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.ArchiveTests
+
+      - name: Test BuildCommandTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.BuildCommandTests
+
+      - name: Test CommandLineTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.CommandLineTests
+
+      - name: Test CoverageTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.CoverageTests
+
+      - name: Test CustomCommandTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.CustomCommandTests
+
+      - name: Test DepfileTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.DepfileTests
+
+      - name: Test DiagnosticTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.DiagnosticTests
+
+      - name: Test EnvsTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.EnvsTests
+
+      - name: Test GlobTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.GlobTests
+
+      - name: Test HelpTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.HelpTests
+
+      - name: Test LabelTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.LabelTests
+
+      - name: Test MarkerTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.MarkerTests
+
+      - name: Test MicroVMBootTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.MicroVMBootTests
+
+      - name: Test MicroVMFilesTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.MicroVMFilesTests
+
+      - name: Test MicroVMProtocolTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.MicroVMProtocolTests
+
+      - name: Test PlannerTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.PlannerTests
+
+      - name: Test PluginLoadingTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.PluginLoadingTests
+
+      - name: Test PluginSdkTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.PluginSdkTests
+
+      - name: Test PortalCommandLineTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.PortalCommandLineTests
+
+      - name: Test PortalTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.PortalTests
+
+      - name: Test QueryTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.QueryTests
+
+      - name: Test SnapshotTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.SnapshotTests
+
+      - name: Test StepTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.StepTests
+
+      - name: Test TazelOptionsTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.TazelOptionsTests
+
+      - name: Test TestCacheTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.TestCacheTests
+
+      - name: Test WorkspaceTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.WorkspaceTests
+
       - name: Test
         # A test that hangs is named and dumped at 15 minutes, and the run stops itself at 20, before the step's own
         # limit, so the job ends with its log and its files kept instead of being cancelled at the job's limit.
+        if: runner.os != 'macOS'
         timeout-minutes: 25
         run: >-
           dotnet test --solution Tazel.slnx -c Release --no-build --coverlet --coverlet-output-format cobertura
