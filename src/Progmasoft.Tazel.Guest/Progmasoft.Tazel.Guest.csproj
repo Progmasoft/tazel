@@ -15,7 +15,7 @@
     <EventSourceSupport>false</EventSourceSupport>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../Shared/MicroVmProtocol.cs" Link="Shared/MicroVmProtocol.cs" />
+    <Compile Include="../Shared/MicroVMProtocol.cs" Link="Shared/MicroVMProtocol.cs" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />

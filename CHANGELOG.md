@@ -27,6 +27,8 @@ The first version of Tazel, written in C# for .NET 10.
 - The MicroVM: with `sandboxing-with-microvm`, `tazel custom` runs in a Linux guest under Cloud Hypervisor on KVM
   that sees the module and the host's `/usr`, read-only, and nothing else; its agent `tazel-guest`, and
   `microvm/build.cs`, which builds the guest image.
+- A test that passed is not run again while its program, the shared libraries beside it, its data, arguments,
+  environment, shards, timeout and retries are the same; `no-cache` runs it every time.
 - Plugins: `Progmasoft.Tazel.PluginApi`, the project SDK `Progmasoft.Tazel.PluginSdk` that packs a plugin with
   `dotnet pack`, the template `dotnet new tazel-plugin`, local plugins loaded each into its own load context, and build
   steps that plugins and `BUILD.csx` files declare.

@@ -184,7 +184,7 @@ jobs:
           TAZEL_REQUIRE_MICROVM: "1"
         run: >-
           dotnet test --solution Tazel.slnx -c Release
-          --filter-class 'Progmasoft.Tazel.Tests.MicroVmBootTests'
-          --filter-class 'Progmasoft.Tazel.Tests.MicroVmProtocolTests'
-          --filter-class 'Progmasoft.Tazel.Tests.MicroVmFilesTests'
+          --filter-class 'Progmasoft.Tazel.Tests.MicroVMBootTests'
+          --filter-class 'Progmasoft.Tazel.Tests.MicroVMProtocolTests'
+          --filter-class 'Progmasoft.Tazel.Tests.MicroVMFilesTests'
           --no-progress

@@ -75,7 +75,7 @@ internal static partial class ErrorCodes
     public const string ActionsFailed = "E0501";
     public const string NoDaemon = "E0502";
     public const string Stopped = "E0503";
-    public const string MicroVm = "E0504";
+    public const string MicroVM = "E0504";
     public const string Label = "E0600";
 
     private const string Lexer = "the text files: tazel_custom.txt, tazel_options.txt and tazel_envs.txt";
@@ -239,7 +239,7 @@ internal static partial class ErrorCodes
         new(Stopped, "the command was stopped",
             "Ctrl+C or a signal stopped Tazel. The actions that were running were stopped too; what finished is kept, and " +
             "the next build goes on from there.", null, null, "MODULE.csx, BUILD.csx and builds"),
-        new(MicroVm, "the MicroVM could not run the command",
+        new(MicroVM, "the MicroVM could not run the command",
             "tazel_options.txt asks for sandboxing-with-microvm, so tazel custom runs inside a MicroVM: a Linux guest " +
             "under Cloud Hypervisor that sees the module and the host's /usr, read-only, and nothing else of the host. It " +
             "needs x86_64 Linux with KVM (/dev/kvm), virtiofsd, and the image of the guest: Tazel fetches the image of its " +

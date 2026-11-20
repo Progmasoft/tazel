@@ -62,9 +62,9 @@ internal static class Program
             reporter.Diagnostic(diagnostic);
             return 1;
         }
-        catch (MicroVm.MicroVmException error)
+        catch (MicroVM.MicroVMException error)
         {
-            reporter.Error(ErrorCodes.MicroVm, error.Message, null,
+            reporter.Error(ErrorCodes.MicroVM, error.Message, null,
                 "The sandbox stayed shut, and so did the door to your machine.");
             return 1;
         }
