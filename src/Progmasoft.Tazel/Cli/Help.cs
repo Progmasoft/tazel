@@ -55,8 +55,10 @@ internal static class Help
 
             Builds the tests of the labels and runs each in its runfiles directory, with its own TEST_TMPDIR, the
             shard variables, and a timeout from its TestSize (1, 5, 15, 60 minutes) or its Timeout; a flaky test runs
-            up to three times, and a test tagged exclusive runs alone. Logs go to .tazel/testlogs/; the output of a
-            test that failed is printed, then a table of every test.
+            up to three times, and a test tagged exclusive runs alone. A test that passed is not run again while its
+            program, data, arguments and environment are the same; it shows as PASSED (cached), and a test tagged
+            no-cache runs every time. Logs go to .tazel/testlogs/; the output of a test that failed is printed, then a
+            table of every test.
 
             {Labels}
 

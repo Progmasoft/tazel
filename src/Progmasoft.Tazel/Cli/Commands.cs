@@ -272,7 +272,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 var outcomes = await new TestRunner(planner.Layout, buildOptions.Jobs, reporter, buildOptions.Coverage)
                     .RunAsync(tests, cancel).ConfigureAwait(false);
                 reporter.TestSummary(outcomes);
-                var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Flaky);
+                var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Cached or TestStatus.Flaky);
                 if (kind == BuildKind.Coverage)
                 {
                     var reported = await CoverageReport.WriteAsync(planner, chooser, tests, reporter, cancel).ConfigureAwait(false);
