@@ -84,8 +84,15 @@ public interface IStepContext
     /// <paramref name="workingDirectory"/> or the root of the module; the result has its exit status and output.
     /// </summary>
     Task<StepRun> RunAsync(
-        string program, IReadOnlyList<string> arguments, string? workingDirectory = null,
-        CancellationToken cancellationToken = default);
+        string program, IReadOnlyList<string> arguments, string? workingDirectory, CancellationToken cancellationToken);
+
+    /// <summary>Runs <paramref name="program"/> in the root of the module; see the overload with every parameter.</summary>
+    Task<StepRun> RunAsync(string program, IReadOnlyList<string> arguments) =>
+        RunAsync(program, arguments, null, CancellationToken.None);
+
+    /// <summary>Runs <paramref name="program"/> in <paramref name="workingDirectory"/>; see the overload with every parameter.</summary>
+    Task<StepRun> RunAsync(string program, IReadOnlyList<string> arguments, string? workingDirectory) =>
+        RunAsync(program, arguments, workingDirectory, CancellationToken.None);
 
     /// <summary>Adds a line to what the step prints, shown with the step when the build reports it.</summary>
     void Log(string message);

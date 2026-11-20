@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using NuGet.Versioning;
@@ -46,6 +47,49 @@ internal sealed record CatalogEntry(
 
 /// <summary><c>modules.tazel.net/index.json</c>.</summary>
 internal sealed record Catalog([property: JsonPropertyName("modules")] IReadOnlyList<CatalogEntry> Modules);
+
+/// <summary>
+/// The names of Tazel Portal Modules, as the JSON Schema of its index has them. A name becomes a directory below
+/// vendor/ and .tazel/ and a part of an address, so a name that is not one is refused before it is used: from the
+/// command line, a project file or an index the server sent.
+/// </summary>
+internal static partial class PortalNames
+{
+    /// <summary>Throws unless <paramref name="group"/> and <paramref name="module"/> are names of the portal.</summary>
+    public static void Check(string group, string module, string where)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        ArgumentNullException.ThrowIfNull(module);
+        if (!GroupPattern().IsMatch(group))
+        {
+            throw new ProjectException($"{where}: '{group}' is not a group: lower-case names joined by dots, such as com.example");
+        }
+
+        if (!ModulePattern().IsMatch(module) || module is "." or "..")
+        {
+            throw new ProjectException($"{where}: '{module}' is not the name of a module: letters, digits and _ + . -");
+        }
+    }
+
+    /// <summary>Throws unless <paramref name="version"/> is a SemVer version as the index writes it.</summary>
+    public static void CheckVersion(string version, string where)
+    {
+        ArgumentNullException.ThrowIfNull(version);
+        if (!VersionPattern().IsMatch(version))
+        {
+            throw new ProjectException($"{where}: '{version}' is not a SemVer version");
+        }
+    }
+
+    [GeneratedRegex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$")]
+    private static partial Regex GroupPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_+.-]+$")]
+    private static partial Regex ModulePattern();
+
+    [GeneratedRegex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$")]
+    private static partial Regex VersionPattern();
+}
 
 /// <summary>
 /// The client of Tazel Portal Modules, laid out as the Bazel Central Registry is: an index per module, and each version's
@@ -102,6 +146,7 @@ internal sealed class PortalModulesClient : IDisposable
     /// <summary>The text of an index: from vendor/ when it is there, else from the portal; null for no such module.</summary>
     public async Task<string?> IndexTextAsync(string group, string module, CancellationToken cancel)
     {
+        PortalNames.Check(group, module, "Tazel Portal Modules");
         var path = $"{group}/{module}/index.json";
         if (_vendor is not null && File.Exists(Path.Combine(_vendor, group, module, "index.json")))
         {
@@ -118,6 +163,8 @@ internal sealed class PortalModulesClient : IDisposable
     public async Task<(string Archive, string Sha256)> DownloadAsync(
         string group, string module, string version, string directory, CancellationToken cancel)
     {
+        PortalNames.Check(group, module, "Tazel Portal Modules");
+        PortalNames.CheckVersion(version, $"{group}:{module}");
         var name = $"{ModuleArchive.BaseName(group, module, version)}{ModuleArchive.Extension}";
         var path = $"{group}/{module}/{version}/{name}";
         var sums = await GetTextAsync(path + ".sha256sums", cancel).ConfigureAwait(false)

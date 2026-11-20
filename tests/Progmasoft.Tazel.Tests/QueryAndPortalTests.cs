@@ -246,8 +246,10 @@ internal sealed class FakePortal : IDisposable
                 return;
             }
 
-            var file = Path.Combine(Directory, context.Request.Url!.AbsolutePath.TrimStart('/'));
-            if (File.Exists(file))
+            // The portal serves its own directory and nothing above it.
+            var root = Path.GetFullPath(Directory) + Path.DirectorySeparatorChar;
+            var file = Path.GetFullPath(Path.Combine(root, context.Request.Url!.AbsolutePath.TrimStart('/')));
+            if (file.StartsWith(root, StringComparison.Ordinal) && File.Exists(file))
             {
                 var bytes = await File.ReadAllBytesAsync(file);
                 context.Response.StatusCode = 200;
@@ -304,6 +306,38 @@ public sealed class PortalTests
         (status, output) = await module.TazelAsync(".", "fetch");
         Assert.True(status == 0, output);
         Assert.Contains("fetched 2 modules (2 of Tazel Portal Modules)", output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("com.example", "..", "is not the name of a module")]
+    [InlineData("../etc", "json", "is not a group")]
+    [InlineData("Com.Example", "json", "is not a group")]
+    public async Task ANameThatIsNotOneIsRefusedBeforeItBecomesAPath(string group, string name, string message)
+    {
+        using var module = new TemporaryModule();
+        module.Write("MODULE.csx", TemporaryModule.ModuleFile + $$"""
+
+            dependencies = Dependencies.Define(Module.From(new() { Group = "{{group}}", Name = "{{name}}", Version = "1.0.0" }));
+            """);
+        using var address = new EnvironmentVariable("TAZEL_PORTAL_MODULES_URL", "http://127.0.0.1:9");
+        var error = await Assert.ThrowsAsync<Project.ProjectException>(() => module.LoadAsync());
+        Assert.Contains(message, error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnIndexThatNamesAPathIsRefused()
+    {
+        using var served = new TemporaryModule();
+        using var portal = new FakePortal(served.Root);
+        portal.Push("com.example", "json", "1.0.0", Library, ("com.example", "..", "1.0.0"));
+        using var module = new TemporaryModule();
+        module.Write("MODULE.csx", TemporaryModule.ModuleFile + """
+
+            dependencies = Dependencies.Define(Module.From(new() { Group = "com.example", Name = "json", Version = "1.0.0" }));
+            """);
+        using var address = new EnvironmentVariable("TAZEL_PORTAL_MODULES_URL", portal.Address);
+        var error = await Assert.ThrowsAsync<Project.ProjectException>(() => module.LoadAsync());
+        Assert.Contains("the index of com.example:json: '..' is not the name of a module", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

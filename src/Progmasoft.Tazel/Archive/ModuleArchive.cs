@@ -78,6 +78,20 @@ internal static class ModuleArchive
     public static void Write(string root, string baseName, string archive, IReadOnlyList<string> files) =>
         ReproducibleArchive.Write(root, baseName, archive, files);
 
+    /// <summary>An unpacked archive has one top directory, and the file it must hold in it.</summary>
+    private static void CheckUnpacked(string work, [System.Diagnostics.CodeAnalysis.NotNull] string? top, string requiredFile, string shown)
+    {
+        if (top is null)
+        {
+            throw new ProjectException($"{shown} is empty");
+        }
+
+        if (!System.IO.File.Exists(Path.Combine(work, top, requiredFile)))
+        {
+            throw new ProjectException($"{shown} has no {top}/{requiredFile}");
+        }
+    }
+
     /// <summary>The parts of the path of an entry, which must stay inside the archive.</summary>
     private static string[] PartsOf(TarEntry entry, string shown)
     {
@@ -160,16 +174,7 @@ internal static class ModuleArchive
                 }
             }
 
-            if (top is null)
-            {
-                throw new ProjectException($"{shown} is empty");
-            }
-
-            if (!System.IO.File.Exists(Path.Combine(work, top, requiredFile)))
-            {
-                throw new ProjectException($"{shown} has no {top}/{requiredFile}");
-            }
-
+            CheckUnpacked(work, top, requiredFile, shown);
             Directory.Move(work, destination);
             return Path.Combine(destination, top);
         }

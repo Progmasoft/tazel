@@ -23,9 +23,9 @@ Contributors):
 
 | Component | License | Source |
 | --- | --- | --- |
-| Linux 6.18.64 | GPL-2.0-only WITH Linux-syscall-note | https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.64.tar.xz |
-| musl 1.2.6 (Alpine musl-1.2.6-r3) | MIT | https://musl.libc.org |
-| libgcc and libstdc++ of GCC 15.2.0 (Alpine 15.2.0-r5) | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org |
+| Linux 6.18.64 | GPL-2.0-only WITH Linux-syscall-note | <https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.64.tar.xz> |
+| musl 1.2.6 (Alpine musl-1.2.6-r3) | MIT | <https://musl.libc.org> |
+| libgcc and libstdc++ of GCC 15.2.0 (Alpine 15.2.0-r5) | GPL-3.0-or-later WITH GCC-exception-3.1 | <https://gcc.gnu.org> |
 
 Cloud Hypervisor (Apache-2.0 AND BSD-3-Clause) and virtiofsd (Apache-2.0 AND BSD-3-Clause) are not shipped: Tazel
 fetches Cloud Hypervisor from its release and uses the host's virtiofsd.

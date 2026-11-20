@@ -40,91 +40,119 @@ internal static class PortalDependencies
         PortalModulesClient client, CancellationToken cancel)
     {
         ArgumentNullException.ThrowIfNull(direct);
-        var wanted = new Dictionary<string, NuGetVersion>(StringComparer.Ordinal);
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
-        var why = new Dictionary<string, string>(StringComparer.Ordinal);
-        var queue = new Queue<string>();
+        var resolution = new Resolution(client);
         foreach (var (group, module, text, alias, place) in direct)
+        {
+            resolution.AddDirect(group, module, text, alias, place);
+        }
+
+        await resolution.RunAsync(cancel).ConfigureAwait(false);
+        return resolution.Result();
+    }
+
+    /// <summary>One resolution: each module at the highest version anything asks for, followed through the indexes.</summary>
+    private sealed class Resolution(PortalModulesClient client)
+    {
+        private readonly Dictionary<string, NuGetVersion> _wanted = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _names = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _why = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ModuleIndex> _indexes = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, NuGetVersion> _done = new(StringComparer.Ordinal);
+        private readonly Queue<string> _queue = new();
+
+        public void AddDirect(string group, string module, string text, string? alias, string place)
         {
             if (!NuGetVersion.TryParseStrict(text, out var version))
             {
                 throw new ProjectException($"{place}: '{text}' is not a SemVer version");
             }
 
+            Portal.PortalNames.Check(group, module, place);
             var key = $"{group}:{module}";
             var repository = alias ?? module;
-            if (names.TryGetValue(key, out var other) && other != repository)
+            if (_names.TryGetValue(key, out var other) && other != repository)
             {
                 throw new ProjectException($"{place}: {key} is named twice, as @{other} and @{repository}");
             }
 
-            names[key] = repository;
+            _names[key] = repository;
             Ask(key, version, place);
         }
 
-        var indexes = new Dictionary<string, ModuleIndex>(StringComparer.Ordinal);
-        var done = new Dictionary<string, NuGetVersion>(StringComparer.Ordinal);
-        while (queue.Count > 0)
+        public async Task RunAsync(CancellationToken cancel)
         {
-            var key = queue.Dequeue();
-            var version = wanted[key];
-            if (done.TryGetValue(key, out var seen) && seen == version)
+            while (_queue.Count > 0)
             {
-                continue;
-            }
+                var key = _queue.Dequeue();
+                var version = _wanted[key];
+                if (_done.TryGetValue(key, out var seen) && seen == version)
+                {
+                    continue;
+                }
 
-            done[key] = version;
-            if (!indexes.TryGetValue(key, out var index))
+                _done[key] = version;
+                var entry = await EntryAsync(key, version, cancel).ConfigureAwait(false);
+                foreach (var dependency in entry.Dependencies.Where(d => !d.Test))
+                {
+                    Follow(key, version, dependency);
+                }
+            }
+        }
+
+        public List<ResolvedModule> Result()
+        {
+            var resolved = _wanted.Select(entry =>
+            {
+                var parts = entry.Key.Split(':');
+                return new ResolvedModule(_names[entry.Key], parts[0], parts[1], entry.Value);
+            }).OrderBy(module => module.Key, StringComparer.Ordinal).ToList();
+            var clash = resolved.GroupBy(module => module.Repository).FirstOrDefault(group => group.Count() > 1);
+            return clash is null
+                ? resolved
+                : throw new ProjectException(
+                    $"{string.Join(" and ", clash.Select(m => m.Key))} would both be @{clash.Key}; give one of them an Alias");
+        }
+
+        /// <summary>The entry of <paramref name="version"/> in the index of <paramref name="key"/>, which must not be yanked.</summary>
+        private async Task<IndexVersion> EntryAsync(string key, NuGetVersion version, CancellationToken cancel)
+        {
+            if (!_indexes.TryGetValue(key, out var index))
             {
                 var parts = key.Split(':');
                 index = await client.IndexAsync(parts[0], parts[1], cancel).ConfigureAwait(false)
-                    ?? throw new ProjectException($"{why[key]}: Tazel Portal Modules has no module {key}");
-                indexes[key] = index;
+                    ?? throw new ProjectException($"{_why[key]}: Tazel Portal Modules has no module {key}");
+                _indexes[key] = index;
             }
 
-            var entry = index.Versions.FirstOrDefault(v =>
-                NuGetVersion.TryParseStrict(v.Version, out var listed) && listed == version)
+            var entry = index.Versions.FirstOrDefault(v => NuGetVersion.TryParseStrict(v.Version, out var listed) && listed == version)
                 ?? throw new ProjectException(
-                    $"{why[key]}: {key} has no version {version}; it has {string.Join(", ", index.Versions.Select(v => v.Version))}");
-            if (entry.Yanked)
-            {
-                throw new ProjectException($"{why[key]}: {key} {version} is yanked, so it takes part in no resolution");
-            }
-
-            foreach (var dependency in entry.Dependencies.Where(d => !d.Test))
-            {
-                if (!NuGetVersion.TryParseStrict(dependency.Version, out var needed))
-                {
-                    throw new ProjectException($"the index of {key} names {dependency.Group}:{dependency.Module} at '{dependency.Version}'");
-                }
-
-                var next = $"{dependency.Group}:{dependency.Module}";
-                names.TryAdd(next, dependency.Module);
-                Ask(next, needed, $"{key} {version}");
-            }
+                    $"{_why[key]}: {key} has no version {version}; it has {string.Join(", ", index.Versions.Select(v => v.Version))}");
+            return entry.Yanked
+                ? throw new ProjectException($"{_why[key]}: {key} {version} is yanked, so it takes part in no resolution")
+                : entry;
         }
 
-        var resolved = wanted.Select(entry =>
+        /// <summary>A dependency an index names, whose names and version are checked, as the server sent them.</summary>
+        private void Follow(string key, NuGetVersion version, IndexDependency dependency)
         {
-            var parts = entry.Key.Split(':');
-            return new ResolvedModule(names[entry.Key], parts[0], parts[1], entry.Value);
-        }).OrderBy(module => module.Key, StringComparer.Ordinal).ToList();
-        var clash = resolved.GroupBy(module => module.Repository).FirstOrDefault(group => group.Count() > 1);
-        if (clash is not null)
-        {
-            throw new ProjectException(
-                $"{string.Join(" and ", clash.Select(m => m.Key))} would both be @{clash.Key}; give one of them an Alias");
+            if (!NuGetVersion.TryParseStrict(dependency.Version, out var needed))
+            {
+                throw new ProjectException($"the index of {key} names {dependency.Group}:{dependency.Module} at '{dependency.Version}'");
+            }
+
+            Portal.PortalNames.Check(dependency.Group, dependency.Module, $"the index of {key}");
+            var next = $"{dependency.Group}:{dependency.Module}";
+            _names.TryAdd(next, dependency.Module);
+            Ask(next, needed, $"{key} {version}");
         }
 
-        return resolved;
-
-        void Ask(string key, NuGetVersion version, string place)
+        private void Ask(string key, NuGetVersion version, string place)
         {
-            if (!wanted.TryGetValue(key, out var current) || version > current)
+            if (!_wanted.TryGetValue(key, out var current) || version > current)
             {
-                wanted[key] = version;
-                why[key] = place;
-                queue.Enqueue(key);
+                _wanted[key] = version;
+                _why[key] = place;
+                _queue.Enqueue(key);
             }
         }
     }

@@ -84,7 +84,8 @@ internal static class Snapshots
     }
 
     /// <summary>A line diff by the longest common subsequence: ' ' for kept, '-' for stored only, '+' for new only.</summary>
-    private static List<(char Kind, string Line)> Diff(string[] expected, string[] actual)
+    /// <summary>The length of the longest common run of lines from each pair of positions on.</summary>
+    private static int[,] CommonLengths(string[] expected, string[] actual)
     {
         var lengths = new int[expected.Length + 1, actual.Length + 1];
         for (var i = expected.Length - 1; i >= 0; i--)
@@ -97,6 +98,12 @@ internal static class Snapshots
             }
         }
 
+        return lengths;
+    }
+
+    private static List<(char Kind, string Line)> Diff(string[] expected, string[] actual)
+    {
+        var lengths = CommonLengths(expected, actual);
         var result = new List<(char, string)>();
         int a = 0, b = 0;
         while (a < expected.Length || b < actual.Length)

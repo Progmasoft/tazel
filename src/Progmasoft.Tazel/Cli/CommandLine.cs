@@ -203,6 +203,19 @@ internal static class CommandLine
         public bool Has(string option) => Seen.Any(entry => entry.Option.Long == option);
     }
 
+    private static void ReadOption(
+        string argument, IReadOnlyList<string> arguments, ref int index, List<(Option, List<string>, string)> seen)
+    {
+        if (argument.StartsWith("--", StringComparison.Ordinal))
+        {
+            ReadLong(argument, arguments, ref index, seen);
+        }
+        else
+        {
+            ReadShort(argument, seen);
+        }
+    }
+
     private static Scanned Scan(IReadOnlyList<string> arguments)
     {
         string? command = null;
@@ -223,13 +236,9 @@ internal static class CommandLine
                 afterDashes.AddRange(arguments.Skip(index));
                 break;
             }
-            else if (argument.StartsWith("--", StringComparison.Ordinal))
-            {
-                ReadLong(argument, arguments, ref index, seen);
-            }
             else if (argument.StartsWith('-') && argument.Length > 1)
             {
-                ReadShort(argument, seen);
+                ReadOption(argument, arguments, ref index, seen);
             }
             else if (command is null)
             {

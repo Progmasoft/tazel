@@ -62,7 +62,7 @@ internal static class Plugins
     public static Version ApiVersion { get; } = typeof(ITazelPlugin).Assembly.GetName().Version ?? new Version(0, 1, 0);
 
     /// <summary>Loads and applies the plugins of <paramref name="module"/>.</summary>
-    public static IReadOnlyList<LoadedPlugin> Load(
+    public static IReadOnlyList<LoadedPlugin> LoadAll(
         string mainRoot, LoadedModule module, BuildContext build, Action<string> status)
     {
         ArgumentNullException.ThrowIfNull(module);
@@ -124,65 +124,55 @@ internal static class Plugins
             throw new ProjectException($"{place}: the plugin '{path}' is not a file of this module");
         }
 
-        var sha = Sha256Sums.Sha256(archive);
-        var destination = Path.Combine(mainRoot, ModuleFiles.StateDirectory, "plugins", sha[..32]);
-        var marker = Path.Combine(destination, ".unpacked");
-        string directory;
-        if (File.Exists(marker))
-        {
-            directory = Path.Combine(destination, File.ReadAllText(marker).Trim());
-        }
-        else
-        {
-            if (Directory.Exists(destination))
-            {
-                Directory.Delete(destination, recursive: true);
-            }
-
-            directory = ModuleArchive.Unpack(archive, destination, ManifestFile);
-            File.WriteAllText(marker, Path.GetFileName(directory));
-        }
-
+        var directory = Unpacked(mainRoot, archive);
         var manifest = ReadManifest(Path.Combine(directory, ManifestFile), path);
         CheckManifest(manifest, path);
         var context = new PluginLoadContext(manifest.Group + "." + manifest.Name, directory);
-        var assemblies = new List<Assembly>();
-        Assembly? entry = null;
-        foreach (var file in Directory.EnumerateFiles(directory, "*.dll").Order(StringComparer.Ordinal))
-        {
-            var name = Path.GetFileNameWithoutExtension(file);
-            if (Shared.Contains(name, StringComparer.Ordinal))
-            {
-                // Tazel's own copy is the one every plugin uses.
-                continue;
-            }
-
-            Assembly assembly;
-            try
-            {
-                assembly = context.LoadFromAssemblyPath(Path.GetFullPath(file));
-            }
-            catch (BadImageFormatException error)
-            {
-                throw new ProjectException($"{path}: {Path.GetFileName(file)} is not a .NET assembly: {error.Message}", error);
-            }
-
-            assemblies.Add(assembly);
-            if (string.Equals(Path.GetFileName(file), manifest.EntryAssembly, StringComparison.Ordinal))
-            {
-                entry = assembly;
-            }
-        }
-
-        if (entry is null)
+        // Tazel's own copy of a shared assembly is the one every plugin uses; the entry assembly comes first.
+        var assemblies = Directory.EnumerateFiles(directory, "*.dll").Order(StringComparer.Ordinal)
+            .Where(file => !Shared.Contains(Path.GetFileNameWithoutExtension(file), StringComparer.Ordinal))
+            .Select(file => (File: Path.GetFileName(file), Assembly: LoadAssembly(context, file, path)))
+            .OrderBy(loaded => loaded.File == manifest.EntryAssembly ? 0 : 1)
+            .ToList();
+        if (assemblies.Count == 0 || assemblies[0].File != manifest.EntryAssembly)
         {
             throw new ProjectException($"{path}: its manifest names the entry assembly {manifest.EntryAssembly}, which it does not hold");
         }
 
-        var plugin = new LoadedPlugin(manifest, directory, context, assemblies);
-        plugin.Assemblies.Remove(entry);
-        plugin.Assemblies.Insert(0, entry);
-        return plugin;
+        return new LoadedPlugin(manifest, directory, context, assemblies.Select(loaded => loaded.Assembly).ToList());
+    }
+
+    /// <summary>The directory of the plugin's archive, unpacked once below the state directory by its SHA-256.</summary>
+    private static string Unpacked(string mainRoot, string archive)
+    {
+        var sha = Sha256Sums.Sha256(archive);
+        var destination = Path.Combine(mainRoot, ModuleFiles.StateDirectory, "plugins", sha[..32]);
+        var marker = Path.Combine(destination, ".unpacked");
+        if (File.Exists(marker))
+        {
+            return Path.Combine(destination, File.ReadAllText(marker).Trim());
+        }
+
+        if (Directory.Exists(destination))
+        {
+            Directory.Delete(destination, recursive: true);
+        }
+
+        var directory = ModuleArchive.Unpack(archive, destination, ManifestFile);
+        File.WriteAllText(marker, Path.GetFileName(directory));
+        return directory;
+    }
+
+    private static Assembly LoadAssembly(PluginLoadContext context, string file, string shown)
+    {
+        try
+        {
+            return context.LoadFromAssemblyPath(Path.GetFullPath(file));
+        }
+        catch (BadImageFormatException error)
+        {
+            throw new ProjectException($"{shown}: {Path.GetFileName(file)} is not a .NET assembly: {error.Message}", error);
+        }
     }
 
     private static PluginManifest ReadManifest(string file, string shown)
@@ -201,6 +191,18 @@ internal static class Plugins
 
     private static void CheckManifest(PluginManifest manifest, string shown)
     {
+        CheckNames(manifest, shown);
+        CheckApi(manifest, shown);
+        var entry = manifest.EntryAssembly;
+        if (string.IsNullOrEmpty(entry) || entry.Contains('/', StringComparison.Ordinal) || entry.Contains('\\', StringComparison.Ordinal) ||
+            !entry.EndsWith(".dll", StringComparison.Ordinal))
+        {
+            throw new ProjectException($"{shown}: the entry assembly '{entry}' is not a .dll at the top");
+        }
+    }
+
+    private static void CheckNames(PluginManifest manifest, string shown)
+    {
         if (string.IsNullOrEmpty(manifest.Group) || manifest.Group.Split('.').Any(part => part.Length == 0 || !Labels.IsName(part)))
         {
             throw new ProjectException($"{shown}: the group '{manifest.Group}' of its manifest is not names joined by dots");
@@ -215,13 +217,19 @@ internal static class Plugins
         {
             throw new ProjectException($"{shown}: '{manifest.Version}' is not a SemVer version");
         }
+    }
 
+    /// <summary>
+    /// The plugin API a plugin was built against must be this Tazel's: before 1.0.0 a new MINOR may change the API, so
+    /// the MAJOR and MINOR must be the same; from 1.0.0 the MAJOR, and a MINOR no newer.
+    /// </summary>
+    private static void CheckApi(PluginManifest manifest, string shown)
+    {
         if (!Version.TryParse(manifest.PluginApi ?? "", out var api))
         {
             throw new ProjectException($"{shown}: '{manifest.PluginApi}' is not the version of a plugin API");
         }
 
-        // Before 1.0.0 a new MINOR may change the API, so a plugin needs the MAJOR and MINOR it was built against.
         var compatible = ApiVersion.Major == 0
             ? api.Major == 0 && api.Minor == ApiVersion.Minor
             : api.Major == ApiVersion.Major && api.Minor <= ApiVersion.Minor;
@@ -230,13 +238,6 @@ internal static class Plugins
             throw new ProjectException(
                 $"{shown} was built against Progmasoft.Tazel.PluginApi {api.ToString(3)}, and this Tazel has " +
                 $"{ApiVersion.ToString(3)}");
-        }
-
-        if (string.IsNullOrEmpty(manifest.EntryAssembly) || manifest.EntryAssembly.Contains('/', StringComparison.Ordinal) ||
-            manifest.EntryAssembly.Contains('\\', StringComparison.Ordinal) ||
-            !manifest.EntryAssembly.EndsWith(".dll", StringComparison.Ordinal))
-        {
-            throw new ProjectException($"{shown}: the entry assembly '{manifest.EntryAssembly}' is not a .dll at the top");
         }
     }
 
@@ -319,7 +320,7 @@ internal static class Plugins
     }
 
     /// <summary>The load context of one plugin: its own assemblies from its directory, Tazel's shared ones from Tazel.</summary>
-    private sealed class PluginLoadContext(string name, string directory) : AssemblyLoadContext(name, isCollectible: false)
+    private sealed class PluginLoadContext(string name, string directory) : AssemblyLoadContext(name)
     {
         protected override Assembly? Load(AssemblyName assemblyName)
         {

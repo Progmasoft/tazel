@@ -134,8 +134,8 @@ internal sealed partial class Planner
         public string? FindProgram(string name) => Host.Which(name);
 
         public async Task<StepRun> RunAsync(
-            string program, IReadOnlyList<string> arguments, string? workingDirectory = null,
-            CancellationToken cancellationToken = default)
+            string program, IReadOnlyList<string> arguments, string? workingDirectory,
+            CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(arguments);
             var found = Host.Which(program) ?? throw new PluginException($"{Label}: the program '{program}' is not found");

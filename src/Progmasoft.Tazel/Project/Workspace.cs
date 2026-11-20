@@ -127,24 +127,37 @@ internal sealed class Workspace
         var file = Path.Combine(root, ModuleFiles.ModuleFile);
         var shown = repository is null ? ModuleFiles.ModuleFile : $"@{repository}//{ModuleFiles.ModuleFile}";
         var globals = new ModuleGlobals();
-        var envsShown = repository is null ? Dsl.Envs.TazelEnvsFile.FileName : $"@{repository}//{Dsl.Envs.TazelEnvsFile.FileName}";
-        Dsl.Envs.ModuleEnvironment? environment;
-        try
-        {
-            environment = Dsl.Envs.ModuleEnvironment.Load(root, envsShown);
-        }
-        catch (Dsl.Custom.CustomCommandsException error)
-        {
-            throw new ProjectException(error.Message, error);
-        }
-
+        var environment = EnvironmentOf(root, repository);
         using (Dsl.Environment.EnvironmentValues.Enter(environment))
         {
             await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals)
                 .ConfigureAwait(false);
         }
+
         var definition = globals.module?.Definition
             ?? throw new ProjectException($"{shown} sets no module: module = Module.Define(new() {{ ... }});");
+        var version = Checked(definition, shown, tazelVersion);
+        return new LoadedModule(root, repository, globals, new ModuleInfo(definition.Group, definition.Name, version, definition),
+            environment);
+    }
+
+    /// <summary>The values of the module's tazel_envs.txt, or null when it has none.</summary>
+    private static Dsl.Envs.ModuleEnvironment? EnvironmentOf(string root, string? repository)
+    {
+        var shown = repository is null ? Dsl.Envs.TazelEnvsFile.FileName : $"@{repository}//{Dsl.Envs.TazelEnvsFile.FileName}";
+        try
+        {
+            return Dsl.Envs.ModuleEnvironment.Load(root, shown);
+        }
+        catch (Dsl.Custom.CustomCommandsException error)
+        {
+            throw new ProjectException(error.Message, error);
+        }
+    }
+
+    /// <summary>The version of a module, once its name, group, version and Tazel compatibility are checked.</summary>
+    private static NuGetVersion Checked(ModuleDefinition definition, string shown, Version tazelVersion)
+    {
         if (!Labels.IsName(definition.Name))
         {
             throw new ProjectException($"{shown}: the module name '{definition.Name}' must be letters, digits and _ + . -");
@@ -167,8 +180,7 @@ internal sealed class Workspace
                 $"{shown} builds with Tazel {compatibility}; this is Tazel {tazelVersion.ToString(3)}");
         }
 
-        return new LoadedModule(root, repository, globals, new ModuleInfo(definition.Group, definition.Name, version, definition),
-            environment);
+        return version;
     }
 
     private static bool IsGroup(string group) =>
@@ -257,7 +269,7 @@ internal sealed class Workspace
 
     private async Task LoadPackagesAsync(LoadedModule module, BuildContext build, Action<string> status)
     {
-        var plugins = Plugins.Load(Main.Root, module, build, status);
+        var plugins = Plugins.LoadAll(Main.Root, module, build, status);
         PluginsOf[module.Repository ?? ""] = plugins;
         var environment = Plugins.EnvironmentFor(plugins);
         var packages = ModuleFiles.Packages(module.Root);

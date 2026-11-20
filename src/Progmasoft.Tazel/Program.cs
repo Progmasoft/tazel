@@ -92,12 +92,14 @@ internal static class Program
     {
         for (; error is not null; error = error.InnerException)
         {
-            switch (error)
+            if (error is CustomCommandsException { Diagnostic: { } custom })
             {
-                case CustomCommandsException { Diagnostic: { } custom }:
-                    return custom;
-                case TazelOptionsException { Diagnostic: { } options }:
-                    return options;
+                return custom;
+            }
+
+            if (error is TazelOptionsException { Diagnostic: { } options })
+            {
+                return options;
             }
         }
 

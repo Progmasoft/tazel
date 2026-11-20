@@ -241,7 +241,8 @@ internal sealed class Sandbox : IAsyncDisposable
 
     private static async Task WaitForAsync(string socket, Process daemon, string what, CancellationToken cancel)
     {
-        for (var i = 0; i < 100 && !File.Exists(socket); i++)
+        // Thirty seconds: a loaded machine, such as one running a test suite, may be slow to start it.
+        for (var i = 0; i < 600 && !File.Exists(socket); i++)
         {
             if (daemon.HasExited)
             {
@@ -253,7 +254,7 @@ internal sealed class Sandbox : IAsyncDisposable
 
         if (!File.Exists(socket))
         {
-            throw new MicroVMException($"{what} did not open {socket} within five seconds");
+            throw new MicroVMException($"{what} did not open {socket} within thirty seconds");
         }
     }
 

@@ -131,17 +131,7 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
             return cached;
         }
 
-        if (File.Exists(run.Passed))
-        {
-            File.Delete(run.Passed);
-        }
-
-        if (Directory.Exists(run.Logs))
-        {
-            Directory.Delete(run.Logs, recursive: true);
-        }
-
-        Directory.CreateDirectory(run.Logs);
+        Forget(run);
         var attempts = settings.Flaky ? 3 : 1;
         var watch = Stopwatch.StartNew();
         var log = new StringBuilder();
@@ -164,6 +154,22 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
         }
 
         return new TestOutcome(run.Label, timedOut ? TestStatus.TimedOut : TestStatus.Failed, watch.Elapsed, log.ToString());
+    }
+
+    /// <summary>Clears what an earlier run left: its pass and its logs.</summary>
+    private static void Forget(TestRun run)
+    {
+        if (File.Exists(run.Passed))
+        {
+            File.Delete(run.Passed);
+        }
+
+        if (Directory.Exists(run.Logs))
+        {
+            Directory.Delete(run.Logs, recursive: true);
+        }
+
+        Directory.CreateDirectory(run.Logs);
     }
 
     /// <summary>The outcome of a test that passed with the same key, or null when it has to run.</summary>
