@@ -80,6 +80,26 @@ public static partial class Labels
             ? label
             : throw new LabelException($"'{text}' names packages, not one target; write //dir:name");
 
+    /// <summary>The dependency an @name label names, or null, and the rest of the label from its //.</summary>
+    private static (string? Repository, string Remainder) Repository(string text)
+    {
+        if (!text.StartsWith('@'))
+        {
+            return (null, text);
+        }
+
+        var slashes = text.IndexOf("//", StringComparison.Ordinal);
+        return slashes < 0
+            ? throw new LabelException($"'{text}' has no //; write @name//:target")
+            : (Checked(text[1..slashes], "dependency name", text), text[slashes..]);
+    }
+
+    private static LabelException NoTarget(string text, string shown)
+    {
+        var last = shown[(shown.LastIndexOf('/') + 1)..];
+        return new LabelException($"'{text}' names no target; write //{shown}:{last} or //{shown}/...");
+    }
+
     /// <summary>A target label or a package pattern; <c>:name</c> is a target of <paramref name="current"/>.</summary>
     public static Selection Selection(string text, PackageId current)
     {
@@ -90,20 +110,7 @@ public static partial class Labels
             return new TargetLabel(current, Checked(text[1..], "target name", text));
         }
 
-        string? repository = null;
-        var rest = text;
-        if (text.StartsWith('@'))
-        {
-            var slashes = text.IndexOf("//", StringComparison.Ordinal);
-            if (slashes < 0)
-            {
-                throw new LabelException($"'{text}' has no //; write @name//:target");
-            }
-
-            repository = Checked(text[1..slashes], "dependency name", text);
-            rest = text[slashes..];
-        }
-
+        var (repository, rest) = Repository(text);
         if (!rest.StartsWith("//", StringComparison.Ordinal))
         {
             throw new LabelException($"'{text}' is not a label; write //dir:name, //:name or :name");
@@ -123,9 +130,7 @@ public static partial class Labels
         var colon = body.LastIndexOf(':');
         if (colon < 0)
         {
-            var shown = body.TrimEnd('/');
-            var last = shown[(shown.LastIndexOf('/') + 1)..];
-            throw new LabelException($"'{text}' names no target; write //{shown}:{last} or //{shown}/...");
+            throw NoTarget(text, body.TrimEnd('/'));
         }
 
         var directory = body[..colon];

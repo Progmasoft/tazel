@@ -111,7 +111,7 @@ public sealed class CustomLexer(string text, string file)
 
     private CustomCommandsException Fail(
         string code, string message, int line, int column, int width, string label, string help, string joke) =>
-        new(Diagnostic.At(code, text, file, line, column, width, message, label, help, joke));
+        new(Diagnostic.At(code, text, file, new Place(line, column, width), message, label, help, joke));
 
     private char Advance()
     {
@@ -190,10 +190,7 @@ public sealed class CustomLexer(string text, string file)
 
         var value = text[begin.._position];
         Advance();
-        var valid = value == "*" ||
-            (value.Length > 0 && value[0] != '0' && value.Length <= 3 && IsDigits(value) &&
-                int.Parse(value, CultureInfo.InvariantCulture) <= CustomCommandFiles.MaxArguments);
-        if (!valid)
+        if (!IsPlaceholder(value))
         {
             throw Fail(
                 Output.ErrorCodes.PlaceholderOutOfRange,
@@ -210,6 +207,12 @@ public sealed class CustomLexer(string text, string file)
 
         return new Token(TokenKind.Placeholder, value, line, column);
     }
+
+    /// <summary>Whether <paramref name="value"/> is <c>*</c> or a number from 1 to the most arguments, with no zero in front.</summary>
+    private static bool IsPlaceholder(string value) =>
+        value == "*" ||
+        (value.Length is > 0 and <= 3 && value[0] != '0' && IsDigits(value) &&
+            int.Parse(value, CultureInfo.InvariantCulture) <= CustomCommandFiles.MaxArguments);
 
     private static bool IsDigits(string value)
     {

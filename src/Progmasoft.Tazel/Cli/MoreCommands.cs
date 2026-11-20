@@ -24,7 +24,7 @@ namespace Progmasoft.Tazel.Cli;
 /// <summary>The queries, fetching and vendoring, and Tazel Portal Modules.</summary>
 internal sealed partial class Commands
 {
-    private async Task<int> QueryAsync(QueryCommand query, CancellationToken cancel)
+    private async Task<int> QueryAsync(QueryCommand query)
     {
         RefuseWithoutSandbox();
         var (options, _) = TazelOptionsFile.Effective(workingDirectory);
@@ -131,36 +131,46 @@ internal sealed partial class Commands
     private void Explain(ExplainCommand command)
     {
         var entry = ErrorCodes.Find(command.Code)!;
-        var console = reporter.Console;
-        var fancy = console.Profile.Capabilities.Unicode;
-        console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Markup.Escape(entry.Code)}[/]: [bold]{Markup.Escape(entry.Title)}[/]  [grey]({Markup.Escape(entry.Where)})[/]");
-        if (!command.Long)
+        var fancy = reporter.Console.Profile.Capabilities.Unicode;
+        reporter.Console.MarkupLine(
+            $"[red bold]{(fancy ? "✖ " : "")}{Markup.Escape(entry.Code)}[/]: [bold]{Markup.Escape(entry.Title)}[/]  [grey]({Markup.Escape(entry.Where)})[/]");
+        if (command.Long)
         {
-            var first = entry.Explanation.IndexOf(". ", StringComparison.Ordinal);
-            console.WriteLine(first < 0 ? entry.Explanation : entry.Explanation[..(first + 1)]);
-            if (entry.Right is not null)
-            {
-                console.MarkupLine($"[green]{(fancy ? "✔ " : "")}for example:[/] {Markup.Escape(entry.Right.Replace("\n", " ", StringComparison.Ordinal))}");
-            }
+            ExplainLong(entry, fancy);
+        }
+        else
+        {
+            ExplainShort(entry, fancy);
+        }
+    }
 
-            console.MarkupLine($"[grey]More: tazel explain {entry.Code} --long[/]");
-            return;
+    /// <summary>The first sentence of the explanation and the fixed text.</summary>
+    private void ExplainShort(ErrorCode entry, bool fancy)
+    {
+        var console = reporter.Console;
+        var first = entry.Explanation.IndexOf(". ", StringComparison.Ordinal);
+        console.WriteLine(first < 0 ? entry.Explanation : entry.Explanation[..(first + 1)]);
+        if (entry.Right is not null)
+        {
+            console.MarkupLine($"[green]{(fancy ? "✔ " : "")}for example:[/] {Markup.Escape(entry.Right.Replace("\n", " ", StringComparison.Ordinal))}");
         }
 
+        console.MarkupLine($"[grey]More: tazel explain {entry.Code} --long[/]");
+    }
+
+    /// <summary>The whole explanation, the wrong and right text side by side, and the other codes of the same file.</summary>
+    private void ExplainLong(ErrorCode entry, bool fancy)
+    {
+        var console = reporter.Console;
         console.WriteLine();
         console.WriteLine(entry.Explanation);
         if (entry.Wrong is not null && entry.Right is not null)
         {
             console.WriteLine();
-            var wrong = new Panel(new Text(entry.Wrong)).Header(fancy ? " ✖ wrong " : " wrong ").BorderColor(Color.Red);
-            var right = new Panel(new Text(entry.Right)).Header(fancy ? " ✔ right " : " right ").BorderColor(Color.Green);
-            if (!fancy)
+            console.Write(new Columns(Example(entry.Wrong, "wrong", "✖", Color.Red, fancy), Example(entry.Right, "right", "✔", Color.Green, fancy))
             {
-                wrong.Border = BoxBorder.Ascii;
-                right.Border = BoxBorder.Ascii;
-            }
-
-            console.Write(new Columns(wrong, right) { Expand = false });
+                Expand = false,
+            });
         }
 
         var related = ErrorCodes.Codes.Where(other => other.Where == entry.Where && other.Code != entry.Code).Select(other => other.Code).ToList();
@@ -170,6 +180,14 @@ internal sealed partial class Commands
             console.MarkupLine($"[grey]The other errors of {Markup.Escape(entry.Where)}: {string.Join(", ", related)}[/]");
         }
     }
+
+    private static Panel Example(string text, string title, string mark, Color color, bool fancy) =>
+        new Panel(new Text(text))
+        {
+            Header = new PanelHeader(fancy ? $" {mark} {title} " : $" {title} "),
+            BorderStyle = new Style(color),
+            Border = fancy ? BoxBorder.Rounded : BoxBorder.Ascii,
+        };
 
     /// <summary>
     /// Runs the steps of a custom command inside a MicroVM that sees the module, or the directory of the command when
@@ -282,44 +300,57 @@ internal sealed partial class Commands
         var name = colon < 0 ? command.Query : command.Query[(colon + 1)..];
         if (command.Action == PortalAction.Search)
         {
-            var catalog = await client.CatalogAsync(cancel).ConfigureAwait(false);
-            var found = catalog.Modules.Where(entry => command.Exact
-                    ? entry.Group == group && entry.Module == name
-                    : $"{entry.Group}:{entry.Module}".Contains(command.Query, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(entry => entry.Group, StringComparer.Ordinal).ThenBy(entry => entry.Module, StringComparer.Ordinal).ToList();
-            if (found.Count == 0)
-            {
-                reporter.Warning($"Tazel Portal Modules has no module that matches {command.Query}");
-                return 1;
-            }
-
-            var table = new Table().Border(TableBorder.Rounded).AddColumn("Module").AddColumn("Latest").AddColumn("Description");
-            foreach (var entry in found)
-            {
-                table.AddRow(Markup.Escape($"{entry.Group}:{entry.Module}"), Markup.Escape(entry.Latest ?? ""),
-                    Markup.Escape(entry.Description ?? ""));
-            }
-
-            reporter.Console.Write(table);
-            return 0;
+            return await SearchAsync(client, command, group, name, cancel).ConfigureAwait(false);
         }
 
-        if (group is null)
-        {
-            // Without a group, the name must be one module's alone.
-            var catalog = await client.CatalogAsync(cancel).ConfigureAwait(false);
-            var groups = catalog.Modules.Where(entry => entry.Module == name).Select(entry => entry.Group).Distinct().Order().ToList();
-            group = groups.Count switch
-            {
-                0 => throw new ProjectException($"Tazel Portal Modules has no module {name}"),
-                1 => groups[0],
-                _ => throw new CommandLineException(
-                    $"{name} is a module of {string.Join(", ", groups)}; write the group: group:{name}"),
-            };
-        }
-
+        group ??= await GroupOfAsync(client, name, cancel).ConfigureAwait(false);
         var index = await client.IndexAsync(group, name, cancel).ConfigureAwait(false)
             ?? throw new ProjectException($"Tazel Portal Modules has no module {group}:{name}");
+        ShowModule(index);
+        return 0;
+    }
+
+    private async Task<int> SearchAsync(
+        PortalModulesClient client, PortalModulesCommand command, string? group, string name, CancellationToken cancel)
+    {
+        var catalog = await client.CatalogAsync(cancel).ConfigureAwait(false);
+        var found = catalog.Modules.Where(entry => command.Exact
+                ? entry.Group == group && entry.Module == name
+                : $"{entry.Group}:{entry.Module}".Contains(command.Query, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(entry => entry.Group, StringComparer.Ordinal).ThenBy(entry => entry.Module, StringComparer.Ordinal).ToList();
+        if (found.Count == 0)
+        {
+            reporter.Warning($"Tazel Portal Modules has no module that matches {command.Query}");
+            return 1;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded).AddColumn("Module").AddColumn("Latest").AddColumn("Description");
+        foreach (var entry in found)
+        {
+            table.AddRow(Markup.Escape($"{entry.Group}:{entry.Module}"), Markup.Escape(entry.Latest ?? ""),
+                Markup.Escape(entry.Description ?? ""));
+        }
+
+        reporter.Console.Write(table);
+        return 0;
+    }
+
+    /// <summary>The group of a module named without one, which must be the only module of that name.</summary>
+    private static async Task<string> GroupOfAsync(PortalModulesClient client, string name, CancellationToken cancel)
+    {
+        var catalog = await client.CatalogAsync(cancel).ConfigureAwait(false);
+        var groups = catalog.Modules.Where(entry => entry.Module == name).Select(entry => entry.Group).Distinct().Order().ToList();
+        return groups.Count switch
+        {
+            0 => throw new ProjectException($"Tazel Portal Modules has no module {name}"),
+            1 => groups[0],
+            _ => throw new CommandLineException($"{name} is a module of {string.Join(", ", groups)}; write the group: group:{name}"),
+        };
+    }
+
+    /// <summary>A module's latest version and a table of its versions, newest first.</summary>
+    private void ShowModule(ModuleIndex index)
+    {
         var highest = PortalModulesClient.Highest(index);
         reporter.Console.MarkupLine($"[bold]{Markup.Escape($"{index.Group}:{index.Module}")}[/]" +
             (highest is null ? "" : $"  latest {Markup.Escape(highest.Version)}"));
@@ -332,6 +363,5 @@ internal sealed partial class Commands
         }
 
         reporter.Console.Write(versions);
-        return 0;
     }
 }

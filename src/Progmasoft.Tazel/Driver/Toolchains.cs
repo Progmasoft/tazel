@@ -43,24 +43,9 @@ internal static class Host
         var extensions = IsWindows
             ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT").Split(';', StringSplitOptions.RemoveEmptyEntries)
             : [""];
-        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-        {
-            if (directory.Length == 0)
-            {
-                continue;
-            }
-
-            foreach (var extension in extensions.Prepend(""))
-            {
-                var candidate = Path.Combine(directory, name + extension);
-                if (File.Exists(candidate) && (IsWindows || IsExecutable(candidate)))
-                {
-                    return candidate;
-                }
-            }
-        }
-
-        return null;
+        return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(directory => extensions.Prepend("").Select(extension => Path.Combine(directory, name + extension)))
+            .FirstOrDefault(candidate => File.Exists(candidate) && (IsWindows || IsExecutable(candidate)));
     }
 
     private static bool IsExecutable(string file) =>
@@ -208,33 +193,34 @@ internal sealed class ToolchainChooser(Workspace workspace, Platform platform)
         }
     }
 
+    private static CCToolchain? HostClang()
+    {
+        var clang = Host.Which("clang");
+        var archiver = Host.Which("llvm-ar") ?? Host.Which("ar");
+        if (clang is null || archiver is null)
+        {
+            return null;
+        }
+
+        var clangxx = Host.Which("clang++") ?? clang;
+        return new CCToolchain("clang on PATH", new Tool(clang, []), new Tool(clangxx, []), new Tool(clangxx, []), new Tool(archiver, []), []);
+    }
+
+    private static CCToolchain? HostGcc() =>
+        Host.Which("gcc") is { } gcc && Host.Which("g++") is { } gxx && (Host.Which("gcc-ar") ?? Host.Which("ar")) is { } ar
+            ? new CCToolchain("gcc on PATH", new Tool(gcc, []), new Tool(gxx, []), new Tool(gxx, []), new Tool(ar, []), [])
+            : null;
+
+    private static CCToolchain? HostZig() =>
+        Host.Which("zig") is { } zig
+            ? new CCToolchain("zig cc on PATH", new Tool(zig, ["cc"]), new Tool(zig, ["c++"]), new Tool(zig, ["c++"]), new Tool(zig, ["ar"]), [])
+            : null;
+
     private CCToolchain HostCC(Family family)
     {
         RequireHost(family);
-        if (Host.Which("clang") is { } clang)
-        {
-            var clangxx = Host.Which("clang++") ?? clang;
-            var archiver = Host.Which("llvm-ar") ?? Host.Which("ar");
-            if (archiver is not null)
-            {
-                return new CCToolchain("clang on PATH", new Tool(clang, []), new Tool(clangxx, []), new Tool(clangxx, []),
-                    new Tool(archiver, []), []);
-            }
-        }
-
-        if (family == Family.CC && Host.Which("gcc") is { } gcc && Host.Which("g++") is { } gxx &&
-            (Host.Which("gcc-ar") ?? Host.Which("ar")) is { } ar)
-        {
-            return new CCToolchain("gcc on PATH", new Tool(gcc, []), new Tool(gxx, []), new Tool(gxx, []), new Tool(ar, []), []);
-        }
-
-        if (family == Family.CC && Host.Which("zig") is { } zig)
-        {
-            return new CCToolchain("zig cc on PATH", new Tool(zig, ["cc"]), new Tool(zig, ["c++"]), new Tool(zig, ["c++"]),
-                new Tool(zig, ["ar"]), []);
-        }
-
-        throw new ProjectException(
+        var found = HostClang() ?? (family == Family.CC ? HostGcc() ?? HostZig() : null);
+        return found ?? throw new ProjectException(
             $"no {FamilyName(family)} compiler on PATH (clang{(family == Family.CC ? ", gcc or zig" : "")}); " +
             "install one or register a toolchain in MODULE.csx");
     }

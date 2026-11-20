@@ -127,7 +127,7 @@ public static class CustomParser
 
             if (token is null)
             {
-                throw new CustomCommandsException(Diagnostic.At(code, text, file, 1, 1, 1, $"expected {wanted}",
+                throw new CustomCommandsException(Diagnostic.At(code, text, file, new Place(1, 1, 1), $"expected {wanted}",
                     "the file is empty here", help, Jokes.Missing(kind)));
             }
 

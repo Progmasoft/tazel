@@ -37,7 +37,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             TestCommand test => BuildAsync(test.Labels, test.Flags, BuildKind.Test, null, cancel),
             CoverageCommand coverage => BuildAsync(coverage.Labels, coverage.Flags, BuildKind.Coverage, null, cancel),
             RunCommand run => BuildAsync(run.Label is null ? [] : [run.Label], run.Flags, BuildKind.Run, run.Arguments, cancel),
-            QueryCommand query => QueryAsync(query, cancel),
+            QueryCommand query => QueryAsync(query),
             FetchCommand => FetchAsync(),
             VendorCommand => VendorAsync(cancel),
             PortalModulesCommand portal => PortalModulesAsync(portal, cancel),
@@ -151,6 +151,15 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     private async Task<int> CustomAsync(CustomCommandLine custom, CancellationToken cancel)
     {
         var (options, sandboxFile) = TazelOptionsFile.Effective(workingDirectory);
+        var (command, arguments) = FindCustom(custom.Words);
+        return sandboxFile is null
+            ? CustomOnHost(command, arguments)
+            : await CustomInMicroVMAsync(command, arguments, options, sandboxFile, cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>The command of tazel_custom.txt the words name, and its arguments, which must fit what it takes.</summary>
+    private (CustomCommand Command, IReadOnlyList<string> Arguments) FindCustom(IReadOnlyList<string> words)
+    {
         var file = Path.Combine(workingDirectory, CustomCommandFiles.FileName);
         if (!File.Exists(file))
         {
@@ -158,30 +167,24 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         }
 
         var commands = CustomParser.Parse(File.ReadAllText(file));
-        if (custom.Words.Count > CustomCommandFiles.MaxArguments)
+        if (words.Count > CustomCommandFiles.MaxArguments)
         {
             throw new CommandLineException($"tazel custom takes at most {CustomCommandFiles.MaxArguments} words");
         }
 
-        var match = commands.Matching(custom.Words) ?? throw new CustomCommandsException(
-            $"{CustomCommandFiles.FileName} has no command '{string.Join(' ', custom.Words.TakeWhile(w => w != CustomCommandFiles.NameEnd))}'" +
-            (Suggestions.Nearest(string.Join(' ', custom.Words), commands.Select(c => c.Name)) is { } near ? $"; did you mean '{near}'?" : ""));
-        var (command, arguments) = match;
-        if (arguments.Count < command.Required)
-        {
-            throw new CommandLineException($"'{command.Name}' needs {command.Required} arguments, and {arguments.Count} were given");
-        }
+        var (command, arguments) = commands.Matching(words) ?? throw new CustomCommandsException(
+            $"{CustomCommandFiles.FileName} has no command '{string.Join(' ', words.TakeWhile(w => w != CustomCommandFiles.NameEnd))}'" +
+            (Suggestions.Nearest(string.Join(' ', words), commands.Select(c => c.Name)) is { } near ? $"; did you mean '{near}'?" : ""));
+        var fits = arguments.Count == command.Required || (arguments.Count > command.Required && command.TakesAll);
+        return fits
+            ? (command, arguments)
+            : throw new CommandLineException(
+                $"'{command.Name}' {(arguments.Count < command.Required ? "needs" : "takes")} {command.Required} arguments, and {arguments.Count} were given");
+    }
 
-        if (arguments.Count > command.Required && !command.TakesAll)
-        {
-            throw new CommandLineException($"'{command.Name}' takes {command.Required} arguments, and {arguments.Count} were given");
-        }
-
-        if (sandboxFile is not null)
-        {
-            return await CustomInMicroVMAsync(command, arguments, options, sandboxFile, cancel).ConfigureAwait(false);
-        }
-
+    /// <summary>Runs the steps on this machine, in order, until one fails.</summary>
+    private int CustomOnHost(CustomCommand command, IReadOnlyList<string> arguments)
+    {
         var environment = Processes.Inherited();
         foreach (var step in command.Steps)
         {

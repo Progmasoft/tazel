@@ -154,43 +154,43 @@ internal sealed class Reporter
     /// A problem in a file the user wrote, drawn as a little picture: the line, a mark under the problem with what it
     /// says, how to fix it, and a light line.
     /// </summary>
-    public void Diagnostic(Dsl.Custom.Diagnostic diagnostic)
+    public void Diagnostic(Dsl.Custom.Diagnostic problem)
     {
-        ArgumentNullException.ThrowIfNull(diagnostic);
+        ArgumentNullException.ThrowIfNull(problem);
         lock (_lock)
         {
             var fancy = Console.Profile.Capabilities.Unicode;
-            var number = diagnostic.Line.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var number = problem.Line.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var pad = new string(' ', number.Length);
             var bar = fancy ? "│" : "|";
-            var before = new string(' ', Math.Max(0, diagnostic.Column - 1));
-            var width = Math.Max(1, diagnostic.Width);
+            var before = new string(' ', Math.Max(0, problem.Column - 1));
+            var width = Math.Max(1, problem.Width);
             string Gutter(string left) => $"[blue]{left} {bar}[/]";
 
-            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Heading(diagnostic.Code)}[/] [bold]{Markup.Escape(diagnostic.Message)}[/]");
-            Console.MarkupLine($"[blue]{pad} {(fancy ? "╭─[[" : ",-[[")}[/] [cyan]{Markup.Escape($"{Shown(diagnostic.File)}:{diagnostic.Line}:{diagnostic.Column}")}[/] [blue]]][/]");
+            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Heading(problem.Code)}[/] [bold]{Markup.Escape(problem.Message)}[/]");
+            Console.MarkupLine($"[blue]{pad} {(fancy ? "╭─[[" : ",-[[")}[/] [cyan]{Markup.Escape($"{Shown(problem.File)}:{problem.Line}:{problem.Column}")}[/] [blue]]][/]");
             Console.MarkupLine(Gutter(pad));
-            if (diagnostic.SourceLine.Length > 0 || diagnostic.Column == 1)
+            if (problem.SourceLine.Length > 0 || problem.Column == 1)
             {
-                Console.MarkupLine($"{Gutter(number)} {Markup.Escape(diagnostic.SourceLine)}");
+                Console.MarkupLine($"{Gutter(number)} {Markup.Escape(problem.SourceLine)}");
                 var mark = fancy
                     ? (width == 1 ? "┬" : new string('─', width / 2) + "┬" + new string('─', width - (width / 2) - 1))
                     : new string('^', width);
                 var tee = fancy ? before + new string(' ', width / 2) : before;
                 Console.MarkupLine($"{Gutter(pad)} [red bold]{Markup.Escape(before + mark)}[/]");
-                Console.MarkupLine($"{Gutter(pad)} [red bold]{Markup.Escape(tee + (fancy ? "╰── " : "`-- "))}{Markup.Escape(diagnostic.Label)}[/]");
+                Console.MarkupLine($"{Gutter(pad)} [red bold]{Markup.Escape(tee + (fancy ? "╰── " : "`-- "))}{Markup.Escape(problem.Label)}[/]");
                 Console.MarkupLine(Gutter(pad));
             }
 
-            if (diagnostic.Help is not null)
+            if (problem.Help is not null)
             {
-                Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [green]{(fancy ? "💡 " : "")}help:[/] {Markup.Escape(diagnostic.Help)}");
+                Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [green]{(fancy ? "💡 " : "")}help:[/] {Markup.Escape(problem.Help)}");
             }
 
-            Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [cyan]{(fancy ? "📖 " : "")}more:[/] tazel explain {diagnostic.Code}");
-            if (diagnostic.Joke is not null)
+            Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [cyan]{(fancy ? "📖 " : "")}more:[/] tazel explain {problem.Code}");
+            if (problem.Joke is not null)
             {
-                Console.MarkupLine($"[blue]{pad} {(fancy ? "╰─" : "`-")}[/] [magenta italic]{(fancy ? "🎭 " : "")}{Markup.Escape(diagnostic.Joke)}[/]");
+                Console.MarkupLine($"[blue]{pad} {(fancy ? "╰─" : "`-")}[/] [magenta italic]{(fancy ? "🎭 " : "")}{Markup.Escape(problem.Joke)}[/]");
             }
         }
     }

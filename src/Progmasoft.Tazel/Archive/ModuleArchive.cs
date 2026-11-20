@@ -78,12 +78,51 @@ internal static class ModuleArchive
     public static void Write(string root, string baseName, string archive, IReadOnlyList<string> files) =>
         ReproducibleArchive.Write(root, baseName, archive, files);
 
+    /// <summary>The parts of the path of an entry, which must stay inside the archive.</summary>
+    private static string[] PartsOf(TarEntry entry, string shown)
+    {
+        var name = entry.Name.TrimEnd('/');
+        var parts = name.Split('/');
+        return name.Length == 0 || name.StartsWith('/') || name.Contains('\\', StringComparison.Ordinal) ||
+            parts.Any(part => part is "" or "." or "..")
+            ? throw new ProjectException($"{shown}: '{entry.Name}' is not a path inside the archive")
+            : parts;
+    }
+
+    /// <summary>Writes a directory or a file of the archive; anything else is refused. Returns the bytes written.</summary>
+    private static long Extract(TarEntry entry, string target, string shown)
+    {
+        if (entry.EntryType == TarEntryType.Directory)
+        {
+            Directory.CreateDirectory(target);
+            return 0;
+        }
+
+        if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile))
+        {
+            throw new ProjectException($"{shown}: '{entry.Name}' is a {entry.EntryType}; an archive holds only files");
+        }
+
+        // The size is checked before the bytes are written, so a huge entry is refused unwritten.
+        if (entry.Length > MaxUnpackedBytes)
+        {
+            throw new ProjectException($"{shown} unpacks to more than {MaxUnpackedBytes} bytes");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        entry.ExtractToFile(target, overwrite: false);
+        return entry.Length;
+    }
+
     /// <summary>
     /// Unpacks <paramref name="archive"/> into <paramref name="destination"/>, which must not exist, and returns the
     /// directory of the module in it. Every entry must be below one top directory; links, devices, absolute paths and
     /// <c>..</c> are refused, as are archives over <see cref="MaxUnpackedBytes"/> or <see cref="MaxEntries"/>.
     /// </summary>
-    public static string Unpack(string archive, string destination, string requiredFile = ModuleFiles.ModuleFile)
+    public static string Unpack(string archive, string destination) => Unpack(archive, destination, ModuleFiles.ModuleFile);
+
+    /// <inheritdoc cref="Unpack(string, string)"/>
+    public static string Unpack(string archive, string destination, string requiredFile)
     {
         var shown = Path.GetFileName(archive);
         var parent = Path.GetDirectoryName(Path.GetFullPath(destination))!;
@@ -106,38 +145,17 @@ internal static class ModuleArchive
                         throw new ProjectException($"{shown} holds more than {MaxEntries} entries");
                     }
 
-                    var name = entry.Name.TrimEnd('/');
-                    var parts = name.Split('/');
-                    if (name.Length == 0 || name.StartsWith('/') || name.Contains('\\', StringComparison.Ordinal) ||
-                        parts.Any(part => part is "" or "." or ".."))
-                    {
-                        throw new ProjectException($"{shown}: '{entry.Name}' is not a path inside the archive");
-                    }
-
+                    var parts = PartsOf(entry, shown);
                     top ??= parts[0];
                     if (parts[0] != top)
                     {
                         throw new ProjectException($"{shown}: '{entry.Name}' is not below {top}/");
                     }
 
-                    var target = Path.Combine(work, Path.Combine(parts));
-                    switch (entry.EntryType)
+                    total += Extract(entry, Path.Combine(work, Path.Combine(parts)), shown);
+                    if (total > MaxUnpackedBytes)
                     {
-                        case TarEntryType.Directory:
-                            Directory.CreateDirectory(target);
-                            break;
-                        case TarEntryType.RegularFile or TarEntryType.V7RegularFile:
-                            total += entry.Length;
-                            if (total > MaxUnpackedBytes)
-                            {
-                                throw new ProjectException($"{shown} unpacks to more than {MaxUnpackedBytes} bytes");
-                            }
-
-                            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                            entry.ExtractToFile(target, overwrite: false);
-                            break;
-                        default:
-                            throw new ProjectException($"{shown}: '{entry.Name}' is a {entry.EntryType}; an archive holds only files");
+                        throw new ProjectException($"{shown} unpacks to more than {MaxUnpackedBytes} bytes");
                     }
                 }
             }

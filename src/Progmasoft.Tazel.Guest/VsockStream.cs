@@ -10,10 +10,10 @@ namespace Progmasoft.Tazel.Guest;
 
 /// <summary>A connected vsock socket as a stream, over read and write; .NET has no vsock address family.</summary>
 [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-internal sealed class VsockStream(int fd) : Stream
+internal sealed class VsockStream(int socket) : Stream
 {
     private readonly Lock _writing = new();
-    private int _fd = fd;
+    private int _fd = socket;
 
     public override bool CanRead => true;
 
@@ -116,10 +116,10 @@ internal sealed class VsockStream(int fd) : Stream
 
     protected override void Dispose(bool disposing)
     {
-        var fd = Interlocked.Exchange(ref _fd, -1);
-        if (fd >= 0)
+        var closing = Interlocked.Exchange(ref _fd, -1);
+        if (closing >= 0)
         {
-            Libc.Close(fd);
+            Libc.Close(closing);
         }
 
         base.Dispose(disposing);

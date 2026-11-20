@@ -213,6 +213,9 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
                     case MessageKind.PowerOff:
                         off.Set();
                         break;
+                    default:
+                        // A connection opens with Hello, Run or PowerOff; anything else is closed unanswered.
+                        break;
                 }
             }
             catch (Exception error) when (error is IOException or InvalidDataException or EndOfStreamException)
@@ -284,6 +287,8 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
             }
             catch (Exception error) when (error is IOException or InvalidDataException or EndOfStreamException)
             {
+                // The host went away: that is a stop too.
+                Console.Error.WriteLine($"tazel-guest: the host left while {program} ran: {error.Message}");
             }
 
             if (!process.HasExited)

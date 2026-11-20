@@ -6,6 +6,12 @@ using Progmasoft.Tazel.Dsl.Custom.Lexer;
 
 namespace Progmasoft.Tazel.Dsl.Custom;
 
+/// <summary>Where a problem is: its line and column, from 1, and how many characters the mark covers.</summary>
+/// <param name="Line">The line.</param>
+/// <param name="Column">The column.</param>
+/// <param name="Width">The width of the mark.</param>
+public readonly record struct Place(int Line, int Column, int Width);
+
 /// <summary>
 /// A problem in a file the user wrote, with all it takes to show it well: where it is, the line it is on, what to put
 /// under the mark, how to fix it, and a joke to soften the blow.
@@ -26,18 +32,18 @@ public sealed record Diagnostic(
     /// <summary>The message with its place, as one plain line: <c>file:line:column: message</c>.</summary>
     public string Plain => $"{File}:{Line}:{Column}: {Message}";
 
-    /// <summary>A problem at <paramref name="line"/>:<paramref name="column"/> of <paramref name="text"/>.</summary>
+    /// <summary>A problem at <paramref name="place"/> of <paramref name="text"/>.</summary>
     public static Diagnostic At(
-        string code, string text, string file, int line, int column, int width, string message, string label, string? help = null,
-        string? joke = null)
+        string code, string text, string file, Place place, string message, string label, string? help, string? joke)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return new Diagnostic(code, file, line, column, Math.Max(1, width), LineOf(text, line), message, label, help, joke);
+        return new Diagnostic(code, file, place.Line, place.Column, Math.Max(1, place.Width), LineOf(text, place.Line), message, label,
+            help, joke);
     }
 
     /// <summary>A problem at <paramref name="token"/>, marking all of it, quotes too.</summary>
     public static Diagnostic AtToken(
-        string code, string text, string file, Token token, string message, string label, string? help = null, string? joke = null)
+        string code, string text, string file, Token token, string message, string label, string? help, string? joke)
     {
         ArgumentNullException.ThrowIfNull(token);
         var width = token.Kind switch
@@ -46,12 +52,12 @@ public sealed record Diagnostic(
             TokenKind.Placeholder => token.Text.Length + 2,
             _ => token.Text.Length,
         };
-        return At(code, text, file, token.Line, token.Column, width, message, label, help, joke);
+        return At(code, text, file, new Place(token.Line, token.Column, width), message, label, help, joke);
     }
 
     /// <summary>A problem just after <paramref name="token"/>, where something is missing.</summary>
     public static Diagnostic After(
-        string code, string text, string file, Token token, string message, string label, string? help = null, string? joke = null)
+        string code, string text, string file, Token token, string message, string label, string? help, string? joke)
     {
         ArgumentNullException.ThrowIfNull(token);
         var marked = AtToken(code, text, file, token, message, label, help, joke);

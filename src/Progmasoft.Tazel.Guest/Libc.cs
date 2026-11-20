@@ -68,12 +68,23 @@ internal static partial class Libc
 
     /// <summary><c>struct sockaddr_vm</c>.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    public struct SockaddrVM
+    public struct SockaddrVM : IEquatable<SockaddrVM>
     {
         public ushort Family;
         public ushort Reserved;
         public uint Port;
         public uint Cid;
         public uint Zero;
+
+        public static bool operator ==(SockaddrVM left, SockaddrVM right) => left.Equals(right);
+
+        public static bool operator !=(SockaddrVM left, SockaddrVM right) => !left.Equals(right);
+
+        public readonly bool Equals(SockaddrVM other) =>
+            Family == other.Family && Reserved == other.Reserved && Port == other.Port && Cid == other.Cid && Zero == other.Zero;
+
+        public override readonly bool Equals(object? obj) => obj is SockaddrVM other && Equals(other);
+
+        public override readonly int GetHashCode() => HashCode.Combine(Family, Reserved, Port, Cid, Zero);
     }
 }
