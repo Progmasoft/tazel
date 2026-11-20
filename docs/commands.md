@@ -152,9 +152,9 @@ than one group. `--` ends the options, so a query may start with a dash.
 # comment
 <# comment #>
 
-example-version: '0.1.0'
-example-output: ("rustc" "--help")
-shell-expansion: s(`$HOME`)
+example-version: '0.1.0';
+example-output: ("rustc" "--help");
+shell-expansion: s(`$HOME`);
 ```
 
 `tazel_envs.txt` sits beside the `MODULE.csx` of a module and names values that its `MODULE.csx` and `BUILD.csx`
@@ -166,8 +166,7 @@ using Progmasoft.Tazel.Dsl.Environment;
 var exampleVersion = GetEnvironment.From("example-version"); // "0.1.0"; null for a name the file does not have
 ```
 
-- It is read with the lexer of `tazel_custom.txt`: the same comments and strings; the entries follow one another
-  with no `;` between them.
+- It is read with the lexer of `tazel_custom.txt`: the same comments and strings; every value ends with `;`.
 - A string is the value as written. `("program" "argument")` starts a program directly, each string one argument;
   `s("line")` gives one line to `/bin/sh` on Linux, macOS and the BSDs and to `cmd.exe` on Windows. Their value is
   what they print, less the line endings at its end. A program runs when its value is first asked for, once per

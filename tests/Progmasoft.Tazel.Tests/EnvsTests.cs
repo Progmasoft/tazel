@@ -17,9 +17,9 @@ public sealed class EnvsTests
         # comment
         <# comment #>
 
-        example-version: '0.1.0'
-        example-output: ("rustc" "--help")
-        shell-expension: s(`$HOME`)
+        example-version: '0.1.0';
+        example-output: ("rustc" "--help");
+        shell-expension: s(`$HOME`);
         """;
 
     [Fact]
@@ -34,16 +34,17 @@ public sealed class EnvsTests
     }
 
     [Fact]
-    public void ValuesFollowOneAnotherWithoutSemicolons() =>
-        Assert.Equal(2, TazelEnvsFile.Parse("a: 'x' b: \"y\"").Count);
+    public void EveryValueEndsWithASemicolon() =>
+        Assert.Equal(2, TazelEnvsFile.Parse("a: 'x'; b: \"y\";").Count);
 
     [Theory]
-    [InlineData("a: 'x'\na: 'y'", "'a' is set twice")]
-    [InlineData("a: 'x';", "has no ';' after it")]
+    [InlineData("a: 'x';\na: 'y';", "'a' is set twice")]
+    [InlineData("a: 'x'", "expected ';' after the value of a")]
+    [InlineData("a: 'x' b: 'y';", "expected ';' after the value of a")]
     [InlineData("a 'x'", "expected ':' after a")]
-    [InlineData("a: ()", "a program names at least itself")]
-    [InlineData("a: s('x' 'y')", "s(...) takes one string")]
-    [InlineData("a: ('echo' <1>)", "takes no <N> or <*>")]
+    [InlineData("a: ();", "a program names at least itself")]
+    [InlineData("a: s('x' 'y');", "s(...) takes one string")]
+    [InlineData("a: ('echo' <1>);", "takes no <N> or <*>")]
     [InlineData("a: b", "expected the value of a")]
     [InlineData("a: 'x", "has no closing '")]
     public void RefusesWhatIsWrongWithItsPlace(string text, string message)
@@ -72,9 +73,9 @@ public sealed class EnvsTests
             .Write("MODULE.csx", TemporaryModule.ModuleFile)
             .Write("BUILD.csx", Build)
             .Write("tazel_envs.txt", """
-                example-version: '0.1.0'
-                from-shell: s('echo shell-said')
-                from-program: ("dotnet" "--version")
+                example-version: '0.1.0';
+                from-shell: s('echo shell-said');
+                from-program: ("dotnet" "--version");
                 """);
         var workspace = await module.LoadAsync();
         var name = workspace.Targets.Keys.Single().Name;
@@ -95,7 +96,7 @@ public sealed class EnvsTests
         using var module = new TemporaryModule()
             .Write("MODULE.csx", TemporaryModule.ModuleFile)
             .Write("BUILD.csx", "using Progmasoft.Tazel.Dsl.Environment;\nvar x = GetEnvironment.From(\"broken\");")
-            .Write("tazel_envs.txt", "broken: s('exit 3')\n");
+            .Write("tazel_envs.txt", "broken: s('exit 3');\n");
         var error = await Assert.ThrowsAsync<ProjectException>(() => module.LoadAsync());
         Assert.Contains("tazel_envs.txt:1: broken ran", error.Message, StringComparison.Ordinal);
         Assert.Contains("failed with 3", error.Message, StringComparison.Ordinal);

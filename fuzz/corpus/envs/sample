@@ -1,6 +1,6 @@
 # comment
 <# comment #>
 
-example-version: '0.1.0'
-example-output: ("rustc" "--help")
-shell-expension: s(`$HOME`)
+example-version: '0.1.0';
+example-output: ("rustc" "--help");
+shell-expension: s(`$HOME`);
