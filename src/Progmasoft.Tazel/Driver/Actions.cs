@@ -38,6 +38,9 @@ internal sealed class BuildAction
     /// <summary>Work done in Tazel after the command succeeded, such as the links of a shared library.</summary>
     public Action? After { get; init; }
 
+    /// <summary>Work that runs in Tazel instead of <see cref="Command"/>, such as a step of a plugin.</summary>
+    public Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<ProcessResult>>? Work { get; init; }
+
     /// <summary>The actions whose outputs this one reads.</summary>
     public List<BuildAction> Prerequisites { get; } = [];
 

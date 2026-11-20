@@ -61,6 +61,18 @@ internal static class TargetChecks
             }
         }
 
+        if (target.Family == Family.Plugin)
+        {
+            foreach (var output in ((PluginApi.Steps.StepSettings)target.Settings).Outputs)
+            {
+                if (output.Length == 0 || System.IO.Path.IsPathRooted(output) || output.Contains('\\', StringComparison.Ordinal) ||
+                    output.Split('/').Any(part => part is "" or "." or ".."))
+                {
+                    throw new ProjectException($"{place}: the output '{output}' must be a path below the step's output directory");
+                }
+            }
+        }
+
         if (target.Family == Family.Zig && target.Settings is not ZigModuleSettings)
         {
             throw new ProjectException($"{place}: {target.Label} has settings of another family");

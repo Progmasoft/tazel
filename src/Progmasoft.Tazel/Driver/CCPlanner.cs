@@ -87,7 +87,7 @@ internal sealed partial class Planner
         var objectsDirectory = $"{directory}/_objs/{target.Label.Name}";
         var packageRoot = FileSets.ToRoot(target.PackageDirectory, Layout.MainRoot);
         var pic = target.Kind != TargetKind.Executable && target.Kind != TargetKind.Test &&
-            Options.Platform.GetOs() != Os.Windows;
+            Options.Platform.GetOS() != OS.Windows;
         var objc = settings as IObjectiveCSettings;
         var nonArc = objc is null
             ? new HashSet<string>(StringComparer.Ordinal)
@@ -153,6 +153,12 @@ internal sealed partial class Planner
                 }
             }
 
+            if (Options.Coverage)
+            {
+                RequireClang(toolchain, target);
+                command.AddRange(["-fprofile-instr-generate", "-fcoverage-mapping"]);
+            }
+
             command.AddRange(Options.CompilerOptions);
             command.AddRange(cxx ? Options.CppCompilerOptions : Options.CCompilerOptions);
             command.AddRange(["-MD", "-MF", objectFile + ".d", "-c", source, "-o", objectFile]);
@@ -206,7 +212,7 @@ internal sealed partial class Planner
         else
         {
             // Apple's ar has no D; ZERO_AR_DATE in the environment of the actions makes it deterministic instead.
-            var appleAr = Host.Platform.GetOs() == Os.MacOS &&
+            var appleAr = Host.Platform.GetOS() == OS.MacOS &&
                 Path.GetFileNameWithoutExtension(toolchain.Archiver.Program) == "ar";
             command.Add(appleAr ? "rcs" : "rcsD");
             command.AddRange(Flags(features, CCAction.CppLinkStaticLibrary));
@@ -244,9 +250,9 @@ internal sealed partial class Planner
             var version = ((CCSharedLibrarySettings)settings).LibraryVersion;
             var (file, linkWith, soname) = SharedLibraryNames(directory, target.Label.Name, version);
             output = file;
-            var os = Options.Platform.GetOs();
-            command.Add(os == Os.MacOS ? "-dynamiclib" : "-shared");
-            if (os == Os.MacOS)
+            var os = Options.Platform.GetOS();
+            command.Add(os == OS.MacOS ? "-dynamiclib" : "-shared");
+            if (os == OS.MacOS)
             {
                 command.AddRange(["-install_name", $"@rpath/{soname}"]);
                 if (version is not null)
@@ -255,7 +261,7 @@ internal sealed partial class Planner
                         "-compatibility_version", $"{version.Major}.0.0"]);
                 }
             }
-            else if (os != Os.Windows && soname is not null)
+            else if (os != OS.Windows && soname is not null)
             {
                 command.Add($"-Wl,-soname,{soname}");
             }
@@ -289,6 +295,11 @@ internal sealed partial class Planner
             _ => Files.None,
         };
         var extraFiles = FileSets.Resolve(extra, target.PackageDirectory, Layout.MainRoot, target.Place);
+        if (Options.Coverage)
+        {
+            command.Add("-fprofile-instr-generate");
+        }
+
         command.AddRange(Options.LinkerOptions);
         var link = new BuildAction
         {
@@ -337,6 +348,17 @@ internal sealed partial class Planner
         }
 
         return toolchain.Features.Where(feature => on.Contains(feature.Name)).ToList();
+    }
+
+    /// <summary>LLVM source-based coverage needs clang; gcc and zig cc write another format.</summary>
+    private static void RequireClang(CCToolchain toolchain, ProjectTarget target)
+    {
+        if (!Path.GetFileNameWithoutExtension(toolchain.C.Program).Contains("clang", StringComparison.Ordinal) ||
+            toolchain.C.Prefix.Count > 0)
+        {
+            throw new ProjectException(
+                $"tazel coverage needs clang, and {target.Label} is built with {toolchain.C} of {toolchain.Name}");
+        }
     }
 
     private static IEnumerable<string> Flags(IReadOnlyList<Feature> features, CCAction action) =>

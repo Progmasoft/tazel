@@ -33,6 +33,9 @@ internal sealed record BuildOptions
     public IReadOnlyList<string> LinkerOptions { get; init; } = [];
 
     public IReadOnlyList<string> ZigCompilerOptions { get; init; } = [];
+
+    /// <summary>Whether C-family code is built with LLVM source-based coverage, for <c>tazel coverage</c>.</summary>
+    public bool Coverage { get; init; }
 }
 
 /// <summary>Where a build writes, below the state directory of the main module.</summary>
@@ -43,7 +46,11 @@ internal sealed class OutputLayout(string mainRoot, BuildOptions options)
 
     /// <summary>The outputs of this platform and mode, relative to <see cref="MainRoot"/>.</summary>
     public string OutRoot { get; } =
-        $"{ModuleFiles.StateDirectory}/out/{options.Platform.Name()}-{options.Mode.ToString().ToLowerInvariant()}";
+        $"{ModuleFiles.StateDirectory}/out/{options.Platform.Name()}-{options.Mode.ToString().ToLowerInvariant()}" +
+        (options.Coverage ? "-coverage" : "");
+
+    /// <summary>Where <c>tazel coverage</c> writes its report, relative to <see cref="MainRoot"/>.</summary>
+    public string CoverageRoot { get; } = $"{ModuleFiles.StateDirectory}/coverage";
 
     /// <summary>Where the tests write their logs, relative to <see cref="MainRoot"/>.</summary>
     public string TestLogs { get; } = $"{ModuleFiles.StateDirectory}/testlogs";

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Progmasoft",
+  "classifications": ["Tazel", "Plugin", "Library"],
+  "identity": "Progmasoft.Tazel.PluginTemplates.TazelPlugin",
+  "name": "Tazel plugin",
+  "shortName": "tazel-plugin",
+  "description": "A Tazel plugin with a build step, packed by dotnet pack into a .tazel.tar.xz.",
+  "sourceName": "PluginProject",
+  "preferNameDirectory": true,
+  "tags": { "language": "C#", "type": "project" },
+  "symbols": {
+    "group": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "com.example.plugins",
+      "replaces": "com.example.plugins",
+      "description": "The group of the plugin, as in com.example.plugins."
+    },
+    "pluginName": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "plugin",
+      "replaces": "PLUGIN_NAME",
+      "description": "The name of the plugin."
+    }
+  }
+}

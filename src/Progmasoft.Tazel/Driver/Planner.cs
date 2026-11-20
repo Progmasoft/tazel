@@ -79,7 +79,12 @@ internal sealed partial class Planner
             return known;
         }
 
-        var products = target.Family == Family.Zig ? PlanZig(target) : PlanCC(target);
+        var products = target.Family switch
+        {
+            Family.Zig => PlanZig(target),
+            Family.Plugin => PlanStep(target),
+            _ => PlanCC(target),
+        };
         _planned[target] = products;
         return products;
     }
@@ -144,7 +149,7 @@ internal sealed partial class Planner
         var actions = new List<BuildAction>();
         var sharedDirectories = new List<string>();
         var tail = new List<string>();
-        var os = Options.Platform.GetOs();
+        var os = Options.Platform.GetOS();
         foreach (var (_, products) in LinkOrder(target))
         {
             if (products.Main is { } main)
@@ -157,7 +162,7 @@ internal sealed partial class Planner
                 inputs.Add(library);
                 if (products.AlwaysLink && !products.IsShared && !forZig)
                 {
-                    arguments.AddRange(os == Os.MacOS
+                    arguments.AddRange(os == OS.MacOS
                         ? [$"-Wl,-force_load,{library}"]
                         : ["-Wl,--whole-archive", library, "-Wl,--no-whole-archive"]);
                 }
@@ -183,11 +188,11 @@ internal sealed partial class Planner
         {
             var relative = Path.GetRelativePath(outputDirectory, directory).Replace('\\', '/');
             var suffix = relative == "." ? "" : "/" + relative;
-            if (os == Os.MacOS)
+            if (os == OS.MacOS)
             {
                 arguments.Add($"-Wl,-rpath,@loader_path{suffix}");
             }
-            else if (os != Os.Windows)
+            else if (os != OS.Windows)
             {
                 arguments.Add($"-Wl,-rpath,$ORIGIN{suffix}");
             }
@@ -201,18 +206,18 @@ internal sealed partial class Planner
 
     /// <summary>The file names of libraries and programs on the platform of the build.</summary>
     private string StaticLibraryName(string name) =>
-        Options.Platform.GetOs() == Os.Windows ? $"{name}.lib" : $"lib{name}.a";
+        Options.Platform.GetOS() == OS.Windows ? $"{name}.lib" : $"lib{name}.a";
 
-    private string ExecutableName(string name) => Options.Platform.GetOs() == Os.Windows ? $"{name}.exe" : name;
+    private string ExecutableName(string name) => Options.Platform.GetOS() == OS.Windows ? $"{name}.exe" : name;
 
     /// <summary>The file a shared library is written to, the file its dependents link, and its soname.</summary>
     private (string File, string LinkWith, string? Soname) SharedLibraryNames(string directory, string name, Version? version)
     {
-        switch (Options.Platform.GetOs())
+        switch (Options.Platform.GetOS())
         {
-            case Os.Windows:
+            case OS.Windows:
                 return ($"{directory}/{name}.dll", $"{directory}/{name}.lib", null);
-            case Os.MacOS:
+            case OS.MacOS:
                 var mac = version is null ? $"lib{name}.dylib" : $"lib{name}.{version.Major}.dylib";
                 return ($"{directory}/{mac}", $"{directory}/{mac}", mac);
             default:
@@ -231,7 +236,7 @@ internal sealed partial class Planner
     /// <summary>Makes <c>libx.so.1</c> and <c>libx.so</c> point at <c>libx.so.1.2.0</c>.</summary>
     private Action? SonameLinks(string file, string? soname, string name)
     {
-        if (Options.Platform.GetOs() is Os.Windows or Os.MacOS || soname is null || Path.GetFileName(file) == soname)
+        if (Options.Platform.GetOS() is OS.Windows or OS.MacOS || soname is null || Path.GetFileName(file) == soname)
         {
             return null;
         }

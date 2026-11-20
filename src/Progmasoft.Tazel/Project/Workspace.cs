@@ -19,8 +19,12 @@ namespace Progmasoft.Tazel.Project;
 internal sealed record ModuleInfo(string Group, string Name, NuGetVersion Version, ModuleDefinition Definition);
 
 /// <summary>A module whose MODULE.csx ran: the main one, or a dependency by the name its labels use.</summary>
-internal sealed class LoadedModule(string root, string? repository, ModuleGlobals globals, ModuleInfo info)
+internal sealed class LoadedModule(
+    string root, string? repository, ModuleGlobals globals, ModuleInfo info, Dsl.Envs.ModuleEnvironment? environment)
 {
+    /// <summary>The values of its <c>tazel_envs.txt</c>, or null when it has none.</summary>
+    public Dsl.Envs.ModuleEnvironment? Environment { get; } = environment;
+
     public string Root { get; } = root;
 
     public string? Repository { get; } = repository;
@@ -96,16 +100,18 @@ internal sealed class Workspace
     public List<ProjectToolchain> Registered { get; } = [];
 
     /// <summary>Loads the module that <paramref name="directory"/> is in, with the modules it depends on.</summary>
-    public static async Task<Workspace> LoadAsync(string directory, BuildContext build, Version tazelVersion)
+    public static async Task<Workspace> LoadAsync(
+        string directory, BuildContext build, Version tazelVersion, Action<string>? status = null)
     {
         var root = ModuleFiles.FindRoot(directory);
         var main = await LoadModuleAsync(root, null, tazelVersion).ConfigureAwait(false);
         var workspace = new Workspace(main);
         await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
-        await workspace.LoadPackagesAsync(main, build).ConfigureAwait(false);
+        await workspace.LoadPortalModulesAsync(tazelVersion, offline: false).ConfigureAwait(false);
+        await workspace.LoadPackagesAsync(main, build, status ?? (_ => { })).ConfigureAwait(false);
         foreach (var module in workspace.External.Values)
         {
-            await workspace.LoadPackagesAsync(module, build).ConfigureAwait(false);
+            await workspace.LoadPackagesAsync(module, build, status ?? (_ => { })).ConfigureAwait(false);
         }
 
         workspace.Resolve();
@@ -121,8 +127,22 @@ internal sealed class Workspace
         var file = Path.Combine(root, ModuleFiles.ModuleFile);
         var shown = repository is null ? ModuleFiles.ModuleFile : $"@{repository}//{ModuleFiles.ModuleFile}";
         var globals = new ModuleGlobals();
-        await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals)
-            .ConfigureAwait(false);
+        var envsShown = repository is null ? Dsl.Envs.TazelEnvsFile.FileName : $"@{repository}//{Dsl.Envs.TazelEnvsFile.FileName}";
+        Dsl.Envs.ModuleEnvironment? environment;
+        try
+        {
+            environment = Dsl.Envs.ModuleEnvironment.Load(root, envsShown);
+        }
+        catch (Dsl.Custom.CustomCommandsException error)
+        {
+            throw new ProjectException(error.Message, error);
+        }
+
+        using (Dsl.Environment.EnvironmentValues.Enter(environment))
+        {
+            await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals)
+                .ConfigureAwait(false);
+        }
         var definition = globals.module?.Definition
             ?? throw new ProjectException($"{shown} sets no module: module = Module.Define(new() {{ ... }});");
         if (!Labels.IsName(definition.Name))
@@ -147,7 +167,8 @@ internal sealed class Workspace
                 $"{shown} builds with Tazel {compatibility}; this is Tazel {tazelVersion.ToString(3)}");
         }
 
-        return new LoadedModule(root, repository, globals, new ModuleInfo(definition.Group, definition.Name, version, definition));
+        return new LoadedModule(root, repository, globals, new ModuleInfo(definition.Group, definition.Name, version, definition),
+            environment);
     }
 
     private static bool IsGroup(string group) =>
@@ -160,9 +181,9 @@ internal sealed class Workspace
         {
             if (dependency.Portal is { } portal)
             {
-                throw new ProjectException(
-                    $"{module.Shown(ModuleFiles.ModuleFile)}: {portal.Group}:{portal.Name}:{portal.Version} is a module of " +
-                    "Tazel Portal Modules, and this Tazel fetches no modules; use LocalModule.From with its archive");
+                // Modules of Tazel Portal are resolved together, once every local module is loaded.
+                PortalRequests.Add((portal.Group, portal.Name, portal.Version, portal.Alias, module.Shown(ModuleFiles.ModuleFile)));
+                continue;
             }
 
             var local = dependency.Local!;
@@ -184,8 +205,61 @@ internal sealed class Workspace
         }
     }
 
-    private async Task LoadPackagesAsync(LoadedModule module, BuildContext build)
+    /// <summary>The modules of Tazel Portal Modules the project files ask for, before resolution.</summary>
+    private List<(string Group, string Module, string Version, string? Alias, string Place)> PortalRequests { get; } = [];
+
+    /// <summary>The modules of Tazel Portal Modules the build uses, at the versions the resolution chose.</summary>
+    public List<ResolvedModule> PortalModules { get; } = [];
+
+    /// <summary>Resolves the modules of Tazel Portal Modules, then fetches and loads each.</summary>
+    private async Task LoadPortalModulesAsync(Version tazelVersion, bool offline)
     {
+        if (PortalRequests.Count == 0)
+        {
+            return;
+        }
+
+        using var client = new Portal.PortalModulesClient(vendor: System.IO.Path.Combine(Main.Root, PortalDependencies.VendorDirectory));
+        var resolved = await PortalDependencies.ResolveAsync(PortalRequests, client, System.Threading.CancellationToken.None)
+            .ConfigureAwait(false);
+        foreach (var module in resolved)
+        {
+            if (External.ContainsKey(module.Repository))
+            {
+                throw new ProjectException($"{module.Key} would be @{module.Repository}, the name of a local module; give it an Alias");
+            }
+
+            var root = await PortalDependencies.FetchAsync(Main.Root, module, offline ? null : client,
+                System.Threading.CancellationToken.None).ConfigureAwait(false);
+            External[module.Repository] = await LoadModuleAsync(root, module.Repository, tazelVersion).ConfigureAwait(false);
+            PortalModules.Add(module);
+        }
+    }
+
+    /// <summary>The modules of Tazel Portal Modules that <paramref name="directory"/>'s module needs, resolved but not fetched.</summary>
+    public static async Task<(LoadedModule Main, IReadOnlyList<ResolvedModule> Modules)> ResolvePortalAsync(
+        string directory, Version tazelVersion, Portal.PortalModulesClient client)
+    {
+        var main = await LoadMainModuleAsync(directory, tazelVersion).ConfigureAwait(false);
+        var workspace = new Workspace(main);
+        await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
+        if (workspace.PortalRequests.Count == 0)
+        {
+            return (main, []);
+        }
+
+        return (main, await PortalDependencies.ResolveAsync(workspace.PortalRequests, client, System.Threading.CancellationToken.None)
+            .ConfigureAwait(false));
+    }
+
+    /// <summary>The plugins each module loaded, by its repository (null for the main module).</summary>
+    public Dictionary<string, IReadOnlyList<LoadedPlugin>> PluginsOf { get; } = new(StringComparer.Ordinal);
+
+    private async Task LoadPackagesAsync(LoadedModule module, BuildContext build, Action<string> status)
+    {
+        var plugins = Plugins.Load(Main.Root, module, build, status);
+        PluginsOf[module.Repository ?? ""] = plugins;
+        var environment = Plugins.EnvironmentFor(plugins);
         var packages = ModuleFiles.Packages(module.Root);
         var scopes = await Task.WhenAll(packages.Select(package => Task.Run(async () =>
         {
@@ -193,8 +267,9 @@ internal sealed class Workspace
             var scope = new DeclarationScope(package.Path, shown);
             var code = await File.ReadAllTextAsync(package.File).ConfigureAwait(false);
             using (Declarations.Enter(scope))
+            using (Dsl.Environment.EnvironmentValues.Enter(module.Environment))
             {
-                await ScriptHost.RunAsync(code, shown, new BuildGlobals(build)).ConfigureAwait(false);
+                await ScriptHost.RunAsync(code, shown, new BuildGlobals(build), environment).ConfigureAwait(false);
             }
 
             return (Package: package, Scope: scope);
@@ -241,7 +316,8 @@ internal sealed class Workspace
             foreach (var reference in target.Settings.Depends.Items)
             {
                 var found = Find(reference.Label, target);
-                if (found.Kind is TargetKind.Executable or TargetKind.Test)
+                // A step may need a program the build makes; what compiles and links takes libraries and steps.
+                if (found.Kind is TargetKind.Executable or TargetKind.Test && target.Family != Family.Plugin)
                 {
                     throw new ProjectException($"{target.Place}: {found.Label} is a {Describe(found)}; only libraries are linked");
                 }

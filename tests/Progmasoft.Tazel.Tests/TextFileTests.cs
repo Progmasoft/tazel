@@ -90,10 +90,10 @@ public sealed class TazelOptionsTests
             microvm-cpus: "auto";
             platform: macos-x86_64
             """);
-        Assert.True(options.SandboxingWithMicrovm);
-        Assert.False(options.MicrovmNetwork);
-        Assert.Equal(new Allocation(2048), options.MicrovmMemory);
-        Assert.Equal(Allocation.Auto, options.MicrovmCpus);
+        Assert.True(options.SandboxingWithMicroVM);
+        Assert.False(options.MicroVMNetwork);
+        Assert.Equal(new Allocation(2048), options.MicroVMMemory);
+        Assert.Equal(Allocation.Auto, options.MicroVMCpus);
         Assert.Equal(Platform.MacOSX86_64, options.Platform);
     }
 
@@ -117,7 +117,7 @@ public sealed class TazelOptionsTests
         module.Write("tazel_options.txt", "sandboxing-with-microvm: true;")
             .Write("inner/tazel_options.txt", "sandboxing-with-microvm: false; platform: linux-aarch64;");
         var (options, file) = TazelOptionsFile.Effective(Path.Combine(module.Root, "inner"));
-        Assert.True(options.SandboxingWithMicrovm);
+        Assert.True(options.SandboxingWithMicroVM);
         Assert.Equal(Platform.LinuxAarch64, options.Platform);
         Assert.Equal(Path.Combine(module.Root, "tazel_options.txt"), file);
     }

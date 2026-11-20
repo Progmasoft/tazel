@@ -9,6 +9,12 @@
 | --- | --- |
 | `src/Progmasoft.Tazel.Dsl` | the types project files are written against; scripts reference this assembly alone |
 | `src/Progmasoft.Tazel` | the `tazel` command |
+| `src/Progmasoft.Tazel.PluginApi` | the API of plugins and their build steps (NuGet `Progmasoft.Tazel.PluginApi`) |
+| `src/Progmasoft.Tazel.PluginSdk` | the MSBuild project SDK of plugins and the task that packs them |
+| `src/Progmasoft.Tazel.PluginTemplates` | `dotnet new tazel-plugin` |
+| `src/Progmasoft.Tazel.Guest` | `tazel-guest`, the first process of the MicroVM's Linux guest |
+| `microvm/` | the guest kernel's options and `build.cs`, which builds the guest image |
+| `src/Shared` | the reproducible archive writer, compiled into tazel and the SDK task |
 | `tests/Progmasoft.Tazel.Tests` | xUnit tests, with CsCheck for properties and Snapshooter for snapshots |
 | `benchmarks/Progmasoft.Tazel.Benchmarks` | BenchmarkDotNet measurements of the readers |
 | `fuzz/Progmasoft.Tazel.Fuzz` | SharpFuzz targets for libFuzzer |
@@ -25,6 +31,7 @@
 | `Progmasoft.Tazel.Output` | prints through Spectre.Console |
 | `Progmasoft.Tazel.Dsl.Custom`, `.Lexer`, `.Parser` | `tazel_custom.txt` |
 | `Progmasoft.Tazel.Dsl.Options` | `tazel_options.txt`, with the lexer of `tazel_custom.txt` |
+| `Progmasoft.Tazel.Dsl.Envs` | `tazel_envs.txt` and the values `GetEnvironment.From` reads, with the same lexer |
 
 ## A build
 

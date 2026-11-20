@@ -53,8 +53,9 @@ toolchains = Toolchains.Define("//toolchains:clang");
 - A dependency is a `LocalModule`: Tazel checks its archive against the SHA-256 and unpacks it once below `.tazel/`.
   Its public targets are `@name//dir:x`. `Module.From`, a module of Tazel Portal Modules, is refused by this Tazel,
   which fetches nothing.
-- This Tazel reads `Cache.Remote`, `Execution.Remote`, `Execution.Memory` and `plugins` and says, as a warning, that
-  it does not act on them.
+- `plugins` loads local plugin archives ([Plugins](plugins.md)).
+- This Tazel reads `Cache.Remote`, `Execution.Remote` and `Execution.Memory` and says, as a warning, that it does not
+  act on them.
 
 ## BUILD.csx
 
@@ -122,7 +123,7 @@ CC.Test("math_test", new()
   `ObjectiveC` targets build for the two macOS platforms. `//...` leaves out a target that does not build for the
   platform of the command, with every target that depends on it, and says how many it left out; naming it is an error.
   `Tags = ["manual"]` keeps a target out of `//...` as well.
-- **Conditions** are C#: `Build.Mode` (`BuildMode.Debug`, `Release`), `Build.Platform`, `Build.Os`, `Build.Arch`.
+- **Conditions** are C#: `Build.Mode` (`BuildMode.Debug`, `Release`), `Build.Platform`, `Build.OS`, `Build.Arch`.
 - **Headers** of a target are found below the root of its module and below its `IncludeDirectories`, by it and by
   what depends on it.
 

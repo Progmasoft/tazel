@@ -11,6 +11,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
+    <ProjectReference Include="../Progmasoft.Tazel.PluginApi/Progmasoft.Tazel.PluginApi.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/*.cs" LinkBase="Shared" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Spectre.Console" />
