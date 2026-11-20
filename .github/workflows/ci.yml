@@ -30,6 +30,7 @@ jobs:
     permissions:
       contents: read # the checkout
       id-token: write # Codecov takes the coverage with an OIDC token instead of a secret
+      checks: write # the macOS watchdog writes what the runner does into a check run
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +101,12 @@ jobs:
 
       # On macOS a run has stopped the whole machine, so that the job ended without a log. There each test class runs
       # in a step of its own; a step's log is kept when it ends, so the class at fault is the first step without one.
+      - name: Start the watchdog (macOS)
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: nohup bash .github/macos-watchdog.sh > "$RUNNER_TEMP/watchdog.log" 2>&1 &
+
       - name: Test ActionCacheTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
@@ -114,12 +121,47 @@ jobs:
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
           --filter-class Progmasoft.Tazel.Tests.ArchiveTests
 
-      - name: Test BuildCommandTests (macOS)
+      - name: Test BuildCommandTests.BuildsRunsAndTestsAModule (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
         run: >-
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
-          --filter-class Progmasoft.Tazel.Tests.BuildCommandTests
+          --filter-method Progmasoft.Tazel.Tests.BuildCommandTests.BuildsRunsAndTestsAModule
+
+      - name: Test BuildCommandTests.ACompilerErrorStopsTheBuildWithItsCommand (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-method Progmasoft.Tazel.Tests.BuildCommandTests.ACompilerErrorStopsTheBuildWithItsCommand
+
+      - name: Test BuildCommandTests.ASandboxAskedForStopsTheBuild (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-method Progmasoft.Tazel.Tests.BuildCommandTests.ASandboxAskedForStopsTheBuild
+
+      - name: Test BuildCommandTests.BuildsAZigProgramThatImportsAModule (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-method Progmasoft.Tazel.Tests.BuildCommandTests.BuildsAZigProgramThatImportsAModule
+
+      - name: Test BuildCommandTests.PackagesTheModuleReproducibly (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-method Progmasoft.Tazel.Tests.BuildCommandTests.PackagesTheModuleReproducibly
+
+      - name: Test BuildCommandTests.ADependencyComesFromItsArchive (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-method Progmasoft.Tazel.Tests.BuildCommandTests.ADependencyComesFromItsArchive
 
       - name: Test CommandLineTests (macOS)
         if: runner.os == 'macOS'
@@ -288,6 +330,18 @@ jobs:
         run: >-
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
           --filter-class Progmasoft.Tazel.Tests.WorkspaceTests
+
+      - name: Close the watchdog (macOS)
+        if: always() && runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          pkill -f macos-watchdog.sh || true
+          id=$(cat "$RUNNER_TEMP/watchdog-check-run" 2>/dev/null) || exit 0
+          conclusion=neutral
+          [ "$OUTCOME" = success ] && conclusion=success
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/check-runs/$id" -f status=completed -f conclusion="$conclusion" > /dev/null
 
       - name: Test
         # A test that hangs is named and dumped at 15 minutes, and the run stops itself at 20, before the step's own
