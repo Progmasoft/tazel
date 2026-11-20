@@ -42,7 +42,7 @@ public sealed class PlannerTests
             {
                 CCompiler = @"{{Path.Combine(root, "tools", "cc")}}",
                 CppCompiler = @"{{Path.Combine(root, "tools", "c++")}}",
-                Archiver = @"{{Path.Combine(root, "tools", "ar")}}",
+                Archiver = @"{{Path.Combine(root, "tools", "llvm-ar")}}",
             },
             Features = [warnings, lto],
         });
@@ -104,7 +104,7 @@ public sealed class PlannerTests
             .Write("BUILD.csx", Build)
             .Write("src/a.cpp", "").Write("src/b.cpp", "").Write("src/shared.c", "").Write("src/main.cc", "")
             .Write("include/math.hpp", "").Write("zig/core.zig", "").Write("zig/main.zig", "").Write("zig/shim.c", "")
-            .Write("tools/cc", "").Write("tools/c++", "").Write("tools/ar", "").Write("tools/zig", "");
+            .Write("tools/cc", "").Write("tools/c++", "").Write("tools/llvm-ar", "").Write("tools/zig", "");
         var workspace = await Workspace.LoadAsync(module.Root, new BuildContext(BuildMode.Debug, Platform.LinuxAmd64),
             new Version(0, 1, 0));
         var options = new BuildOptions
@@ -139,7 +139,7 @@ public sealed class PlannerTests
         module.Write("MODULE.csx", ModuleWithToolchain(module.Root))
             .Write("toolchains/BUILD.csx", Toolchain(module.Root))
             .Write("BUILD.csx", "using Progmasoft.Tazel.Dsl.Build.Prelude;\nCC.StaticLibrary(\"x\", new() { Features = [CC.Enable(\"asan\")] });")
-            .Write("tools/cc", "").Write("tools/c++", "").Write("tools/ar", "").Write("tools/zig", "");
+            .Write("tools/cc", "").Write("tools/c++", "").Write("tools/llvm-ar", "").Write("tools/zig", "");
         var workspace = await Workspace.LoadAsync(module.Root, new BuildContext(BuildMode.Debug, Platform.LinuxAmd64),
             new Version(0, 1, 0));
         var planner = new Planner(workspace, new BuildOptions { Platform = Platform.LinuxAmd64 },

@@ -74,14 +74,19 @@ jobs:
           path: ${{ runner.temp }}/llvm
           key: llvm-23.1.5-x86_64-pc-windows-msvc
 
+      # Windows' own tar (libarchive) unpacks zstd and takes D:\ as a drive, not as a remote host.
       - name: Install LLVM
         if: runner.os == 'Windows' && steps.llvm.outputs.cache-hit != 'true'
-        shell: bash
+        shell: pwsh
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/llvm.tar.zst" "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/clang%2Bllvm-23.1.5-x86_64-pc-windows-msvc.tar.zst"
-          echo "b2be33385ddc86e83511417a060de927ae8b09d1f3017cc3cdce5c73cd5029d7  $RUNNER_TEMP/llvm.tar.zst" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/llvm"
-          tar --zstd -xf "$RUNNER_TEMP/llvm.tar.zst" -C "$RUNNER_TEMP/llvm" --strip-components=1
+          $archive = Join-Path $env:RUNNER_TEMP "llvm.tar.zst"
+          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/clang%2Bllvm-23.1.5-x86_64-pc-windows-msvc.tar.zst" -OutFile $archive
+          $sha = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          if ($sha -ne "b2be33385ddc86e83511417a060de927ae8b09d1f3017cc3cdce5c73cd5029d7") { throw "LLVM has the SHA-256 $sha" }
+          $llvm = Join-Path $env:RUNNER_TEMP "llvm"
+          New-Item -ItemType Directory -Force $llvm | Out-Null
+          & "$env:SystemRoot\System32\tar.exe" -xf $archive -C $llvm --strip-components 1
+          if ($LASTEXITCODE -ne 0) { throw "tar failed with $LASTEXITCODE" }
 
       - name: Put LLVM first on PATH
         if: runner.os == 'Windows'

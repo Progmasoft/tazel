@@ -224,11 +224,9 @@ internal sealed partial class Planner
         ProjectTarget target, ZigModuleSettings settings, ZigOptimization optimization, List<string> inputs,
         IReadOnlyList<string> includeDirectories)
     {
-        var options = new List<string> { "-O", OptimizationName(optimization) };
-        if (Options.Platform != Host.Platform)
-        {
-            options.AddRange(["-target", ZigTriple(Options.Platform)]);
-        }
+        // The target is always named, so the output is the same on every machine that builds it: zig's baseline CPU
+        // of the platform, never the features of the processor that runs the build.
+        var options = new List<string> { "-O", OptimizationName(optimization), "-target", ZigTriple(Options.Platform) };
 
         if (settings is ZigCompiledSettings { PositionIndependentCode: true })
         {

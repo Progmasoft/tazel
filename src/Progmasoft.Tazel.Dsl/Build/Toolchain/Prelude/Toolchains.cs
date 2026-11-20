@@ -85,12 +85,6 @@ public sealed class CCTools
 
     /// <summary>The archiver of static libraries.</summary>
     public string? Archiver { get; init; }
-
-    /// <summary>clang-tidy, for <c>tazel lint</c>.</summary>
-    public string? ClangTidy { get; init; }
-
-    /// <summary>clang-format, for <c>tazel format</c>.</summary>
-    public string? ClangFormat { get; init; }
 }
 
 /// <summary>A C-family toolchain: the platform it runs on, the one it builds for, its tools and features.</summary>

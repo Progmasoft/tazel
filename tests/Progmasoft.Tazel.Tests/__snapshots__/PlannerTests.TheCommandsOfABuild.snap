@@ -183,6 +183,8 @@
       "-Wl,--as-needed",
       "-O",
       "Debug",
+      "-target",
+      "x86_64-linux",
       "-I.",
       "-Iinclude",
       "-cflags",
@@ -196,6 +198,8 @@
       "-Mroot=zig/main.zig",
       "-O",
       "Debug",
+      "-target",
+      "x86_64-linux",
       "-Mcore=zig/core.zig"
     ],
     "Inputs": [
