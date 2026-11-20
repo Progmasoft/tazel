@@ -94,6 +94,49 @@ internal static class Processes
         return new ProcessResult(process.ExitCode, Text(output));
     }
 
+    /// <summary>Runs <paramref name="command"/> and keeps what it prints apart from its errors.</summary>
+    public static async Task<(int ExitCode, string Output, string Errors)> CaptureAsync(
+        IReadOnlyList<string> command, string directory, IReadOnlyDictionary<string, string> environment, CancellationToken cancel)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(environment);
+        var start = new ProcessStartInfo(command[0])
+        {
+            WorkingDirectory = directory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        for (var i = 1; i < command.Count; i++)
+        {
+            start.ArgumentList.Add(command[i]);
+        }
+
+        start.Environment.Clear();
+        foreach (var (name, value) in environment)
+        {
+            start.Environment[name] = value;
+        }
+
+        using var process = new Process { StartInfo = start };
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception error)
+        {
+            return (-1, "", $"{command[0]} could not be started: {error.Message}");
+        }
+
+        process.StandardInput.Close();
+        var output = process.StandardOutput.ReadToEndAsync(cancel);
+        var errors = process.StandardError.ReadToEndAsync(cancel);
+        await process.WaitForExitAsync(cancel).ConfigureAwait(false);
+        return (process.ExitCode, await output.ConfigureAwait(false), await errors.ConfigureAwait(false));
+    }
+
     /// <summary>Runs <paramref name="command"/> with the terminal of Tazel, as <c>tazel run</c> does.</summary>
     public static int RunAttached(IReadOnlyList<string> command, string directory, IReadOnlyDictionary<string, string> environment)
     {

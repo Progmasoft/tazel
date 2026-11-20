@@ -29,6 +29,7 @@
 | `Progmasoft.Tazel.Output` | prints through Spectre.Console |
 | `Progmasoft.Tazel.Dsl.Custom`, `.Lexer`, `.Parser` | `tazel_custom.txt` |
 | `Progmasoft.Tazel.Dsl.Options` | `tazel_options.txt`, with the lexer of `tazel_custom.txt` |
+| `Progmasoft.Tazel.Dsl.Envs` | `tazel_envs.txt` and the values `GetEnvironment.From` reads, with the same lexer |
 
 ## A build
 

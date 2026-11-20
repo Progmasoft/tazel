@@ -146,3 +146,31 @@ tazel portal-modules info --exact -- com.example:json
 with their push dates and dependencies; without `-e` the group may be left out unless the name is a module of more
 than one group. `--` ends the options, so a query may start with a dash.
 
+## tazel_envs.txt
+
+```text
+# comment
+<# comment #>
+
+example-version: '0.1.0'
+example-output: ("rustc" "--help")
+shell-expansion: s(`$HOME`)
+```
+
+`tazel_envs.txt` sits beside the `MODULE.csx` of a module and names values that its `MODULE.csx` and `BUILD.csx`
+files read:
+
+```cs
+using Progmasoft.Tazel.Dsl.Environment;
+
+var exampleVersion = GetEnvironment.From("example-version"); // "0.1.0"; null for a name the file does not have
+```
+
+- It is read with the lexer of `tazel_custom.txt`: the same comments and strings; a `;` after a value is optional.
+- A string is the value as written. `("program" "argument")` starts a program directly, each string one argument;
+  `s("line")` gives one line to `/bin/sh` on Linux, macOS and the BSDs and to `cmd.exe` on Windows. Their value is
+  what they print, less the line endings at its end. A program runs when its value is first asked for, once per
+  command, in the root of the module with Tazel's environment; one that fails stops the project file that asked.
+- A value is not an environment variable: it reaches no shell, no program Tazel runs and not Tazel itself; only
+  `GetEnvironment.From` reads it.
+
