@@ -99,7 +99,10 @@ jobs:
         run: dotnet build Tazel.slnx -c Release
 
       - name: Test
-        run: dotnet test --solution Tazel.slnx -c Release --no-build --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+        # A test that hangs for 15 minutes is dumped and named, instead of the job running into its timeout unnamed.
+        run: >-
+          dotnet test --solution Tazel.slnx -c Release --no-build --coverlet --coverlet-output-format cobertura
+          --results-directory artifacts/coverage --hangdump --hangdump-timeout 15m --hangdump-type Mini
 
       - name: Run the built Tazel
         run: dotnet src/Progmasoft.Tazel/bin/Release/net10.0/tazel.dll version

@@ -147,10 +147,9 @@ internal static class Plugins
     {
         var sha = Sha256Sums.Sha256(archive);
         var destination = Path.Combine(mainRoot, ModuleFiles.StateDirectory, "plugins", sha[..32]);
-        var marker = Path.Combine(destination, ".unpacked");
-        if (File.Exists(marker))
+        if (ModuleArchive.FromMarker(destination) is { } unpacked)
         {
-            return Path.Combine(destination, File.ReadAllText(marker).Trim());
+            return unpacked;
         }
 
         if (Directory.Exists(destination))
@@ -159,7 +158,7 @@ internal static class Plugins
         }
 
         var directory = ModuleArchive.Unpack(archive, destination, ManifestFile);
-        File.WriteAllText(marker, Path.GetFileName(directory));
+        ModuleArchive.WriteMarker(destination, directory);
         return directory;
     }
 

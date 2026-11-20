@@ -19,5 +19,6 @@
     <PackageReference Include="CsCheck" />
     <PackageReference Include="Snapshooter.Xunit3" />
     <PackageReference Include="coverlet.MTP" />
+    <PackageReference Include="Microsoft.Testing.Extensions.HangDump" />
   </ItemGroup>
 </Project>

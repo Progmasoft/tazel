@@ -246,10 +246,12 @@ internal sealed class FakePortal : IDisposable
                 return;
             }
 
-            // The portal serves its own directory and nothing above it.
-            var root = Path.GetFullPath(Directory) + Path.DirectorySeparatorChar;
-            var file = Path.GetFullPath(Path.Combine(root, context.Request.Url!.AbsolutePath.TrimStart('/')));
-            if (file.StartsWith(root, StringComparison.Ordinal) && File.Exists(file))
+            // The portal serves the files of its own directory, found by listing it: what a request asks for is only
+            // compared with them, never made into a path.
+            var wanted = context.Request.Url!.AbsolutePath.TrimStart('/');
+            var file = System.IO.Directory.EnumerateFiles(Directory, "*", SearchOption.AllDirectories)
+                .FirstOrDefault(path => Path.GetRelativePath(Directory, path).Replace('\\', '/') == wanted);
+            if (file is not null)
             {
                 var bytes = await File.ReadAllBytesAsync(file);
                 context.Response.StatusCode = 200;

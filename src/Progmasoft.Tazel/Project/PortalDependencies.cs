@@ -195,10 +195,9 @@ internal static class PortalDependencies
         }
 
         var destination = Path.Combine(mainRoot, ModuleFiles.StateDirectory, "external", $"{module.BaseName}-{sha[..16]}");
-        var marker = Path.Combine(destination, ".unpacked");
-        if (File.Exists(marker))
+        if (ModuleArchive.FromMarker(destination) is { } unpacked)
         {
-            return Path.Combine(destination, (await File.ReadAllTextAsync(marker, cancel).ConfigureAwait(false)).Trim());
+            return unpacked;
         }
 
         if (Directory.Exists(destination))
@@ -207,7 +206,7 @@ internal static class PortalDependencies
         }
 
         var root = ModuleArchive.Unpack(archive, destination);
-        await File.WriteAllTextAsync(marker, Path.GetFileName(root), cancel).ConfigureAwait(false);
+        ModuleArchive.WriteMarker(destination, root);
         return root;
     }
 }

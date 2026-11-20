@@ -78,6 +78,31 @@ internal static class ModuleArchive
     public static void Write(string root, string baseName, string archive, IReadOnlyList<string> files) =>
         ReproducibleArchive.Write(root, baseName, archive, files);
 
+    /// <summary>
+    /// The directory a <c>.unpacked</c> marker below <paramref name="destination"/> names, or null when there is no
+    /// marker. The marker holds one directory name that Unpack made; anything else, such as a path that leads out of the
+    /// destination, means the state was altered, and the unpacked files are not trusted.
+    /// </summary>
+    public static string? FromMarker(string destination)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        var marker = Path.Combine(destination, ".unpacked");
+        if (!System.IO.File.Exists(marker))
+        {
+            return null;
+        }
+
+        var name = System.IO.File.ReadAllText(marker).Trim();
+        var directory = Path.Combine(destination, Path.GetFileName(name));
+        return name.Length > 0 && name == Path.GetFileName(name) && name is not ("." or "..") && Directory.Exists(directory)
+            ? directory
+            : throw new ProjectException($"{destination} is damaged; remove it and run the command again");
+    }
+
+    /// <summary>Writes the marker that names the unpacked directory of <paramref name="destination"/>.</summary>
+    public static void WriteMarker(string destination, string directory) =>
+        System.IO.File.WriteAllText(Path.Combine(destination, ".unpacked"), Path.GetFileName(directory));
+
     /// <summary>An unpacked archive has one top directory, and the file it must hold in it.</summary>
     private static void CheckUnpacked(string work, [System.Diagnostics.CodeAnalysis.NotNull] string? top, string requiredFile, string shown)
     {

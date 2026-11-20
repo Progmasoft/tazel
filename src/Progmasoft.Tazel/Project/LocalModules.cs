@@ -41,12 +41,9 @@ internal static class LocalModules
         }
 
         var destination = Path.Combine(mainRoot, ModuleFiles.StateDirectory, "external", $"{local.Name}-{actual[..16]}");
-        var marker = Path.Combine(destination, ".unpacked");
-        if (File.Exists(marker))
+        if (ModuleArchive.FromMarker(destination) is { } unpacked)
         {
-            return File.ReadAllText(marker).Trim() is { Length: > 0 } top
-                ? Path.Combine(destination, top)
-                : throw new ProjectException($"{destination} is damaged; remove it");
+            return unpacked;
         }
 
         if (Directory.Exists(destination))
@@ -55,7 +52,7 @@ internal static class LocalModules
         }
 
         var root = ModuleArchive.Unpack(archive, destination);
-        File.WriteAllText(marker, Path.GetFileName(root));
+        ModuleArchive.WriteMarker(destination, root);
         return root;
     }
 
