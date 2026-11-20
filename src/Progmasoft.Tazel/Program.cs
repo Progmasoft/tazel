@@ -42,8 +42,8 @@ internal static class Program
         }
         catch (CommandLineException error)
         {
-            new Reporter(Reporter.CreateConsole(When.Auto, output), quiet: false, When.Never).Error(error.Message,
-                HelpFor(arguments), Jokes.ForCommandLine(error.Message));
+            new Reporter(Reporter.CreateConsole(When.Auto, output), quiet: false, When.Never).Error(ErrorCodes.CommandLine,
+                error.Message, HelpFor(arguments), Jokes.ForCommandLine(error.Message));
             return UsageError;
         }
 
@@ -54,7 +54,7 @@ internal static class Program
         }
         catch (CommandLineException error)
         {
-            reporter.Error(error.Message, HelpFor(arguments), Jokes.ForCommandLine(error.Message));
+            reporter.Error(ErrorCodes.CommandLine, error.Message, HelpFor(arguments), Jokes.ForCommandLine(error.Message));
             return UsageError;
         }
         catch (Exception error) when (Placed(error) is { } diagnostic)
@@ -65,12 +65,18 @@ internal static class Program
         catch (Exception error) when (error is ProjectException or LabelException or TazelOptionsException or
             CustomCommandsException)
         {
-            reporter.Error(error.Message, null, Jokes.ForProject(error.Message));
+            var code = error switch
+            {
+                LabelException => ErrorCodes.Label,
+                TazelOptionsException => ErrorCodes.OptionsUnreadable,
+                _ => ErrorCodes.Project,
+            };
+            reporter.Error(code, error.Message, null, Jokes.ForProject(error.Message));
             return 1;
         }
         catch (OperationCanceledException)
         {
-            reporter.Error("stopped");
+            reporter.Error(ErrorCodes.Stopped, "stopped", null, "Tazel put its tools down mid-sentence.");
             return 130;
         }
     }

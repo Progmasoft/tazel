@@ -176,11 +176,12 @@ var exampleVersion = GetEnvironment.From("example-version"); // "0.1.0"; null fo
 
 ## Errors
 
-An error in `tazel_envs.txt`, `tazel_custom.txt` or `tazel_options.txt` shows where it is, the line, a mark under
-the problem, how to fix it and a light line:
+Every error has a code, `E` and four digits, written as `error[E0406]:`. An error in `tazel_envs.txt`,
+`tazel_custom.txt` or `tazel_options.txt` shows where it is, the line, a mark under the problem, how to fix it, where
+to read more, and a light line:
 
 ```text
-✖ error: expected ';' after the value of example-version
+✖ error[E0406]: expected ';' after the value of example-version
   ╭─[ tazel_envs.txt:1:25 ]
   │
 1 │ example-version: '0.1.0'
@@ -188,9 +189,24 @@ the problem, how to fix it and a light line:
   │                         ╰── a ';' goes here
   │
   ├─ 💡 help: end every value with ';': example-version: '0.1.0';
+  ├─ 📖 more: tazel explain E0406
   ╰─ 🎭 Semicolons are small, but they hold this whole file together.
 ```
 
-A terminal without Unicode gets the same picture in ASCII. Other errors say what went wrong, where to read more
-when there is a place, and a light line too; the same problem always gets the same line.
+A terminal without Unicode gets the same picture in ASCII. Other errors say what went wrong, how to fix it where
+there is a way, where to read more, and a light line too; the same problem always gets the same line.
 
+`tazel explain E0406` prints what a code means with a fixed example; `tazel explain E0406 --long` says why and shows
+the wrong text and the right one side by side. The first two digits say where an error comes from:
+
+| Codes | From |
+| --- | --- |
+| `E00xx` | the text files: their comments, strings and placeholders |
+| `E01xx` | the command line |
+| `E02xx` | `tazel_options.txt` |
+| `E03xx` | `tazel_custom.txt` |
+| `E04xx` | `tazel_envs.txt` |
+| `E05xx` | `MODULE.csx`, `BUILD.csx` and builds |
+| `E06xx` | labels |
+
+A code, once given, keeps its meaning.

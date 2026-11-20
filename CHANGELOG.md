@@ -18,6 +18,8 @@ The first version of Tazel, written in C# for .NET 10.
 - An action cache by content, depfiles for headers, parallel actions, runfiles, sharded and flaky tests.
 - Reproducible `.tazel.tar.xz` archives of modules, and dependencies on them checked by SHA-256.
 - `tazel_options.txt` (with `platform:`), `tazel_custom.txt`, and `tazel_envs.txt` with `GetEnvironment.From`.
+- Errors with codes (`error[E0406]:`), the line and a mark under the problem, help, and `tazel explain <code>`
+  with `--long`.
 - `tazel coverage` (LLVM source-based, an LCOV report), `tazel query`, `cquery` and `aquery`, `tazel fetch`,
   `tazel vendor`, and `tazel portal-modules search` and `info`; `tazel help --long`.
 - Modules of Tazel Portal Modules as dependencies: each at the highest version asked for, checked by SHA-256,

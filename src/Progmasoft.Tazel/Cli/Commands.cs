@@ -43,6 +43,9 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 return await BuildAsync(coverage.Labels, coverage.Flags, BuildKind.Coverage, null, cancel).ConfigureAwait(false);
             case QueryCommand query:
                 return await QueryAsync(query, cancel).ConfigureAwait(false);
+            case ExplainCommand explain:
+                Explain(explain);
+                return 0;
             case FetchCommand:
                 return await FetchAsync().ConfigureAwait(false);
             case VendorCommand:
@@ -50,7 +53,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             case PortalModulesCommand portal:
                 return await PortalModulesAsync(portal, cancel).ConfigureAwait(false);
             case DaemonCommand daemon:
-                reporter.Error($"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon");
+                reporter.Error(ErrorCodes.NoDaemon, $"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon", null,
+                    "Tazel is a morning person: awake at once, every time, no daemon needed.");
                 return 1;
             case CleanCommand clean:
                 return Clean(clean);
@@ -294,7 +298,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             default:
                 if (!built)
                 {
-                    reporter.Error($"{executor.Failed} action{(executor.Failed == 1 ? "" : "s")} failed");
+                    reporter.Error(ErrorCodes.ActionsFailed, $"{executor.Failed} action{(executor.Failed == 1 ? "" : "s")} failed", "the FAILED lines above say what each one printed; --keep-going shows every failure at once",
+                        Dsl.Custom.Jokes.ForProject($"{executor.Failed}"));
                     return 1;
                 }
 

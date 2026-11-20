@@ -127,6 +127,50 @@ internal sealed partial class Commands
         return new PackageId(null, path);
     }
 
+    /// <summary>What an error code means; with --long, why, and the wrong and right text side by side.</summary>
+    private void Explain(ExplainCommand command)
+    {
+        var entry = ErrorCodes.Find(command.Code)!;
+        var console = reporter.Console;
+        var fancy = console.Profile.Capabilities.Unicode;
+        console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Markup.Escape(entry.Code)}[/]: [bold]{Markup.Escape(entry.Title)}[/]  [grey]({Markup.Escape(entry.Where)})[/]");
+        if (!command.Long)
+        {
+            var first = entry.Explanation.IndexOf(". ", StringComparison.Ordinal);
+            console.WriteLine(first < 0 ? entry.Explanation : entry.Explanation[..(first + 1)]);
+            if (entry.Right is not null)
+            {
+                console.MarkupLine($"[green]{(fancy ? "✔ " : "")}for example:[/] {Markup.Escape(entry.Right.Replace("\n", " ", StringComparison.Ordinal))}");
+            }
+
+            console.MarkupLine($"[grey]More: tazel explain {entry.Code} --long[/]");
+            return;
+        }
+
+        console.WriteLine();
+        console.WriteLine(entry.Explanation);
+        if (entry.Wrong is not null && entry.Right is not null)
+        {
+            console.WriteLine();
+            var wrong = new Panel(new Text(entry.Wrong)).Header(fancy ? " ✖ wrong " : " wrong ").BorderColor(Color.Red);
+            var right = new Panel(new Text(entry.Right)).Header(fancy ? " ✔ right " : " right ").BorderColor(Color.Green);
+            if (!fancy)
+            {
+                wrong.Border = BoxBorder.Ascii;
+                right.Border = BoxBorder.Ascii;
+            }
+
+            console.Write(new Columns(wrong, right) { Expand = false });
+        }
+
+        var related = ErrorCodes.Codes.Where(other => other.Where == entry.Where && other.Code != entry.Code).Select(other => other.Code).ToList();
+        if (related.Count > 0)
+        {
+            console.WriteLine();
+            console.MarkupLine($"[grey]The other errors of {Markup.Escape(entry.Where)}: {string.Join(", ", related)}[/]");
+        }
+    }
+
     private async Task<int> FetchAsync()
     {
         RefuseWithoutSandbox();

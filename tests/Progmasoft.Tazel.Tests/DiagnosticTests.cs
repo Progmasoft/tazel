@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Progmasoft.Tazel.Dsl.Custom;
 using Progmasoft.Tazel.Dsl.Custom.Parser;
 using Progmasoft.Tazel.Dsl.Envs;
 using Progmasoft.Tazel.Dsl.Options;
+using Progmasoft.Tazel.Output;
 using Xunit;
 
 namespace Progmasoft.Tazel.Tests;
@@ -47,6 +49,7 @@ public sealed class DiagnosticTests
         Assert.False(string.IsNullOrWhiteSpace(diagnostic.Help));
         Assert.False(string.IsNullOrWhiteSpace(diagnostic.Joke));
         Assert.InRange(diagnostic.Column, 1, diagnostic.SourceLine.Length + 1);
+        Assert.NotNull(ErrorCodes.Find(diagnostic.Code));
         Assert.Equal(text.Split('\n')[diagnostic.Line - 1], diagnostic.SourceLine);
     }
 
@@ -74,7 +77,8 @@ public sealed class DiagnosticTests
             .Write("tazel_envs.txt", "example-version: '0.1.0'\n");
         var (status, output) = await module.TazelAsync(".", "build", "//...", "--quiet");
         Assert.Equal(1, status);
-        Assert.Contains("error: expected ';' after the value of example-version", output, StringComparison.Ordinal);
+        Assert.Contains("error[E0406]: expected ';' after the value of example-version", output, StringComparison.Ordinal);
+        Assert.Contains("more: tazel explain E0406", output, StringComparison.Ordinal);
         Assert.Contains("tazel_envs.txt:1:25", output, StringComparison.Ordinal);
         Assert.Contains("1 | example-version: '0.1.0'", output.Replace('│', '|'), StringComparison.Ordinal);
         Assert.Contains("a ';' goes here", output, StringComparison.Ordinal);
@@ -92,8 +96,65 @@ public sealed class DiagnosticTests
         Assert.Equal(2, status);
         Assert.Contains("help: tazel help build --long says what build takes", output, StringComparison.Ordinal);
         var message = output.Split('\n')[0];
-        Assert.Contains(Jokes.ForCommandLine(message[(message.IndexOf("error: ", StringComparison.Ordinal) + 7)..].Trim()),
+        Assert.Contains("error[E0100]: ", message, StringComparison.Ordinal);
+        Assert.Contains(Jokes.ForCommandLine(message[(message.IndexOf("]: ", StringComparison.Ordinal) + 3)..].Trim()),
             output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("envs", "x: '1'", "E0406")]
+    [InlineData("envs", "x '1';", "E0407")]
+    [InlineData("envs", "x: version;", "E0404")]
+    [InlineData("envs", "x: \"open", "E0003")]
+    [InlineData("custom", "build: (\"tazel\")", "E0305")]
+    [InlineData("custom", "build: s(\"a\" \"b\");", "E0311")]
+    [InlineData("options", "platform: linux-amd46;", "E0211")]
+    [InlineData("options", "microvm-cpus: 99999;", "E0210")]
+    public void EachProblemHasItsOwnCode(string reader, string text, string code) =>
+        Assert.Equal(code, DiagnosticOf(reader, text)!.Code);
+
+    [Fact]
+    public void EveryCodeIsWrittenOnceAndExplained()
+    {
+        var constants = typeof(ErrorCodes).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()!).ToList();
+        Assert.Equal(constants.Count, constants.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(constants.Order(StringComparer.Ordinal), ErrorCodes.Codes.Select(code => code.Code).Order(StringComparer.Ordinal));
+        foreach (var code in ErrorCodes.Codes)
+        {
+            Assert.True(ErrorCodes.IsCode(code.Code), code.Code);
+            Assert.False(string.IsNullOrWhiteSpace(code.Title), code.Code);
+            Assert.EndsWith(".", code.Explanation, StringComparison.Ordinal);
+            Assert.Equal(code.Wrong is null, code.Right is null);
+        }
+    }
+
+    [Fact]
+    public async Task ExplainSaysWhatACodeMeansShortAndLong()
+    {
+        using var module = new TemporaryModule();
+        var (status, output) = await module.TazelAsync(".", "explain", "E0406");
+        Assert.Equal(0, status);
+        Assert.Contains("E0406: a value without its ';'", output, StringComparison.Ordinal);
+        Assert.Contains("example-version: '0.1.0';", output, StringComparison.Ordinal);
+        Assert.Contains("tazel explain E0406 --long", output, StringComparison.Ordinal);
+
+        (status, output) = await module.TazelAsync(".", "explain", "e0406", "--long");
+        Assert.Equal(0, status);
+        Assert.Contains("wrong", output, StringComparison.Ordinal);
+        Assert.Contains("right", output, StringComparison.Ordinal);
+        Assert.Contains("The other errors of tazel_envs.txt", output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(new[] { "explain" }, "takes one error code")]
+    [InlineData(new[] { "explain", "406" }, "'406' is not an error code")]
+    [InlineData(new[] { "explain", "E9999" }, "Tazel has no error E9999")]
+    [InlineData(new[] { "explain", "E0407", "E0406" }, "takes one error code")]
+    public void ExplainRefusesWhatIsNotACode(string[] arguments, string message)
+    {
+        var error = Assert.Throws<Progmasoft.Tazel.Cli.CommandLineException>(() => Progmasoft.Tazel.Cli.CommandLine.Parse(arguments));
+        Assert.Contains(message, error.Message, StringComparison.Ordinal);
     }
 
     private static Diagnostic? DiagnosticOf(string reader, string text)

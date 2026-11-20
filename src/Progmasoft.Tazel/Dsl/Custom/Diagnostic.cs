@@ -10,6 +10,7 @@ namespace Progmasoft.Tazel.Dsl.Custom;
 /// A problem in a file the user wrote, with all it takes to show it well: where it is, the line it is on, what to put
 /// under the mark, how to fix it, and a joke to soften the blow.
 /// </summary>
+/// <param name="Code">The error code, E and four digits, that <c>tazel explain</c> explains.</param>
 /// <param name="File">The file, as it is shown.</param>
 /// <param name="Line">The line, from 1.</param>
 /// <param name="Column">The column, from 1.</param>
@@ -20,23 +21,23 @@ namespace Progmasoft.Tazel.Dsl.Custom;
 /// <param name="Help">How to fix it, ideally with the fixed text.</param>
 /// <param name="Joke">A light line about it.</param>
 public sealed record Diagnostic(
-    string File, int Line, int Column, int Width, string SourceLine, string Message, string Label, string? Help, string? Joke)
+    string Code, string File, int Line, int Column, int Width, string SourceLine, string Message, string Label, string? Help, string? Joke)
 {
     /// <summary>The message with its place, as one plain line: <c>file:line:column: message</c>.</summary>
     public string Plain => $"{File}:{Line}:{Column}: {Message}";
 
     /// <summary>A problem at <paramref name="line"/>:<paramref name="column"/> of <paramref name="text"/>.</summary>
     public static Diagnostic At(
-        string text, string file, int line, int column, int width, string message, string label, string? help = null,
+        string code, string text, string file, int line, int column, int width, string message, string label, string? help = null,
         string? joke = null)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return new Diagnostic(file, line, column, Math.Max(1, width), LineOf(text, line), message, label, help, joke);
+        return new Diagnostic(code, file, line, column, Math.Max(1, width), LineOf(text, line), message, label, help, joke);
     }
 
     /// <summary>A problem at <paramref name="token"/>, marking all of it, quotes too.</summary>
     public static Diagnostic AtToken(
-        string text, string file, Token token, string message, string label, string? help = null, string? joke = null)
+        string code, string text, string file, Token token, string message, string label, string? help = null, string? joke = null)
     {
         ArgumentNullException.ThrowIfNull(token);
         var width = token.Kind switch
@@ -45,15 +46,15 @@ public sealed record Diagnostic(
             TokenKind.Placeholder => token.Text.Length + 2,
             _ => token.Text.Length,
         };
-        return At(text, file, token.Line, token.Column, width, message, label, help, joke);
+        return At(code, text, file, token.Line, token.Column, width, message, label, help, joke);
     }
 
     /// <summary>A problem just after <paramref name="token"/>, where something is missing.</summary>
     public static Diagnostic After(
-        string text, string file, Token token, string message, string label, string? help = null, string? joke = null)
+        string code, string text, string file, Token token, string message, string label, string? help = null, string? joke = null)
     {
         ArgumentNullException.ThrowIfNull(token);
-        var marked = AtToken(text, file, token, message, label, help, joke);
+        var marked = AtToken(code, text, file, token, message, label, help, joke);
         // A string may span lines; then the mark goes to the end of the line it starts on.
         var column = Math.Min(token.Column + marked.Width, marked.SourceLine.Length + 1);
         return marked with { Column = column, Width = 1 };

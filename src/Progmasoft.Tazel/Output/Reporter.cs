@@ -127,16 +127,18 @@ internal sealed class Reporter
     }
 
     /// <summary>What went wrong, ending the command, with how to fix it and a light line when there are ones.</summary>
-    public void Error(string message, string? help = null, string? joke = null)
+    public void Error(string code, string message, string? help = null, string? joke = null)
     {
         lock (_lock)
         {
             var fancy = Console.Profile.Capabilities.Unicode;
-            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}error[/]: [bold]{Markup.Escape(message)}[/]");
+            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Heading(code)}[/] [bold]{Markup.Escape(message)}[/]");
             if (help is not null)
             {
                 Console.MarkupLine($"  [blue]{(fancy ? "├─" : "|-")}[/] [green]{(fancy ? "💡 " : "")}help:[/] {Markup.Escape(help)}");
             }
+
+            Console.MarkupLine($"  [blue]{(fancy ? "├─" : "|-")}[/] [cyan]{(fancy ? "📖 " : "")}more:[/] tazel explain {code}");
 
             if (joke is not null)
             {
@@ -162,7 +164,7 @@ internal sealed class Reporter
             var width = Math.Max(1, diagnostic.Width);
             string Gutter(string left) => $"[blue]{left} {bar}[/]";
 
-            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}error[/]: [bold]{Markup.Escape(diagnostic.Message)}[/]");
+            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Heading(diagnostic.Code)}[/] [bold]{Markup.Escape(diagnostic.Message)}[/]");
             Console.MarkupLine($"[blue]{pad} {(fancy ? "╭─[[" : ",-[[")}[/] [cyan]{Markup.Escape($"{Shown(diagnostic.File)}:{diagnostic.Line}:{diagnostic.Column}")}[/] [blue]]][/]");
             Console.MarkupLine(Gutter(pad));
             if (diagnostic.SourceLine.Length > 0 || diagnostic.Column == 1)
@@ -182,12 +184,16 @@ internal sealed class Reporter
                 Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [green]{(fancy ? "💡 " : "")}help:[/] {Markup.Escape(diagnostic.Help)}");
             }
 
+            Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [cyan]{(fancy ? "📖 " : "")}more:[/] tazel explain {diagnostic.Code}");
             if (diagnostic.Joke is not null)
             {
                 Console.MarkupLine($"[blue]{pad} {(fancy ? "╰─" : "`-")}[/] [magenta italic]{(fancy ? "🎭 " : "")}{Markup.Escape(diagnostic.Joke)}[/]");
             }
         }
     }
+
+    // error[E0406]: the code in brackets, as rustc writes it; markup needs its brackets doubled.
+    private static string Heading(string code) => $"error[[{Markup.Escape(code)}]]:";
 
     // A file below the current directory is shown from there, which is shorter and what the user typed.
     private static string Shown(string file)

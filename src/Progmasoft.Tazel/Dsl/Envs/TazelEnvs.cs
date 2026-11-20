@@ -58,7 +58,7 @@ public static class TazelEnvsFile
             var name = Take(TokenKind.Name, "the name of a value");
             if (names.TryGetValue(name.Text, out var first))
             {
-                throw Fail(name, $"'{name.Text}' is set twice", "the second one",
+                throw Fail(Output.ErrorCodes.EnvsTwice, name, $"'{name.Text}' is set twice", "the second one",
                     $"keep one of them; the first is on line {first.Line}",
                     "Two values, one name. Tazel is not going to flip a coin.");
             }
@@ -79,7 +79,7 @@ public static class TazelEnvsFile
                 Take(TokenKind.Close, "')' after the line of s(...)");
                 value = strings.Count == 1
                     ? new EnvValue.Shell(strings[0])
-                    : throw Fail(open, "s(...) takes one string, the whole line", "this s(...)",
+                    : throw Fail(Output.ErrorCodes.EnvsShellOneLine, open, "s(...) takes one string, the whole line", "this s(...)",
                         $"write one line: {name.Text}: s(`echo $HOME`);", "One shell, one line. It is not a group chat.");
             }
             else if (Peek() is { Kind: TokenKind.Open })
@@ -89,20 +89,20 @@ public static class TazelEnvsFile
                 Take(TokenKind.Close, "')' after the strings of a program");
                 value = strings.Count > 0
                     ? new EnvValue.Program(strings)
-                    : throw Fail(open, "a program names at least itself", "these parentheses are empty",
+                    : throw Fail(Output.ErrorCodes.EnvsEmptyProgram, open, "a program names at least itself", "these parentheses are empty",
                         $"name the program first: {name.Text}: (\"rustc\" \"--version\");",
                         "Empty parentheses: a program that forgot its own name.");
             }
             else if (Peek() is { } stranger)
             {
-                throw Fail(stranger, $"expected the value of {name.Text}", "this is not a value",
+                throw Fail(Output.ErrorCodes.EnvsNotAValue, stranger, $"expected the value of {name.Text}", "this is not a value",
                     $"a value is a string, a program or a shell line: {name.Text}: '0.1.0'; or {name.Text}: (\"git\" \"describe\"); or {name.Text}: s(`date`);",
                     stranger.Kind == TokenKind.Name ? $"'{stranger.Text}' without quotes is a name, and names are not values. Quotes, please!"
                         : "Tazel expected a value and got something else entirely.");
             }
             else
             {
-                throw new CustomCommandsException(Diagnostic.After(text, file, tokens[i - 1], $"expected the value of {name.Text}",
+                throw new CustomCommandsException(Diagnostic.After(Output.ErrorCodes.EnvsNoValue, text, file, tokens[i - 1], $"expected the value of {name.Text}",
                     "the value goes here", $"for example {name.Text}: '0.1.0';", "A name, a colon, and then... silence."));
             }
 
@@ -122,6 +122,14 @@ public static class TazelEnvsFile
                 return token;
             }
 
+            var code = kind switch
+            {
+                TokenKind.Semicolon => Output.ErrorCodes.EnvsNoSemicolon,
+                TokenKind.Colon => Output.ErrorCodes.EnvsNoColon,
+                TokenKind.Close => Output.ErrorCodes.EnvsNoClose,
+                TokenKind.Open => Output.ErrorCodes.EnvsNoOpen,
+                _ => Output.ErrorCodes.EnvsUnexpected,
+            };
             var help = kind switch
             {
                 TokenKind.Semicolon => "end every value with ';': example-version: '0.1.0';",
@@ -132,7 +140,7 @@ public static class TazelEnvsFile
             };
             if (i > 0 && (Peek() is null || kind is TokenKind.Semicolon or TokenKind.Colon))
             {
-                throw new CustomCommandsException(Diagnostic.After(text, file, tokens[i - 1], $"expected {wanted}",
+                throw new CustomCommandsException(Diagnostic.After(code, text, file, tokens[i - 1], $"expected {wanted}",
                     kind switch
                     {
                         TokenKind.Semicolon => "a ';' goes here",
@@ -143,7 +151,7 @@ public static class TazelEnvsFile
                     help, Jokes.Missing(kind)));
             }
 
-            throw Fail(Peek()!, $"expected {wanted}", "not this", help, Jokes.Missing(kind));
+            throw Fail(code, Peek()!, $"expected {wanted}", "not this", help, Jokes.Missing(kind));
         }
 
         List<string> Strings()
@@ -157,15 +165,15 @@ public static class TazelEnvsFile
 
             if (Peek() is { Kind: TokenKind.Placeholder } placeholder)
             {
-                throw Fail(placeholder, "a value of tazel_envs.txt takes no <N> or <*>", "this placeholder",
+                throw Fail(Output.ErrorCodes.EnvsPlaceholder, placeholder, "a value of tazel_envs.txt takes no <N> or <*>", "this placeholder",
                     "write the argument itself, in quotes", "Nobody passes arguments to a file. It just sits there.");
             }
 
             return strings;
         }
 
-        CustomCommandsException Fail(Token token, string message, string label, string help, string joke) =>
-            new(Diagnostic.AtToken(text, file, token, message, label, help, joke));
+        CustomCommandsException Fail(string code, Token token, string message, string label, string help, string joke) =>
+            new(Diagnostic.AtToken(code, text, file, token, message, label, help, joke));
     }
 }
 
