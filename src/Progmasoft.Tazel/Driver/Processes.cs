@@ -15,7 +15,8 @@ namespace Progmasoft.Tazel.Driver;
 /// <param name="ExitCode">The exit status; -1 when it could not start or ran out of time.</param>
 /// <param name="Output">What it printed.</param>
 /// <param name="TimedOut">Whether it was stopped because it ran out of time.</param>
-internal sealed record ProcessResult(int ExitCode, string Output, bool TimedOut = false);
+/// <param name="Canceled">Whether it was stopped because the command stopped, such as after another action failed.</param>
+internal sealed record ProcessResult(int ExitCode, string Output, bool TimedOut = false, bool Canceled = false);
 
 /// <summary>Starts programs directly, with an argument list and no shell between.</summary>
 internal static class Processes
@@ -85,8 +86,8 @@ internal static class Processes
         {
             process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-            var timedOut = !cancel.IsCancellationRequested;
-            return new ProcessResult(-1, Text(output), TimedOut: timedOut);
+            var canceled = cancel.IsCancellationRequested;
+            return new ProcessResult(-1, Text(output), TimedOut: !canceled, Canceled: canceled);
         }
 
         // WaitForExitAsync returns once the output has been read to its end as well.

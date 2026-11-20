@@ -79,6 +79,12 @@ internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Repo
                 cache.Forget(action);
                 var result = await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
                     .ConfigureAwait(false);
+                if (result.Canceled)
+                {
+                    // Stopped because another action failed: that one is reported, this one did not fail.
+                    return false;
+                }
+
                 var missing = action.Outputs.FirstOrDefault(output => !File.Exists(action.Full(output)));
                 if (result.ExitCode != 0 || missing is not null)
                 {

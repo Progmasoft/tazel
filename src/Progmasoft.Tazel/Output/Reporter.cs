@@ -63,7 +63,13 @@ internal sealed class Reporter
             },
             ColorSystem = color == When.Never ? ColorSystemSupport.NoColors : ColorSystemSupport.Detect,
             Out = output is null ? null : new AnsiConsoleOutput(output),
+            // The enrichers of CI services turn ANSI on by themselves; --color decides here, and auto detects alone.
+            Enrichment = new ProfileEnrichment { UseDefaultEnrichers = color == When.Auto },
         });
+        if (color != When.Auto)
+        {
+            console.Profile.Capabilities.Ansi = color == When.Always;
+        }
 
         // Lines that go to a file or a pipe are not wrapped: a command line stays one line.
         if (output is not null || System.Console.IsOutputRedirected)

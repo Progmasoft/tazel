@@ -64,6 +64,32 @@ jobs:
             if ($_ -match '^(INCLUDE|LIB|LIBPATH|PATH)=(.*)$') { "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8 }
           }
 
+      # The STL of this Visual Studio needs Clang 22 or newer, which the image does not have: LLVM 23.1.5, checked against
+      # the SHA-256 of its release, comes first on PATH.
+      - name: Restore LLVM
+        if: runner.os == 'Windows'
+        id: llvm
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/llvm
+          key: llvm-23.1.5-x86_64-pc-windows-msvc
+
+      - name: Install LLVM
+        if: runner.os == 'Windows' && steps.llvm.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/llvm.tar.zst" "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/clang%2Bllvm-23.1.5-x86_64-pc-windows-msvc.tar.zst"
+          echo "b2be33385ddc86e83511417a060de927ae8b09d1f3017cc3cdce5c73cd5029d7  $RUNNER_TEMP/llvm.tar.zst" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/llvm"
+          tar --zstd -xf "$RUNNER_TEMP/llvm.tar.zst" -C "$RUNNER_TEMP/llvm" --strip-components=1
+
+      - name: Put LLVM first on PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $path = "${env:RUNNER_TEMP}\llvm\bin;${env:PATH}"
+          "PATH=$path" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       # Warnings are errors in every project (Directory.Build.props).
       - name: Build
         run: dotnet build Tazel.slnx -c Release
