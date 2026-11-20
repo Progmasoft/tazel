@@ -99,10 +99,24 @@ jobs:
         run: dotnet build Tazel.slnx -c Release
 
       - name: Test
-        # A test that hangs for 15 minutes is dumped and named, instead of the job running into its timeout unnamed.
+        # A test that hangs is named and dumped at 15 minutes, and the run stops itself at 20, before the step's own
+        # limit, so the job ends with its log and its files kept instead of being cancelled at the job's limit.
+        timeout-minutes: 25
         run: >-
           dotnet test --solution Tazel.slnx -c Release --no-build --coverlet --coverlet-output-format cobertura
           --results-directory artifacts/coverage --hangdump --hangdump-timeout 15m --hangdump-type Mini
+          --timeout 20m --diagnostic --diagnostic-output-directory artifacts/diagnostics
+
+      - name: Keep what a failed run left
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-run-${{ matrix.os }}
+          path: |
+            artifacts/coverage
+            artifacts/diagnostics
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Run the built Tazel
         run: dotnet src/Progmasoft.Tazel/bin/Release/net10.0/tazel.dll version
