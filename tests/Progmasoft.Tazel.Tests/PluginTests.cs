@@ -42,7 +42,7 @@ public sealed class StepTests
             .Write("MODULE.csx", TemporaryModule.ModuleFile).Write("BUILD.csx", Build).Write("in.txt", "hello");
         var (status, output) = await module.TazelAsync(".", "build", "//...");
         Assert.True(status == 0, output);
-        Assert.Contains("Running //:copy\ncopying", output, StringComparison.Ordinal);
+        Assert.Contains("Running //:copy\ncopying", output.Replace("\r\n", "\n", StringComparison.Ordinal), StringComparison.Ordinal);
         var made = Directory.GetFiles(Path.Combine(module.Root, ".tazel"), "out.txt", SearchOption.AllDirectories).Single();
         Assert.Equal("HELLO", await File.ReadAllTextAsync(made, TestContext.Current.CancellationToken));
 
