@@ -180,7 +180,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
 
         if (sandboxFile is not null)
         {
-            return await CustomInMicroVmAsync(command, arguments, options, sandboxFile, cancel).ConfigureAwait(false);
+            return await CustomInMicroVMAsync(command, arguments, options, sandboxFile, cancel).ConfigureAwait(false);
         }
 
         var environment = Processes.Inherited();

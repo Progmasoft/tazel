@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Progmasoft.Tazel.MicroVm;
+namespace Progmasoft.Tazel.MicroVM;
 
 /// <summary>The kinds of message between Tazel and the agent of its MicroVM.</summary>
 internal enum MessageKind : byte
@@ -49,7 +49,7 @@ internal sealed record RunRequest(IReadOnlyList<string> Arguments, IReadOnlyDict
 /// The messages of a MicroVM connection: a kind byte, a little-endian 32-bit length, and the payload. Strings are a
 /// length and UTF-8. It is the same file in Tazel and in the agent; no JSON library is needed on either side.
 /// </summary>
-internal static class MicroVmProtocol
+internal static class MicroVMProtocol
 {
     /// <summary>The vsock port the agent listens on.</summary>
     public const uint Port = 1024;

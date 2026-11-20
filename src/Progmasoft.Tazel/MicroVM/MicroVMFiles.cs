@@ -11,14 +11,14 @@ using System.Threading.Tasks;
 using Progmasoft.Tazel.Archive;
 using Progmasoft.Tazel.Driver;
 
-namespace Progmasoft.Tazel.MicroVm;
+namespace Progmasoft.Tazel.MicroVM;
 
 /// <summary>What a MicroVM is started from: the guest kernel and initramfs, the monitor, and virtiofsd.</summary>
 /// <param name="Kernel">The guest kernel, an ELF vmlinux that boots through PVH.</param>
 /// <param name="Initramfs">The initramfs with the agent.</param>
 /// <param name="Monitor">Cloud Hypervisor.</param>
 /// <param name="Virtiofsd">The virtio-fs daemon of the host.</param>
-internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Monitor, string Virtiofsd)
+internal sealed record MicroVMFiles(string Kernel, string Initramfs, string Monitor, string Virtiofsd)
 {
     /// <summary>The Cloud Hypervisor release Tazel runs, and the SHA-256 of its static x86_64 program.</summary>
     public const string MonitorVersion = "v55.0";
@@ -31,19 +31,19 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
     /// release of this Tazel, the monitor from <c>TAZEL_CLOUD_HYPERVISOR</c> or its release, and virtiofsd from the
     /// host. Each file is checked against its SHA-256 before it is used.
     /// </summary>
-    public static async Task<MicroVmFiles> FindAsync(Version tazel, Action<string> status, CancellationToken cancel)
+    public static async Task<MicroVMFiles> FindAsync(Version tazel, Action<string> status, CancellationToken cancel)
     {
         ArgumentNullException.ThrowIfNull(tazel);
         ArgumentNullException.ThrowIfNull(status);
         if (!OperatingSystem.IsLinux() || RuntimeInformation.OSArchitecture != Architecture.X64)
         {
-            throw new MicroVmException(
+            throw new MicroVMException(
                 $"this Tazel starts its MicroVM on x86_64 Linux with KVM, and this machine is {RuntimeInformation.RuntimeIdentifier}");
         }
 
         if (!File.Exists("/dev/kvm"))
         {
-            throw new MicroVmException("/dev/kvm is not there; the MicroVM needs KVM, so turn on virtualization in the firmware");
+            throw new MicroVMException("/dev/kvm is not there; the MicroVM needs KVM, so turn on virtualization in the firmware");
         }
 
         var cache = Path.Combine(Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg
@@ -60,8 +60,8 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
             ? daemon
             : new[] { "/usr/libexec/virtiofsd", "/usr/lib/virtiofsd", "/usr/lib/qemu/virtiofsd" }.FirstOrDefault(File.Exists)
               ?? Host.Which("virtiofsd")
-              ?? throw new MicroVmException("virtiofsd is not installed; the MicroVM shares the module through it (the package is virtiofsd)");
-        return new MicroVmFiles(Path.Combine(image, "vmlinux"), Path.Combine(image, "initramfs.cpio.gz"), monitor, virtiofsd);
+              ?? throw new MicroVMException("virtiofsd is not installed; the MicroVM shares the module through it (the package is virtiofsd)");
+        return new MicroVMFiles(Path.Combine(image, "vmlinux"), Path.Combine(image, "initramfs.cpio.gz"), monitor, virtiofsd);
     }
 
     /// <summary>Checks that every file of an image matches its <c>SHA256SUMS</c>.</summary>
@@ -70,18 +70,18 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
         var sums = Path.Combine(directory, "SHA256SUMS");
         if (!File.Exists(sums))
         {
-            throw new MicroVmException($"{directory} has no SHA256SUMS, so its image cannot be checked");
+            throw new MicroVMException($"{directory} has no SHA256SUMS, so its image cannot be checked");
         }
 
         var text = File.ReadAllText(sums);
         foreach (var name in new[] { "vmlinux", "initramfs.cpio.gz" })
         {
             var expected = Sha256Sums.SumFor(text, name, sums)
-                ?? throw new MicroVmException($"{sums} does not name {name}");
+                ?? throw new MicroVMException($"{sums} does not name {name}");
             var path = Path.Combine(directory, name);
             if (!File.Exists(path) || !string.Equals(Sha256Sums.Sha256(path), expected, StringComparison.Ordinal))
             {
-                throw new MicroVmException($"{path} does not match its SHA256SUMS; build or fetch the image again");
+                throw new MicroVMException($"{path} does not match its SHA256SUMS; build or fetch the image again");
             }
         }
     }
@@ -105,7 +105,7 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
         var expected = Sha256Sums.SumFor(await File.ReadAllTextAsync(sums, cancel).ConfigureAwait(false), name, url + ".sha256sums");
         if (expected is null || !string.Equals(Sha256Sums.Sha256(archive), expected, StringComparison.Ordinal))
         {
-            throw new MicroVmException($"{url} does not match its .sha256sums");
+            throw new MicroVMException($"{url} does not match its .sha256sums");
         }
 
         var root = ModuleArchive.Unpack(archive, directory + ".partial", "vmlinux");
@@ -136,7 +136,7 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
         if (actual != MonitorSha256)
         {
             File.Delete(path + ".partial");
-            throw new MicroVmException($"{url} has the SHA-256 {actual}, not that of Cloud Hypervisor {MonitorVersion}");
+            throw new MicroVMException($"{url} has the SHA-256 {actual}, not that of Cloud Hypervisor {MonitorVersion}");
         }
 
         File.SetUnixFileMode(path + ".partial", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -150,7 +150,7 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
         using var response = await http.GetAsync(new Uri(url), HttpCompletionOption.ResponseHeadersRead, cancel).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new MicroVmException(
+            throw new MicroVMException(
                 $"{url} answered {(int)response.StatusCode}; build the image with dotnet run microvm/build.cs and set TAZEL_MICROVM_IMAGE");
         }
 
@@ -165,21 +165,21 @@ internal sealed record MicroVmFiles(string Kernel, string Initramfs, string Moni
 }
 
 /// <summary>The MicroVM could not be started or stopped answering.</summary>
-public sealed class MicroVmException : Exception
+public sealed class MicroVMException : Exception
 {
     /// <summary>What went wrong.</summary>
-    public MicroVmException(string message)
+    public MicroVMException(string message)
         : base(message)
     {
     }
 
     /// <summary>Nothing to say.</summary>
-    public MicroVmException()
+    public MicroVMException()
     {
     }
 
     /// <summary>What went wrong, and why.</summary>
-    public MicroVmException(string message, Exception inner)
+    public MicroVMException(string message, Exception inner)
         : base(message, inner)
     {
     }

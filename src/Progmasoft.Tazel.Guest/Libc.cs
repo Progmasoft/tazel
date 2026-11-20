@@ -46,7 +46,7 @@ internal static partial class Libc
     public static partial int Socket(int domain, int type, int protocol);
 
     [LibraryImport(Library, EntryPoint = "bind", SetLastError = true)]
-    public static partial int Bind(int socket, in SockaddrVm address, uint length);
+    public static partial int Bind(int socket, in SockaddrVM address, uint length);
 
     [LibraryImport(Library, EntryPoint = "listen", SetLastError = true)]
     public static partial int Listen(int socket, int backlog);
@@ -68,7 +68,7 @@ internal static partial class Libc
 
     /// <summary><c>struct sockaddr_vm</c>.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    public struct SockaddrVm
+    public struct SockaddrVM
     {
         public ushort Family;
         public ushort Reserved;

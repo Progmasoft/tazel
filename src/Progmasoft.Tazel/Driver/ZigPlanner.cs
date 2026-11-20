@@ -76,7 +76,7 @@ internal sealed partial class Planner
                 output = file;
                 products.Library = linkWith;
                 products.IsShared = true;
-                if (soname is not null && Options.Platform.GetOs() != Os.Windows)
+                if (soname is not null && Options.Platform.GetOS() != OS.Windows)
                 {
                     command.Add($"-fsoname={soname}");
                 }
@@ -145,7 +145,7 @@ internal sealed partial class Planner
         command.AddRange(arguments);
         foreach (var shared in sharedDirectories)
         {
-            command.AddRange(["-rpath", Options.Platform.GetOs() == Os.MacOS ? "@loader_path/" + Relative(directory, shared)
+            command.AddRange(["-rpath", Options.Platform.GetOS() == OS.MacOS ? "@loader_path/" + Relative(directory, shared)
                 : "$ORIGIN/" + Relative(directory, shared)]);
         }
 

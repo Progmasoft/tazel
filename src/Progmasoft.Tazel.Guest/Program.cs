@@ -25,7 +25,7 @@ internal static class Program
             var shares = Share.Parse(File.ReadAllText("/proc/cmdline"));
             var agent = new Agent(shares);
             agent.Boot();
-            Console.Error.WriteLine($"tazel-guest {Agent.Version}: ready on vsock port {MicroVm.MicroVmProtocol.Port}");
+            Console.Error.WriteLine($"tazel-guest {Agent.Version}: ready on vsock port {MicroVM.MicroVMProtocol.Port}");
             agent.Serve();
         }
         catch (Exception error) when (error is IOException or FormatException or UnauthorizedAccessException)

@@ -10,12 +10,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Agent = guest::Progmasoft.Tazel.Guest.Agent;
 using Share = guest::Progmasoft.Tazel.Guest.Share;
-using Progmasoft.Tazel.MicroVm;
+using Progmasoft.Tazel.MicroVM;
 using Xunit;
 
 namespace Progmasoft.Tazel.Tests;
 
-public sealed class MicroVmProtocolTests
+public sealed class MicroVMProtocolTests
 {
     [Fact]
     public async Task ARunRequestCrossesTheConnectionUnchanged()
@@ -23,22 +23,22 @@ public sealed class MicroVmProtocolTests
         var request = new RunRequest(["sh", "-c", "echo ü \"x\""],
             new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = "/usr/bin", ["EMPTY"] = "" }, "/work/my module");
         using var stream = new MemoryStream();
-        await MicroVmProtocol.WriteAsync(stream, MessageKind.Run, MicroVmProtocol.Encode(request), TestContext.Current.CancellationToken);
+        await MicroVMProtocol.WriteAsync(stream, MessageKind.Run, MicroVMProtocol.Encode(request), TestContext.Current.CancellationToken);
         stream.Position = 0;
-        var message = await MicroVmProtocol.ReadAsync(stream, TestContext.Current.CancellationToken);
+        var message = await MicroVMProtocol.ReadAsync(stream, TestContext.Current.CancellationToken);
         Assert.Equal(MessageKind.Run, message!.Value.Kind);
-        var read = MicroVmProtocol.DecodeRun(message.Value.Payload);
+        var read = MicroVMProtocol.DecodeRun(message.Value.Payload);
         Assert.Equal(request.Arguments, read.Arguments);
         Assert.Equal(request.Environment.OrderBy(e => e.Key), read.Environment.OrderBy(e => e.Key));
         Assert.Equal(request.Directory, read.Directory);
-        Assert.Null(await MicroVmProtocol.ReadAsync(stream, TestContext.Current.CancellationToken));
+        Assert.Null(await MicroVMProtocol.ReadAsync(stream, TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public void AStatusIsFourBytes()
     {
-        Assert.Equal(-1, MicroVmProtocol.DecodeStatus(MicroVmProtocol.EncodeStatus(-1)));
-        Assert.Throws<InvalidDataException>(() => MicroVmProtocol.DecodeStatus([1, 2]));
+        Assert.Equal(-1, MicroVMProtocol.DecodeStatus(MicroVMProtocol.EncodeStatus(-1)));
+        Assert.Throws<InvalidDataException>(() => MicroVMProtocol.DecodeStatus([1, 2]));
     }
 
     [Theory]
@@ -47,14 +47,14 @@ public sealed class MicroVmProtocolTests
     public async Task ABrokenStreamIsRefused(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes);
-        var error = await Assert.ThrowsAnyAsync<Exception>(() => MicroVmProtocol.ReadAsync(stream, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => MicroVMProtocol.ReadAsync(stream, TestContext.Current.CancellationToken));
         Assert.True(error is InvalidDataException or EndOfStreamException, error.GetType().Name);
     }
 
     [Fact]
     public void ARunMessageWithBytesLeftOverIsRefused() =>
-        Assert.Throws<InvalidDataException>(() => MicroVmProtocol.DecodeRun(
-            [.. MicroVmProtocol.Encode(new RunRequest(["x"], new Dictionary<string, string>(), "/")), 0]));
+        Assert.Throws<InvalidDataException>(() => MicroVMProtocol.DecodeRun(
+            [.. MicroVMProtocol.Encode(new RunRequest(["x"], new Dictionary<string, string>(), "/")), 0]));
 
     [Theory]
     [InlineData("/home/someone/my module")]
@@ -62,7 +62,7 @@ public sealed class MicroVmProtocolTests
     [InlineData("/")]
     public void SharesNameTheirPathOnTheKernelCommandLine(string path)
     {
-        var shares = Share.Parse($"console=hvc0 tazel.share=s0,rw,{MicroVmProtocol.EncodePath(path)} quiet tazel.share=s1,ro,{MicroVmProtocol.EncodePath("/usr")}");
+        var shares = Share.Parse($"console=hvc0 tazel.share=s0,rw,{MicroVMProtocol.EncodePath(path)} quiet tazel.share=s1,ro,{MicroVMProtocol.EncodePath("/usr")}");
         Assert.Equal([new Share("s0", path, false), new Share("s1", "/usr", true)], shares);
     }
 
@@ -83,20 +83,23 @@ public sealed class MicroVmProtocolTests
         Assert.False(agent.Inside("/work/module-other"));
         Assert.False(agent.Inside("/work/module/../other"));
         Assert.False(agent.Inside("/usr/bin"));
+        Assert.False(agent.Inside("relative/path"));
+        Assert.False(agent.Inside("/../work/module"));
+        Assert.True(agent.Inside("/work/./module/x/.."));
     }
 }
 
-public sealed class MicroVmFilesTests
+public sealed class MicroVMFilesTests
 {
     [Fact]
     public void AnImageThatDoesNotMatchItsSumsIsRefused()
     {
         using var image = new TemporaryModule().Write("vmlinux", "kernel").Write("initramfs.cpio.gz", "initramfs");
-        Assert.Contains("has no SHA256SUMS", Assert.Throws<MicroVmException>(() => MicroVmFiles.CheckImage(image.Root)).Message,
+        Assert.Contains("has no SHA256SUMS", Assert.Throws<MicroVMException>(() => MicroVMFiles.CheckImage(image.Root)).Message,
             StringComparison.Ordinal);
         image.Write("SHA256SUMS",
             $"{Archive.Sha256Sums.Sha256(Path.Combine(image.Root, "vmlinux"))}  vmlinux\n{new string('0', 64)}  initramfs.cpio.gz\n");
-        Assert.Contains("initramfs.cpio.gz does not match", Assert.Throws<MicroVmException>(() => MicroVmFiles.CheckImage(image.Root)).Message,
+        Assert.Contains("initramfs.cpio.gz does not match", Assert.Throws<MicroVMException>(() => MicroVMFiles.CheckImage(image.Root)).Message,
             StringComparison.Ordinal);
     }
 
@@ -126,7 +129,7 @@ public sealed class MicroVmFilesTests
 /// <summary>
 /// The MicroVM itself, booted: on x86_64 Linux with KVM and an image named by TAZEL_MICROVM_IMAGE, as CI has them.
 /// </summary>
-public sealed class MicroVmBootTests
+public sealed class MicroVMBootTests
 {
     private static string? Unavailable()
     {

@@ -29,16 +29,16 @@ public sealed record TazelOptions
     /// <summary>
     /// Whether what a project brings to run, custom commands and the build among it, runs inside a MicroVM.
     /// </summary>
-    public bool SandboxingWithMicrovm { get; init; }
+    public bool SandboxingWithMicroVM { get; init; }
 
     /// <summary>Whether the MicroVM reaches the network.</summary>
-    public bool MicrovmNetwork { get; init; }
+    public bool MicroVMNetwork { get; init; }
 
     /// <summary>The memory of the MicroVM, in MiB.</summary>
-    public Allocation MicrovmMemory { get; init; } = Allocation.Auto;
+    public Allocation MicroVMMemory { get; init; } = Allocation.Auto;
 
     /// <summary>The processors of the MicroVM.</summary>
-    public Allocation MicrovmCpus { get; init; } = Allocation.Auto;
+    public Allocation MicroVMCpus { get; init; } = Allocation.Auto;
 
     /// <summary>The platform commands build for unless <c>--platform</c> names one; default: the host's.</summary>
     public Platform? Platform { get; init; }
@@ -156,8 +156,8 @@ public static class TazelOptionsFile
             return (new TazelOptions(), null);
         }
 
-        var asking = files.FirstOrDefault(entry => entry.Options.SandboxingWithMicrovm).File;
-        return (files[0].Options with { SandboxingWithMicrovm = asking is not null }, asking);
+        var asking = files.FirstOrDefault(entry => entry.Options.SandboxingWithMicroVM).File;
+        return (files[0].Options with { SandboxingWithMicroVM = asking is not null }, asking);
     }
 
     private static TazelOptions Read(string file)
@@ -215,10 +215,10 @@ public static class TazelOptionsFile
                 var value = tokens[_position++];
                 options = key.Text switch
                 {
-                    "sandboxing-with-microvm" => options with { SandboxingWithMicrovm = Boolean(value) },
-                    "microvm-network" => options with { MicrovmNetwork = Boolean(value) },
-                    "microvm-memory" => options with { MicrovmMemory = Amount(value, MinMemory, MaxMemory, "MiB") },
-                    "microvm-cpus" => options with { MicrovmCpus = Amount(value, 1, MaxCpus, "processors") },
+                    "sandboxing-with-microvm" => options with { SandboxingWithMicroVM = Boolean(value) },
+                    "microvm-network" => options with { MicroVMNetwork = Boolean(value) },
+                    "microvm-memory" => options with { MicroVMMemory = Amount(value, MinMemory, MaxMemory, "MiB") },
+                    "microvm-cpus" => options with { MicroVMCpus = Amount(value, 1, MaxCpus, "processors") },
                     _ => options with { Platform = PlatformOf(value) },
                 };
 

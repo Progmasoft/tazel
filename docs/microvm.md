@@ -46,7 +46,7 @@ tazel ──vsock (Cloud Hypervisor's Unix socket, CONNECT 1024)──▶ tazel-
   loader as the first process, so the guest's `/lib` is free to be the host's `/usr/lib`.
 - The agent reaches the C library through `[LibraryImport]`; it refuses a working directory outside what was shared
   for writing.
-- The messages are a kind byte, a little-endian length and a payload (`src/Shared/MicroVmProtocol.cs`, the same file
+- The messages are a kind byte, a little-endian length and a payload (`src/Shared/MicroVMProtocol.cs`, the same file
   on both sides).
 - Cloud Hypervisor and virtiofsd are processes of their own: when one of them dies, the command fails with E0504 and
   the end of the guest's console; Tazel goes on. At the end Tazel asks the guest to power off, then stops what is left

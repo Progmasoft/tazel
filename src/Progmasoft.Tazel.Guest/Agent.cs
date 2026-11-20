@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Progmasoft.Tazel.MicroVm;
+using Progmasoft.Tazel.MicroVM;
 
 namespace Progmasoft.Tazel.Guest;
 
@@ -37,7 +37,7 @@ internal sealed record Share(string Tag, string Path, bool ReadOnly)
                 throw new FormatException($"'{word}' is not tazel.share=tag,ro|rw,path");
             }
 
-            var path = MicroVmProtocol.DecodePath(parts[2]);
+            var path = MicroVMProtocol.DecodePath(parts[2]);
             if (!path.StartsWith('/') || path.Split('/').Contains(".."))
             {
                 throw new FormatException($"the share {parts[0]} has the path '{path}'");
@@ -58,7 +58,7 @@ internal sealed record Share(string Tag, string Path, bool ReadOnly)
 internal sealed class Agent(IReadOnlyList<Share> shares)
 {
     /// <summary>The PATH of the agent and the one it searches when a command brings none.</summary>
-    public const string DefaultPath = MicroVmProtocol.DefaultPath;
+    public const string DefaultPath = MicroVMProtocol.DefaultPath;
 
     public static string Version => typeof(Agent).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
@@ -101,10 +101,10 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
             throw new IOException($"vsock: {Libc.LastError()}");
         }
 
-        var address = new Libc.SockaddrVm { Family = Libc.AfVsock, Port = MicroVmProtocol.Port, Cid = Libc.VmaddrCidAny };
+        var address = new Libc.SockaddrVM { Family = Libc.AfVsock, Port = MicroVMProtocol.Port, Cid = Libc.VmaddrCidAny };
         if (Libc.Bind(listener, address, 16) != 0 || Libc.Listen(listener, 64) != 0)
         {
-            throw new IOException($"vsock port {MicroVmProtocol.Port}: {Libc.LastError()}");
+            throw new IOException($"vsock port {MicroVMProtocol.Port}: {Libc.LastError()}");
         }
 
         using var off = new ManualResetEventSlim();
@@ -151,9 +151,46 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
     /// <summary>Whether <paramref name="directory"/> is inside a share the guest may write.</summary>
     public bool Inside(string directory)
     {
-        var full = Path.GetFullPath(directory);
-        return shares.Any(share => !share.ReadOnly &&
+        var full = Normalize(directory);
+        return full is not null && shares.Any(share => !share.ReadOnly &&
             (full == share.Path || full.StartsWith(share.Path.TrimEnd('/') + "/", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// An absolute guest path with its "." and ".." taken out, by the rules of the guest whatever runs this code; null
+    /// for a path that is not absolute or climbs above the root.
+    /// </summary>
+    public static string? Normalize(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (!path.StartsWith('/'))
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+        foreach (var part in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part == ".")
+            {
+                continue;
+            }
+
+            if (part == "..")
+            {
+                if (parts.Count == 0)
+                {
+                    return null;
+                }
+
+                parts.RemoveAt(parts.Count - 1);
+                continue;
+            }
+
+            parts.Add(part);
+        }
+
+        return "/" + string.Join('/', parts);
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
@@ -163,15 +200,15 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
         {
             try
             {
-                var message = await MicroVmProtocol.ReadAsync(stream, CancellationToken.None).ConfigureAwait(false);
+                var message = await MicroVMProtocol.ReadAsync(stream, CancellationToken.None).ConfigureAwait(false);
                 switch (message?.Kind)
                 {
                     case MessageKind.Hello:
-                        await MicroVmProtocol.WriteAsync(stream, MessageKind.Ready, Encoding.UTF8.GetBytes(Version), CancellationToken.None)
+                        await MicroVMProtocol.WriteAsync(stream, MessageKind.Ready, Encoding.UTF8.GetBytes(Version), CancellationToken.None)
                             .ConfigureAwait(false);
                         break;
                     case MessageKind.Run:
-                        await RunAsync(stream, MicroVmProtocol.DecodeRun(message.Value.Payload)).ConfigureAwait(false);
+                        await RunAsync(stream, MicroVMProtocol.DecodeRun(message.Value.Payload)).ConfigureAwait(false);
                         break;
                     case MessageKind.PowerOff:
                         off.Set();
@@ -243,7 +280,7 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
             // The host sends Stop, or goes away, while the command runs.
             try
             {
-                await MicroVmProtocol.ReadAsync(stream, CancellationToken.None).ConfigureAwait(false);
+                await MicroVMProtocol.ReadAsync(stream, CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception error) when (error is IOException or InvalidDataException or EndOfStreamException)
             {
@@ -258,7 +295,7 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
         var errors = Pump(process.StandardError.BaseStream, 2, stream);
         await Task.WhenAll(output, errors).ConfigureAwait(false);
         await process.WaitForExitAsync().ConfigureAwait(false);
-        await MicroVmProtocol.WriteAsync(stream, MessageKind.Exit, MicroVmProtocol.EncodeStatus(process.ExitCode), CancellationToken.None)
+        await MicroVMProtocol.WriteAsync(stream, MessageKind.Exit, MicroVMProtocol.EncodeStatus(process.ExitCode), CancellationToken.None)
             .ConfigureAwait(false);
         _ = stop;
     }
@@ -276,14 +313,14 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
             }
 
             buffer[0] = which;
-            await MicroVmProtocol.WriteAsync(to, MessageKind.Output, buffer.AsMemory(0, read + 1), CancellationToken.None)
+            await MicroVMProtocol.WriteAsync(to, MessageKind.Output, buffer.AsMemory(0, read + 1), CancellationToken.None)
                 .ConfigureAwait(false);
         }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private static Task Refuse(VsockStream stream, string why) =>
-        MicroVmProtocol.WriteAsync(stream, MessageKind.Error, Encoding.UTF8.GetBytes(why), CancellationToken.None);
+        MicroVMProtocol.WriteAsync(stream, MessageKind.Error, Encoding.UTF8.GetBytes(why), CancellationToken.None);
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     private static void MountOrFail(string source, string target, string type, ulong flags, string? data)

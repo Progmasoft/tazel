@@ -57,9 +57,10 @@ internal sealed class TemporaryModule : IDisposable
         {
             Directory.Delete(Root, recursive: true);
         }
-        catch (IOException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // A program a test started may still hold a file on Windows; the system's temporary directory keeps it.
+            // On Windows a program a test started, or a plugin the test process loaded, may still hold a file; the
+            // system's temporary directory keeps it.
         }
     }
 }
