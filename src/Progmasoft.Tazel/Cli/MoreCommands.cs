@@ -171,6 +171,67 @@ internal sealed partial class Commands
         }
     }
 
+    /// <summary>
+    /// Runs the steps of a custom command inside a MicroVM that sees the module, or the directory of the command when
+    /// it is in no module, and the host's /usr read-only; a shell step goes to the guest's /bin/sh.
+    /// </summary>
+    private async Task<int> CustomInMicroVmAsync(
+        Dsl.Custom.CustomCommand command, IReadOnlyList<string> arguments, TazelOptions options, string sandboxFile,
+        CancellationToken cancel)
+    {
+        if (options.MicrovmNetwork)
+        {
+            throw new MicroVm.MicroVmException(
+                $"{sandboxFile} asks for microvm-network, and this Tazel's MicroVM has no network, so nothing ran; " +
+                "set microvm-network: false;");
+        }
+
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new MicroVm.MicroVmException(
+                $"{sandboxFile} asks for sandboxing-with-microvm, and this Tazel starts its MicroVM on Linux only");
+        }
+
+        string shared;
+        try
+        {
+            shared = ModuleFiles.FindRoot(workingDirectory);
+        }
+        catch (ProjectException)
+        {
+            shared = Path.GetFullPath(workingDirectory);
+        }
+
+        var files = await MicroVm.MicroVmFiles.FindAsync(TazelVersion, reporter.Status, cancel).ConfigureAwait(false);
+        var size = new MicroVm.MicroVmSize(
+            options.MicrovmMemory.Amount ?? 1024, options.MicrovmCpus.Amount ?? Math.Clamp(Environment.ProcessorCount / 2, 1, 4));
+        reporter.Status($"starting the MicroVM ({size.MemoryMiB} MiB, {size.Processors} processor{(size.Processors == 1 ? "" : "s")})");
+        var sandbox = await MicroVm.Sandbox.StartAsync(files, [new MicroVm.SharedDirectory(shared, ReadOnly: false)], size, cancel)
+            .ConfigureAwait(false);
+        await using (sandbox.ConfigureAwait(false))
+        {
+            var output = Console.OpenStandardOutput();
+            var errors = Console.OpenStandardError();
+            foreach (var step in command.Steps)
+            {
+                var started = step switch
+                {
+                    Dsl.Custom.CustomStep.Program program => program.Expanded(arguments),
+                    Dsl.Custom.CustomStep.Shell shell => shell.Started(windows: false),
+                    _ => throw new InvalidOperationException("a step of no kind"),
+                };
+                var status = await sandbox.RunAsync(started, Path.GetFullPath(workingDirectory), output, errors, cancel)
+                    .ConfigureAwait(false);
+                if (status != 0)
+                {
+                    return status;
+                }
+            }
+        }
+
+        return 0;
+    }
+
     private async Task<int> FetchAsync()
     {
         RefuseWithoutSandbox();

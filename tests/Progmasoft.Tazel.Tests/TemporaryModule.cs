@@ -45,7 +45,8 @@ internal sealed class TemporaryModule : IDisposable
     public async Task<(int Status, string Output)> TazelAsync(string directory, params string[] arguments)
     {
         using var output = new StringWriter();
-        var status = await Program.RunAsync([.. arguments, "--color", "never"], Path.Combine(Root, directory), output,
+        // Before the command: after tazel custom, every word belongs to the custom command.
+        var status = await Program.RunAsync(["--color", "never", .. arguments], Path.Combine(Root, directory), output,
             Xunit.TestContext.Current.CancellationToken);
         return (status, output.ToString());
     }

@@ -61,7 +61,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             case PackageCommand:
                 return await PackageAsync().ConfigureAwait(false);
             case CustomCommandLine custom:
-                return Custom(custom);
+                return await CustomAsync(custom, cancel).ConfigureAwait(false);
             case BuildCommand build:
                 return await BuildAsync(build.Labels, build.Flags, BuildKind.Build, null, cancel).ConfigureAwait(false);
             case TestCommand test:
@@ -83,8 +83,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     }
 
     /// <summary>
-    /// Stops a command that would run what a project brings when a sandbox is asked for: this Tazel has no MicroVM to
-    /// start, so nothing runs rather than run on the host.
+    /// Stops a command that would run what a project brings when a sandbox is asked for: this Tazel runs tazel custom
+    /// inside its MicroVM, and builds, tests and plugins not, so nothing runs rather than run on the host.
     /// </summary>
     private void RefuseWithoutSandbox()
     {
@@ -92,8 +92,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         if (file is not null)
         {
             throw new ProjectException(
-                $"{file} asks for sandboxing-with-microvm, and this Tazel has no MicroVM to start, so nothing ran; " +
-                "set it to false to run without the sandbox");
+                $"{file} asks for sandboxing-with-microvm; this Tazel runs tazel custom inside its MicroVM, and not " +
+                "builds, tests or plugins, so nothing ran; set it to false to run them without the sandbox");
         }
     }
 
@@ -149,9 +149,9 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         return 0;
     }
 
-    private int Custom(CustomCommandLine custom)
+    private async Task<int> CustomAsync(CustomCommandLine custom, CancellationToken cancel)
     {
-        RefuseWithoutSandbox();
+        var (options, sandboxFile) = TazelOptionsFile.Effective(workingDirectory);
         var file = Path.Combine(workingDirectory, CustomCommandFiles.FileName);
         if (!File.Exists(file))
         {
@@ -176,6 +176,11 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         if (arguments.Count > command.Required && !command.TakesAll)
         {
             throw new CommandLineException($"'{command.Name}' takes {command.Required} arguments, and {arguments.Count} were given");
+        }
+
+        if (sandboxFile is not null)
+        {
+            return await CustomInMicroVmAsync(command, arguments, options, sandboxFile, cancel).ConfigureAwait(false);
         }
 
         var environment = Processes.Inherited();

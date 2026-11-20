@@ -1,0 +1,23 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The agent of Tazel's MicroVM: the first process of the Linux guest. Published self-contained for linux-musl. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Progmasoft.Tazel.Guest</RootNamespace>
+    <AssemblyName>tazel-guest</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifiers>linux-musl-x64;linux-musl-arm64</RuntimeIdentifiers>
+    <UseAppHost>true</UseAppHost>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <EventSourceSupport>false</EventSourceSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/MicroVmProtocol.cs" Link="Shared/MicroVmProtocol.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
+  </ItemGroup>
+</Project>

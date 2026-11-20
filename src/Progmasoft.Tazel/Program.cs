@@ -62,6 +62,12 @@ internal static class Program
             reporter.Diagnostic(diagnostic);
             return 1;
         }
+        catch (MicroVm.MicroVmException error)
+        {
+            reporter.Error(ErrorCodes.MicroVm, error.Message, null,
+                "The sandbox stayed shut, and so did the door to your machine.");
+            return 1;
+        }
         catch (Exception error) when (error is ProjectException or LabelException or TazelOptionsException or
             CustomCommandsException)
         {
