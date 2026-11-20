@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,10 +46,7 @@ internal static class Processes
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        for (var i = 1; i < command.Count; i++)
-        {
-            start.ArgumentList.Add(command[i]);
-        }
+        AddArguments(start, command);
 
         start.Environment.Clear();
         foreach (var (name, value) in environment)
@@ -94,16 +92,76 @@ internal static class Processes
         return new ProcessResult(process.ExitCode, Text(output));
     }
 
+    /// <summary>
+    /// Gives <paramref name="start"/> the arguments of <paramref name="command"/>. A line for cmd.exe, as
+    /// <c>cmd.exe /d /s /c "line"</c>, is passed as written: cmd.exe does not read the escapes other programs read, so
+    /// the line reaches it unchanged.
+    /// </summary>
+    public static void AddArguments(ProcessStartInfo start, IReadOnlyList<string> command)
+    {
+        ArgumentNullException.ThrowIfNull(start);
+        ArgumentNullException.ThrowIfNull(command);
+        if (OperatingSystem.IsWindows() && command.Count == 5 &&
+            string.Equals(Path.GetFileName(command[0]), "cmd.exe", StringComparison.OrdinalIgnoreCase) &&
+            command[1] == "/d" && command[2] == "/s" && command[3] == "/c")
+        {
+            start.Arguments = $"/d /s /c {command[4]}";
+            return;
+        }
+
+        for (var i = 1; i < command.Count; i++)
+        {
+            start.ArgumentList.Add(command[i]);
+        }
+    }
+
+    /// <summary>Runs <paramref name="command"/> and keeps what it prints apart from its errors.</summary>
+    public static async Task<(int ExitCode, string Output, string Errors)> CaptureAsync(
+        IReadOnlyList<string> command, string directory, IReadOnlyDictionary<string, string> environment, CancellationToken cancel)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(environment);
+        var start = new ProcessStartInfo(command[0])
+        {
+            WorkingDirectory = directory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        AddArguments(start, command);
+
+        start.Environment.Clear();
+        foreach (var (name, value) in environment)
+        {
+            start.Environment[name] = value;
+        }
+
+        using var process = new Process { StartInfo = start };
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception error)
+        {
+            return (-1, "", $"{command[0]} could not be started: {error.Message}");
+        }
+
+        process.StandardInput.Close();
+        var output = process.StandardOutput.ReadToEndAsync(cancel);
+        var errors = process.StandardError.ReadToEndAsync(cancel);
+        await process.WaitForExitAsync(cancel).ConfigureAwait(false);
+        return (process.ExitCode, await output.ConfigureAwait(false), await errors.ConfigureAwait(false));
+    }
+
     /// <summary>Runs <paramref name="command"/> with the terminal of Tazel, as <c>tazel run</c> does.</summary>
     public static int RunAttached(IReadOnlyList<string> command, string directory, IReadOnlyDictionary<string, string> environment)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(environment);
         var start = new ProcessStartInfo(command[0]) { WorkingDirectory = directory, UseShellExecute = false };
-        for (var i = 1; i < command.Count; i++)
-        {
-            start.ArgumentList.Add(command[i]);
-        }
+        AddArguments(start, command);
 
         start.Environment.Clear();
         foreach (var (name, value) in environment)

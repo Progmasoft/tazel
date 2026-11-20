@@ -93,7 +93,9 @@ public sealed class CustomLexer(string text, string file)
                     ';' => TokenKind.Semicolon,
                     '(' => TokenKind.Open,
                     ')' => TokenKind.Close,
-                    _ => throw Fail($"'{letter}' has no meaning here", _line, _column),
+                    _ => throw Fail(Output.ErrorCodes.CharacterHasNoMeaning, $"'{letter}' has no meaning here", _line, _column, 1, "this one",
+                        "this file knows names, strings in ' \" or `, ( ) : ; and <N>; put other text in quotes",
+                        $"Tazel squinted at '{letter}' for a long time. It squinted back."),
                 };
                 tokens.Add(new Token(kind, letter.ToString(), _line, _column));
                 Advance();
@@ -107,8 +109,9 @@ public sealed class CustomLexer(string text, string file)
 
     private bool At(string what) => string.CompareOrdinal(text, _position, what, 0, what.Length) == 0;
 
-    private CustomCommandsException Fail(string message, int line, int column) =>
-        new($"{file}:{line}:{column}: {message}");
+    private CustomCommandsException Fail(
+        string code, string message, int line, int column, int width, string label, string help, string joke) =>
+        new(Diagnostic.At(code, text, file, line, column, width, message, label, help, joke));
 
     private char Advance()
     {
@@ -143,7 +146,8 @@ public sealed class CustomLexer(string text, string file)
             Advance();
         }
 
-        throw Fail("this comment has no closing #>", line, column);
+        throw Fail(Output.ErrorCodes.CommentNotClosed, "this comment has no closing #>", line, column, 2, "the comment opens here", "close it with #>",
+            "This comment is still talking. Somebody has to say #>.");
     }
 
     // A string has no escapes: it ends at the next quote of its own kind, whatever comes between.
@@ -159,7 +163,8 @@ public sealed class CustomLexer(string text, string file)
 
         if (_position == text.Length)
         {
-            throw Fail($"this string has no closing {quote}", line, column);
+            throw Fail(Output.ErrorCodes.StringNotClosed, $"this string has no closing {quote}", line, column, 1, "the string starts here",
+                $"end it with another {quote}", "This string ran off with the rest of the file.");
         }
 
         var value = text[begin.._position];
@@ -179,7 +184,8 @@ public sealed class CustomLexer(string text, string file)
 
         if (_position == text.Length || text[_position] != '>')
         {
-            throw Fail("expected <N> or <*>", line, column);
+            throw Fail(Output.ErrorCodes.PlaceholderNotClosed, "expected <N> or <*>", line, column, Math.Max(1, _position - begin + 1), "a placeholder starts here",
+                "write <1> for the first argument, or <*> for all of them", "'<' walked in alone; its '>' never showed up.");
         }
 
         var value = text[begin.._position];
@@ -190,10 +196,16 @@ public sealed class CustomLexer(string text, string file)
         if (!valid)
         {
             throw Fail(
+                Output.ErrorCodes.PlaceholderOutOfRange,
                 $"<{value}> is not an argument: <N> runs from 1 to {CustomCommandFiles.MaxArguments}, " +
                 "and <*> is all of them",
                 line,
-                column);
+                column,
+                value.Length + 2,
+                "this one",
+                $"use <1> to <{CustomCommandFiles.MaxArguments}>, or <*>",
+                value == "0" ? "Tazel counts from 1, like a person, not from 0, like a computer."
+                    : "That is a lot of arguments. Tazel would rather not argue that much.");
         }
 
         return new Token(TokenKind.Placeholder, value, line, column);
