@@ -65,6 +65,11 @@ environment is `PATH`, its `InheritedEnvironmentVariables`, `TEST_TMPDIR`, `TEST
 variables and its `EnvironmentVariables`. Its log is `.tazel/testlogs/<package>/<name>/test.log`. A test tagged
 `exclusive` runs alone.
 
+A test that passed is not run again while what it runs with is the same: its program and the shared libraries
+beside it by content, its data, arguments and environment, its shards, timeout and retries, and the platform and mode.
+It shows as `PASSED (cached)` with the log of its last run. A test tagged `no-cache` runs every time, a flaky pass is
+not remembered, and `tazel coverage` runs every test.
+
 `tazel run` runs the program in its runfiles directory with Tazel's environment and the program's
 `EnvironmentVariables`, its `Arguments` and what follows `--`, and returns its exit status.
 

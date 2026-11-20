@@ -123,7 +123,7 @@ CC.Test("math_test", new()
   `ObjectiveC` targets build for the two macOS platforms. `//...` leaves out a target that does not build for the
   platform of the command, with every target that depends on it, and says how many it left out; naming it is an error.
   `Tags = ["manual"]` keeps a target out of `//...` as well.
-- **Conditions** are C#: `Build.Mode` (`BuildMode.Debug`, `Release`), `Build.Platform`, `Build.Os`, `Build.Arch`.
+- **Conditions** are C#: `Build.Mode` (`BuildMode.Debug`, `Release`), `Build.Platform`, `Build.OS`, `Build.Arch`.
 - **Headers** of a target are found below the root of its module and below its `IncludeDirectories`, by it and by
   what depends on it.
 

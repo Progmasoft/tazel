@@ -111,6 +111,24 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
         var settings = (ITestSettings)target.Settings;
         var runfiles = Runfiles.Prepare(target, products, layout);
         var logDirectory = layout.Full($"{layout.TestLogs}/{Sanitize(target.Label.ToString())}");
+        var passedFile = Path.Combine(layout.Full(layout.TestLogs), ".passed", Sanitize(target.Label.ToString()).Replace('/', '_'));
+        // Coverage needs the run itself, and a test tagged no-cache runs every time.
+        var key = coverage || target.Settings.Tags.Contains("no-cache", StringComparer.Ordinal)
+            ? null
+            : CacheKey(target, settings, products, runfiles);
+        if (key is not null && File.Exists(passedFile) &&
+            await File.ReadAllTextAsync(passedFile, cancel).ConfigureAwait(false) == key &&
+            File.Exists(Path.Combine(logDirectory, "test.log")))
+        {
+            var previous = await File.ReadAllTextAsync(Path.Combine(logDirectory, "test.log"), cancel).ConfigureAwait(false);
+            return new TestOutcome(target.Label.ToString(), TestStatus.Cached, TimeSpan.Zero, previous);
+        }
+
+        if (File.Exists(passedFile))
+        {
+            File.Delete(passedFile);
+        }
+
         if (Directory.Exists(logDirectory))
         {
             Directory.Delete(logDirectory, recursive: true);
@@ -157,6 +175,13 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
             if (!failed)
             {
                 var status = attempt == 1 ? TestStatus.Passed : TestStatus.Flaky;
+                // A flaky pass is not remembered: the next run should show whether it is flaky still.
+                if (key is not null && status == TestStatus.Passed)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(passedFile)!);
+                    await File.WriteAllTextAsync(passedFile, key, cancel).ConfigureAwait(false);
+                }
+
                 return new TestOutcome(target.Label.ToString(), status, watch.Elapsed, log.ToString());
             }
 
@@ -172,6 +197,46 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
         throw new InvalidOperationException("a test ended without an outcome");
     }
 
+    /// <summary>
+    /// What a run of the test depends on: its program and the shared libraries beside it by content, its data, its
+    /// arguments, its environment less the parts that change every run, its shards, timeout and retries, and where its
+    /// outputs are, which names the platform and mode.
+    /// </summary>
+    private string CacheKey(ProjectTarget target, ITestSettings settings, TargetProducts products, string runfiles)
+    {
+        var text = new StringBuilder();
+        text.Append(CultureInfo.InvariantCulture, $"out {layout.OutRoot}\nprogram {Archive.Sha256Sums.Sha256(layout.Full(products.Executable!))}\n");
+        foreach (var directory in products.SharedLibraryDirectories.Select(layout.Full).Where(Directory.Exists).Order(StringComparer.Ordinal))
+        {
+            foreach (var file in Directory.EnumerateFiles(directory).Order(StringComparer.Ordinal))
+            {
+                text.Append(CultureInfo.InvariantCulture, $"library {Path.GetFileName(file)} {Archive.Sha256Sums.Sha256(file)}\n");
+            }
+        }
+
+        foreach (var file in Directory.EnumerateFiles(runfiles, "*", SearchOption.AllDirectories)
+                     .Select(file => Path.GetRelativePath(runfiles, file).Replace('\\', '/')).Order(StringComparer.Ordinal))
+        {
+            text.Append(CultureInfo.InvariantCulture, $"data {file} {Archive.Sha256Sums.Sha256(Path.Combine(runfiles, file))}\n");
+        }
+
+        foreach (var argument in settings.Arguments)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"argument {argument.Length}:{argument}\n");
+        }
+
+        var environment = Environment(target, settings, "<log>", 0, "<runfiles>");
+        foreach (var (name, value) in environment.Where(e => e.Key is not ("TEST_TMPDIR" or "TMPDIR" or "HOME"))
+                     .OrderBy(e => e.Key, StringComparer.Ordinal))
+        {
+            text.Append(CultureInfo.InvariantCulture, $"env {name}={value.Length}:{value}\n");
+        }
+
+        text.Append(CultureInfo.InvariantCulture,
+            $"shards {settings.ShardCount}\ntimeout {(settings.Timeout ?? TimeoutOf(settings.TestSize)).Ticks}\nflaky {settings.Flaky}\n");
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+    }
+
     private static Dictionary<string, string> Environment(
         ProjectTarget target, ITestSettings settings, string logDirectory, int shard, string runfiles)
     {
@@ -185,7 +250,11 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
         }
 
         var temporary = Path.Combine(logDirectory, $"tmp{shard}");
-        Directory.CreateDirectory(temporary);
+        if (logDirectory != "<log>")
+        {
+            Directory.CreateDirectory(temporary);
+        }
+
         environment["TEST_TMPDIR"] = temporary;
         environment["TMPDIR"] = temporary;
         environment["HOME"] = temporary;

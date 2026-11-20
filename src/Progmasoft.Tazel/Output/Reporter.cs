@@ -25,6 +25,9 @@ internal enum When
 internal enum TestStatus
 {
     Passed,
+
+    /// <summary>It passed before with the same program, data, arguments and environment, so it did not run again.</summary>
+    Cached,
     Failed,
     TimedOut,
     Flaky,
@@ -229,6 +232,7 @@ internal sealed class Reporter
             var status = outcome.Status switch
             {
                 TestStatus.Passed => "[green]PASSED[/]",
+                TestStatus.Cached => "[green]PASSED[/] [grey](cached)[/]",
                 TestStatus.Flaky => "[yellow]FLAKY[/]",
                 TestStatus.TimedOut => "[red]TIMEOUT[/]",
                 TestStatus.NotBuilt => "[red]NOT BUILT[/]",

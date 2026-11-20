@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Progmasoft.Tazel/Progmasoft.Tazel.csproj" />
     <ProjectReference Include="../../src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
+    <ProjectReference Include="../../src/Progmasoft.Tazel.Guest/Progmasoft.Tazel.Guest.csproj" Aliases="guest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />

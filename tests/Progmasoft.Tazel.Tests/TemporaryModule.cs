@@ -45,7 +45,8 @@ internal sealed class TemporaryModule : IDisposable
     public async Task<(int Status, string Output)> TazelAsync(string directory, params string[] arguments)
     {
         using var output = new StringWriter();
-        var status = await Program.RunAsync([.. arguments, "--color", "never"], Path.Combine(Root, directory), output,
+        // Before the command: after tazel custom, every word belongs to the custom command.
+        var status = await Program.RunAsync(["--color", "never", .. arguments], Path.Combine(Root, directory), output,
             Xunit.TestContext.Current.CancellationToken);
         return (status, output.ToString());
     }
@@ -56,9 +57,10 @@ internal sealed class TemporaryModule : IDisposable
         {
             Directory.Delete(Root, recursive: true);
         }
-        catch (IOException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // A program a test started may still hold a file on Windows; the system's temporary directory keeps it.
+            // On Windows a program a test started, or a plugin the test process loaded, may still hold a file; the
+            // system's temporary directory keeps it.
         }
     }
 }

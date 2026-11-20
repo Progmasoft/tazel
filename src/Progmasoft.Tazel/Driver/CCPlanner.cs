@@ -87,7 +87,7 @@ internal sealed partial class Planner
         var objectsDirectory = $"{directory}/_objs/{target.Label.Name}";
         var packageRoot = FileSets.ToRoot(target.PackageDirectory, Layout.MainRoot);
         var pic = target.Kind != TargetKind.Executable && target.Kind != TargetKind.Test &&
-            Options.Platform.GetOs() != Os.Windows;
+            Options.Platform.GetOS() != OS.Windows;
         var objc = settings as IObjectiveCSettings;
         var nonArc = objc is null
             ? new HashSet<string>(StringComparer.Ordinal)
@@ -212,7 +212,7 @@ internal sealed partial class Planner
         else
         {
             // Apple's ar has no D; ZERO_AR_DATE in the environment of the actions makes it deterministic instead.
-            var appleAr = Host.Platform.GetOs() == Os.MacOS &&
+            var appleAr = Host.Platform.GetOS() == OS.MacOS &&
                 Path.GetFileNameWithoutExtension(toolchain.Archiver.Program) == "ar";
             command.Add(appleAr ? "rcs" : "rcsD");
             command.AddRange(Flags(features, CCAction.CppLinkStaticLibrary));
@@ -250,9 +250,9 @@ internal sealed partial class Planner
             var version = ((CCSharedLibrarySettings)settings).LibraryVersion;
             var (file, linkWith, soname) = SharedLibraryNames(directory, target.Label.Name, version);
             output = file;
-            var os = Options.Platform.GetOs();
-            command.Add(os == Os.MacOS ? "-dynamiclib" : "-shared");
-            if (os == Os.MacOS)
+            var os = Options.Platform.GetOS();
+            command.Add(os == OS.MacOS ? "-dynamiclib" : "-shared");
+            if (os == OS.MacOS)
             {
                 command.AddRange(["-install_name", $"@rpath/{soname}"]);
                 if (version is not null)
@@ -261,7 +261,7 @@ internal sealed partial class Planner
                         "-compatibility_version", $"{version.Major}.0.0"]);
                 }
             }
-            else if (os != Os.Windows && soname is not null)
+            else if (os != OS.Windows && soname is not null)
             {
                 command.Add($"-Wl,-soname,{soname}");
             }

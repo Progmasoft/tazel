@@ -118,7 +118,7 @@ public sealed class BuildContext
     public Platform Platform { get; }
 
     /// <summary>The operating system of <see cref="Platform"/>.</summary>
-    public Os Os => Platform.GetOs();
+    public OS OS => Platform.GetOS();
 
     /// <summary>The architecture of <see cref="Platform"/>.</summary>
     public Arch Arch => Platform.GetArch();
