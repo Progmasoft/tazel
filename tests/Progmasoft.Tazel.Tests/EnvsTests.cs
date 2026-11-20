@@ -34,11 +34,12 @@ public sealed class EnvsTests
     }
 
     [Fact]
-    public void ASemicolonAfterAValueIsAllowed() =>
-        Assert.Equal(2, TazelEnvsFile.Parse("a: 'x'; b: \"y\"").Count);
+    public void ValuesFollowOneAnotherWithoutSemicolons() =>
+        Assert.Equal(2, TazelEnvsFile.Parse("a: 'x' b: \"y\"").Count);
 
     [Theory]
     [InlineData("a: 'x'\na: 'y'", "'a' is set twice")]
+    [InlineData("a: 'x';", "has no ';' after it")]
     [InlineData("a 'x'", "expected ':' after a")]
     [InlineData("a: ()", "a program names at least itself")]
     [InlineData("a: s('x' 'y')", "s(...) takes one string")]

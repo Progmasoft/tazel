@@ -38,7 +38,7 @@ public sealed record EnvEntry(string Name, EnvValue Value, int Line);
 
 /// <summary>
 /// Reads <c>tazel_envs.txt</c> with the lexer of <c>tazel_custom.txt</c> and <c>tazel_options.txt</c>: the same comments
-/// and strings, <c>name: value</c> one after another, a <c>;</c> after a value optional.
+/// and strings, <c>name: value</c> one after another, with no <c>;</c> between them.
 /// </summary>
 public static class TazelEnvsFile
 {
@@ -92,9 +92,9 @@ public static class TazelEnvsFile
             }
 
             entries.Add(new EnvEntry(name.Text, value, name.Line));
-            if (Peek() is { Kind: TokenKind.Semicolon })
+            if (Peek() is { Kind: TokenKind.Semicolon } semicolon)
             {
-                i++;
+                throw Fail(semicolon, $"a value of tazel_envs.txt has no ';' after it: {name.Text}: ...");
             }
         }
 
