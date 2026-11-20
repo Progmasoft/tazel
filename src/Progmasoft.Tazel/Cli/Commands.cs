@@ -203,6 +203,11 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         return 0;
     }
 
+    /// <summary>What a build command works on: its options, its targets, and the planner that planned them.</summary>
+    private sealed record Built(
+        BuildOptions Options, Planner Planner, ToolchainChooser Chooser, Executor Executor, bool Succeeded,
+        List<(ProjectTarget Target, TargetProducts Products)> Planned);
+
     private async Task<int> BuildAsync(
         IReadOnlyList<string> labels, BuildFlags flags, BuildKind kind, IReadOnlyList<string>? programArguments,
         CancellationToken cancel)
@@ -215,8 +220,19 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         var workspace = await Workspace.LoadAsync(workingDirectory, new BuildContext(mode, platform), TazelVersion,
             reporter.Status).ConfigureAwait(false);
         WarnAboutWhatThisTazelDoesNotDo(workspace.Main.Globals);
-        var execution = workspace.Main.Globals.execution?.Settings;
-        var buildOptions = new BuildOptions
+        var buildOptions = OptionsOf(flags, workspace.Main.Globals.execution?.Settings, kind, platform, mode);
+        var selected = Select(new Selector(workspace, platform), labels, kind, platform);
+        var built = await RunBuildAsync(workspace, buildOptions, selected, kind, cancel).ConfigureAwait(false);
+        return kind switch
+        {
+            BuildKind.Test or BuildKind.Coverage => await FinishTestsAsync(built, kind, cancel).ConfigureAwait(false),
+            BuildKind.Run => built.Succeeded ? RunProgram(built, programArguments) : 1,
+            _ => FinishBuild(built, selected.Count),
+        };
+    }
+
+    private static BuildOptions OptionsOf(
+        BuildFlags flags, Dsl.Module.Prelude.ExecutionSettings? execution, BuildKind kind, Platform platform, BuildMode mode) => new()
         {
             Mode = mode,
             Platform = platform,
@@ -232,7 +248,9 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             Coverage = kind == BuildKind.Coverage,
         };
 
-        var selector = new Selector(workspace, platform);
+    /// <summary>The targets of a command: tests for test and coverage, one program for run, anything for build.</summary>
+    private List<ProjectTarget> Select(Selector selector, IReadOnlyList<string> labels, BuildKind kind, Platform platform)
+    {
         var selected = kind switch
         {
             BuildKind.Test or BuildKind.Coverage =>
@@ -252,63 +270,67 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             reporter.Status($"left out {selector.Skipped} target{(selector.Skipped == 1 ? "" : "s")} that do not build for {platform.Name()}");
         }
 
-        var chooser = new ToolchainChooser(workspace, platform);
+        return selected;
+    }
+
+    private async Task<Built> RunBuildAsync(
+        Workspace workspace, BuildOptions buildOptions, List<ProjectTarget> selected, BuildKind kind, CancellationToken cancel)
+    {
+        var chooser = new ToolchainChooser(workspace, buildOptions.Platform);
         var planner = new Planner(workspace, buildOptions, chooser);
         var planned = selected.Select(target => (Target: target, Products: planner.Plan(target))).ToList();
         planner.CheckCommandLineFeatures(chooser.UsedCC);
         var goals = planned.Select(entry => entry.Products.Main).OfType<BuildAction>().Distinct().ToList();
         reporter.Status($"building {selected.Count} target{(selected.Count == 1 ? "" : "s")}");
-        var digests = new Digests();
         var cacheSettings = workspace.Main.Globals.cache?.Settings;
         var executor = new Executor(buildOptions.Jobs, buildOptions.KeepGoing || kind is BuildKind.Test or BuildKind.Coverage,
-            new ActionCache(digests, enabled: cacheSettings?.Local ?? true), reporter);
-        var built = await executor.RunAsync(goals, cancel).ConfigureAwait(false);
-        switch (kind)
+            new ActionCache(new Digests(), enabled: cacheSettings?.Local ?? true), reporter);
+        var succeeded = await executor.RunAsync(goals, cancel).ConfigureAwait(false);
+        return new Built(buildOptions, planner, chooser, executor, succeeded, planned);
+    }
+
+    private async Task<int> FinishTestsAsync(Built built, BuildKind kind, CancellationToken cancel)
+    {
+        var tests = built.Planned.Select(entry => (entry.Target, entry.Products,
+            Built: entry.Products.Main is { } main && built.Executor.Succeeded(main))).ToList();
+        var outcomes = await new TestRunner(built.Planner.Layout, built.Options.Jobs, reporter, built.Options.Coverage)
+            .RunAsync(tests, cancel).ConfigureAwait(false);
+        reporter.TestSummary(outcomes);
+        var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Cached or TestStatus.Flaky);
+        var reported = kind != BuildKind.Coverage ||
+            await CoverageReport.WriteAsync(built.Planner, built.Chooser, tests, reporter, cancel).ConfigureAwait(false);
+        return passed && reported ? 0 : 1;
+    }
+
+    private static int RunProgram(Built built, IReadOnlyList<string>? programArguments)
+    {
+        var (target, products) = built.Planned[0];
+        var layout = built.Planner.Layout;
+        var runfiles = Runfiles.Prepare(target, products, layout);
+        var environment = Processes.Inherited();
+        var settings = (IRunSettings)target.Settings;
+        foreach (var (name, value) in settings.EnvironmentVariables)
         {
-            case BuildKind.Test or BuildKind.Coverage:
-                var tests = planned.Select(entry => (entry.Target, entry.Products,
-                    Built: entry.Products.Main is { } main && executor.Succeeded(main))).ToList();
-                var outcomes = await new TestRunner(planner.Layout, buildOptions.Jobs, reporter, buildOptions.Coverage)
-                    .RunAsync(tests, cancel).ConfigureAwait(false);
-                reporter.TestSummary(outcomes);
-                var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Cached or TestStatus.Flaky);
-                if (kind == BuildKind.Coverage)
-                {
-                    var reported = await CoverageReport.WriteAsync(planner, chooser, tests, reporter, cancel).ConfigureAwait(false);
-                    return passed && reported ? 0 : 1;
-                }
-
-                return passed ? 0 : 1;
-            case BuildKind.Run:
-                if (!built)
-                {
-                    return 1;
-                }
-
-                var (target, products) = planned[0];
-                var runfiles = Runfiles.Prepare(target, products, planner.Layout);
-                var environment = Processes.Inherited();
-                var settings = (IRunSettings)target.Settings;
-                foreach (var (name, value) in settings.EnvironmentVariables)
-                {
-                    environment[name] = value;
-                }
-
-                Runfiles.AddLibraryPath(environment, products, planner.Layout);
-                var command = new List<string> { planner.Layout.Full(products.Executable!) };
-                command.AddRange(settings.Arguments);
-                command.AddRange(programArguments ?? []);
-                return Processes.RunAttached(command, runfiles, environment);
-            default:
-                if (!built)
-                {
-                    reporter.Error(ErrorCodes.ActionsFailed, $"{executor.Failed} action{(executor.Failed == 1 ? "" : "s")} failed", "the FAILED lines above say what each one printed; --keep-going shows every failure at once",
-                        Dsl.Custom.Jokes.ForProject($"{executor.Failed}"));
-                    return 1;
-                }
-
-                reporter.Success($"built {selected.Count} target{(selected.Count == 1 ? "" : "s")}");
-                return 0;
+            environment[name] = value;
         }
+
+        Runfiles.AddLibraryPath(environment, products, layout);
+        List<string> command = [layout.Full(products.Executable!), .. settings.Arguments, .. programArguments ?? []];
+        return Processes.RunAttached(command, runfiles, environment);
+    }
+
+    private int FinishBuild(Built built, int targets)
+    {
+        if (!built.Succeeded)
+        {
+            var failed = built.Executor.Failed;
+            reporter.Error(ErrorCodes.ActionsFailed, $"{failed} action{(failed == 1 ? "" : "s")} failed",
+                "the FAILED lines above say what each one printed; --keep-going shows every failure at once",
+                Dsl.Custom.Jokes.ForProject($"{failed}"));
+            return 1;
+        }
+
+        reporter.Success($"built {targets} target{(targets == 1 ? "" : "s")}");
+        return 0;
     }
 }

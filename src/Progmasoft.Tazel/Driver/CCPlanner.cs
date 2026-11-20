@@ -39,32 +39,67 @@ internal sealed partial class Planner
         _ => null,
     };
 
+    /// <summary>What every compilation of one target shares.</summary>
+    private sealed record CompileContext(
+        ProjectTarget Target, CCSettings Settings, CCToolchain Toolchain, IReadOnlyList<Feature> Features,
+        List<string> Includes, List<string> Defines, List<string> HeaderInputs, List<BuildAction> HeaderActions,
+        string ObjectsDirectory, string PackageRoot, bool Pic, IObjectiveCSettings? ObjC, HashSet<string> NonArc);
+
     private TargetProducts PlanCC(ProjectTarget target)
     {
         var settings = (CCSettings)target.Settings;
         var toolchain = Toolchains.CC(target.Family);
         var products = new TargetProducts();
-        var moduleRoot = FileSets.ToRoot(target.Module.Root, Layout.MainRoot);
         var sources = FileSets.Resolve(settings.Sources, target.PackageDirectory, Layout.MainRoot, target.Place);
+        var context = ContextOf(target, settings, toolchain, products);
+        var objects = new List<string>();
+        var compiles = new List<BuildAction>();
+        foreach (var source in sources.Concat(context.NonArc.Where(file => !sources.Contains(file))))
+        {
+            if (Compile(context, source) is { } compile)
+            {
+                compiles.Add(compile);
+                objects.Add(compile.Outputs[0]);
+            }
+        }
+
+        products.LinkTail.AddRange(settings.LinkerOptions);
+        products.LinkTail.AddRange(settings.SdkFrameworks.SelectMany(framework => new[] { "-framework", framework }));
+        products.LinkTail.AddRange(settings.WeakSdkFrameworks.SelectMany(framework => new[] { "-weak_framework", framework }));
+        products.LinkTail.AddRange(settings.SdkDynamicLibraries.Select(library => "-l" + library));
+        var directory = Layout.PackageOut(target);
+        if (target.Kind == TargetKind.StaticLibrary)
+        {
+            PlanArchive(target, toolchain, context.Features, products, directory, objects, compiles);
+        }
+        else
+        {
+            PlanLink(target, toolchain, context.Features, products, directory, objects, compiles,
+                shared: target.Kind == TargetKind.SharedLibrary);
+        }
+
+        return products;
+    }
+
+    /// <summary>
+    /// The includes, macros and headers of a target and of what it depends on; dependents see its headers below the
+    /// root of its module and below its include directories.
+    /// </summary>
+    private CompileContext ContextOf(ProjectTarget target, CCSettings settings, CCToolchain toolchain, TargetProducts products)
+    {
         var headers = FileSets.Resolve(settings.Headers, target.PackageDirectory, Layout.MainRoot, target.Place)
             .Concat(FileSets.Resolve(settings.TextualHeaders, target.PackageDirectory, Layout.MainRoot, target.Place))
             .ToList();
-        var ownIncludes = settings.IncludeDirectories
-            .Select(directory => FileSets.PathIn(directory, target.PackageDirectory, Layout.MainRoot, target.Place, mustExist: true))
-            .ToList();
-
-        // Dependents see this target's headers below the root of its module, and below its include directories.
-        products.PublicIncludes.Add(moduleRoot);
-        products.PublicIncludes.AddRange(ownIncludes);
+        products.PublicIncludes.Add(FileSets.ToRoot(target.Module.Root, Layout.MainRoot));
+        products.PublicIncludes.AddRange(settings.IncludeDirectories
+            .Select(directory => FileSets.PathIn(directory, target.PackageDirectory, Layout.MainRoot, target.Place, mustExist: true)));
         products.PublicDefines.AddRange(settings.PreprocessorDefinitions);
         products.PublicHeaders.AddRange(headers);
         var includes = new List<string>(products.PublicIncludes);
         var defines = new List<string>(settings.PreprocessorDefinitions);
         var headerInputs = new List<string>(headers);
-        var headerActions = new List<BuildAction>();
-        foreach (var dependency in Closure(target))
+        foreach (var planned in Closure(target).Select(Plan))
         {
-            var planned = Plan(dependency);
             Add(products.PublicIncludes, planned.PublicIncludes);
             Add(products.PublicDefines, planned.PublicDefines);
             Add(products.PublicHeaders, planned.PublicHeaders);
@@ -74,7 +109,6 @@ internal sealed partial class Planner
         Add(includes, products.PublicIncludes);
         Add(defines, products.PublicDefines);
         Add(headerInputs, products.PublicHeaders);
-        headerActions.AddRange(products.HeaderActions);
         defines.AddRange(settings.LocalPreprocessorDefinitions);
         if (settings is CCExecutableSettings { StampBuildInformation: true })
         {
@@ -82,119 +116,122 @@ internal sealed partial class Planner
             defines.Add($"TAZEL_BUILD_VERSION=\"{target.Module.Info.Version}\"");
         }
 
-        var features = EnabledFeatures(target, toolchain, settings.Features);
-        var directory = Layout.PackageOut(target);
-        var objectsDirectory = $"{directory}/_objs/{target.Label.Name}";
-        var packageRoot = FileSets.ToRoot(target.PackageDirectory, Layout.MainRoot);
-        var pic = target.Kind != TargetKind.Executable && target.Kind != TargetKind.Test &&
-            Options.Platform.GetOS() != OS.Windows;
         var objc = settings as IObjectiveCSettings;
         var nonArc = objc is null
             ? new HashSet<string>(StringComparer.Ordinal)
             : FileSets.Resolve(objc.NonAutomaticReferenceCountingSources, target.PackageDirectory, Layout.MainRoot, target.Place)
                 .ToHashSet(StringComparer.Ordinal);
-        var objects = new List<string>();
-        var compiles = new List<BuildAction>();
-        foreach (var source in sources.Concat(nonArc.Where(file => !sources.Contains(file))))
+        var pic = target.Kind is not (TargetKind.Executable or TargetKind.Test) && Options.Platform.GetOS() != OS.Windows;
+        return new CompileContext(target, settings, toolchain, EnabledFeatures(target, toolchain, settings.Features), includes, defines,
+            headerInputs, [.. products.HeaderActions], $"{Layout.PackageOut(target)}/_objs/{target.Label.Name}",
+            FileSets.ToRoot(target.PackageDirectory, Layout.MainRoot), pic, objc, nonArc);
+    }
+
+    /// <summary>The compilation of one source, or null for a header, which later compilations read.</summary>
+    private BuildAction? Compile(CompileContext context, string source)
+    {
+        var target = context.Target;
+        var language = LanguageOf(source) ?? throw new ProjectException(
+            $"{target.Place}: {target.Label} cannot compile '{source}'; its extension is not C, C++, Objective-C or assembly");
+        if (language == SourceLanguage.Header)
         {
-            var language = LanguageOf(source) ?? throw new ProjectException(
-                $"{target.Place}: {target.Label} cannot compile '{source}'; its extension is not C, C++, Objective-C or assembly");
-            if (language == SourceLanguage.Header)
-            {
-                headerInputs.Add(source);
-                continue;
-            }
-
-            if (language is SourceLanguage.ObjectiveC or SourceLanguage.ObjectiveCpp && target.Family != Family.ObjectiveC)
-            {
-                throw new ProjectException($"{target.Place}: '{source}' is Objective-C; declare {target.Label} with ObjectiveC");
-            }
-
-            var relative = source.StartsWith(packageRoot + "/", StringComparison.Ordinal) ? source[(packageRoot.Length + 1)..] : source;
-            var objectFile = $"{objectsDirectory}/{relative}.o";
-            var cxx = language is SourceLanguage.Cpp or SourceLanguage.ObjectiveCpp;
-            var action = language switch
-            {
-                SourceLanguage.C => CCAction.CCompile,
-                SourceLanguage.Cpp => CCAction.CppCompile,
-                SourceLanguage.ObjectiveC => CCAction.ObjectiveCCompile,
-                SourceLanguage.ObjectiveCpp => CCAction.ObjectiveCppCompile,
-                _ => CCAction.Assemble,
-            };
-            var command = new List<string>((cxx ? toolchain.Cpp : toolchain.C).Command);
-            command.AddRange(ModeFlags());
-            command.AddRange(Flags(features, action));
-            if (pic)
-            {
-                command.Add("-fPIC");
-            }
-
-            command.AddRange(includes.Select(include => "-I" + include));
-            command.AddRange(defines.Select(define => "-D" + define));
-            command.AddRange(settings.CompilerOptions);
-            command.AddRange(cxx ? settings.CppCompilerOptions : settings.CCompilerOptions);
-            if (objc is not null && language is SourceLanguage.ObjectiveC or SourceLanguage.ObjectiveCpp)
-            {
-                command.Add(nonArc.Contains(source) ? "-fno-objc-arc" : "-fobjc-arc");
-            }
-
-            if (objc is { EnableClangModules: true })
-            {
-                command.Add("-fmodules");
-                if (objc.ModuleName is { } moduleName)
-                {
-                    command.Add($"-fmodule-name={moduleName}");
-                }
-
-                if (objc.ModuleMap is { } map)
-                {
-                    command.Add("-fmodule-map-file=" +
-                        FileSets.PathIn(map, target.PackageDirectory, Layout.MainRoot, target.Place, mustExist: true));
-                }
-            }
-
-            if (Options.Coverage)
-            {
-                RequireClang(toolchain, target);
-                command.AddRange(["-fprofile-instr-generate", "-fcoverage-mapping"]);
-            }
-
-            command.AddRange(Options.CompilerOptions);
-            command.AddRange(cxx ? Options.CppCompilerOptions : Options.CCompilerOptions);
-            command.AddRange(["-MD", "-MF", objectFile + ".d", "-c", source, "-o", objectFile]);
-            var compile = new BuildAction
-            {
-                Description = $"Compiling {target.Label} {relative}",
-                Command = command,
-                Directory = Layout.MainRoot,
-                Inputs = headerInputs.Prepend(source).Distinct(StringComparer.Ordinal).ToList(),
-                Outputs = [objectFile],
-                Environment = ActionEnvironment,
-                Depfile = objectFile + ".d",
-            };
-            compile.Prerequisites.AddRange(headerActions);
-            compiles.Add(compile);
-            objects.Add(objectFile);
+            context.HeaderInputs.Add(source);
+            return null;
         }
 
-        products.LinkTail.AddRange(settings.LinkerOptions);
-        products.LinkTail.AddRange(settings.SdkFrameworks.SelectMany(framework => new[] { "-framework", framework }));
-        products.LinkTail.AddRange(settings.WeakSdkFrameworks.SelectMany(framework => new[] { "-weak_framework", framework }));
-        products.LinkTail.AddRange(settings.SdkDynamicLibraries.Select(library => "-l" + library));
-        switch (target.Kind)
+        if (language is SourceLanguage.ObjectiveC or SourceLanguage.ObjectiveCpp && target.Family != Family.ObjectiveC)
         {
-            case TargetKind.StaticLibrary:
-                PlanArchive(target, toolchain, features, products, directory, objects, compiles);
-                break;
-            case TargetKind.SharedLibrary:
-                PlanLink(target, toolchain, features, products, directory, objects, compiles, shared: true);
-                break;
-            default:
-                PlanLink(target, toolchain, features, products, directory, objects, compiles, shared: false);
-                break;
+            throw new ProjectException($"{target.Place}: '{source}' is Objective-C; declare {target.Label} with ObjectiveC");
         }
 
-        return products;
+        var relative = source.StartsWith(context.PackageRoot + "/", StringComparison.Ordinal) ? source[(context.PackageRoot.Length + 1)..] : source;
+        var objectFile = $"{context.ObjectsDirectory}/{relative}.o";
+        var cxx = language is SourceLanguage.Cpp or SourceLanguage.ObjectiveCpp;
+        var settings = context.Settings;
+        var command = new List<string>((cxx ? context.Toolchain.Cpp : context.Toolchain.C).Command);
+        command.AddRange(ModeFlags());
+        command.AddRange(Flags(context.Features, ActionOf(language)));
+        if (context.Pic)
+        {
+            command.Add("-fPIC");
+        }
+
+        command.AddRange(context.Includes.Select(include => "-I" + include));
+        command.AddRange(context.Defines.Select(define => "-D" + define));
+        command.AddRange(settings.CompilerOptions);
+        command.AddRange(cxx ? settings.CppCompilerOptions : settings.CCompilerOptions);
+        command.AddRange(ObjectiveCFlags(context, language, source));
+        command.AddRange(CoverageFlags(context));
+        command.AddRange(Options.CompilerOptions);
+        command.AddRange(cxx ? Options.CppCompilerOptions : Options.CCompilerOptions);
+        command.AddRange(["-MD", "-MF", objectFile + ".d", "-c", source, "-o", objectFile]);
+        var compile = new BuildAction
+        {
+            Description = $"Compiling {target.Label} {relative}",
+            Command = command,
+            Directory = Layout.MainRoot,
+            Inputs = context.HeaderInputs.Prepend(source).Distinct(StringComparer.Ordinal).ToList(),
+            Outputs = [objectFile],
+            Environment = ActionEnvironment,
+            Depfile = objectFile + ".d",
+        };
+        compile.Prerequisites.AddRange(context.HeaderActions);
+        return compile;
+    }
+
+    private static CCAction ActionOf(SourceLanguage language) => language switch
+    {
+        SourceLanguage.C => CCAction.CCompile,
+        SourceLanguage.Cpp => CCAction.CppCompile,
+        SourceLanguage.ObjectiveC => CCAction.ObjectiveCCompile,
+        SourceLanguage.ObjectiveCpp => CCAction.ObjectiveCppCompile,
+        _ => CCAction.Assemble,
+    };
+
+    /// <summary>Automatic reference counting per file, and clang modules, for an Objective-C target.</summary>
+    private List<string> ObjectiveCFlags(CompileContext context, SourceLanguage language, string source)
+    {
+        var flags = new List<string>();
+        var objc = context.ObjC;
+        if (objc is null)
+        {
+            return flags;
+        }
+
+        if (language is SourceLanguage.ObjectiveC or SourceLanguage.ObjectiveCpp)
+        {
+            flags.Add(context.NonArc.Contains(source) ? "-fno-objc-arc" : "-fobjc-arc");
+        }
+
+        if (!objc.EnableClangModules)
+        {
+            return flags;
+        }
+
+        flags.Add("-fmodules");
+        if (objc.ModuleName is { } moduleName)
+        {
+            flags.Add($"-fmodule-name={moduleName}");
+        }
+
+        if (objc.ModuleMap is { } map)
+        {
+            var target = context.Target;
+            flags.Add("-fmodule-map-file=" + FileSets.PathIn(map, target.PackageDirectory, Layout.MainRoot, target.Place, mustExist: true));
+        }
+
+        return flags;
+    }
+
+    private string[] CoverageFlags(CompileContext context)
+    {
+        if (!Options.Coverage)
+        {
+            return [];
+        }
+
+        RequireClang(context.Toolchain, context.Target);
+        return ["-fprofile-instr-generate", "-fcoverage-mapping"];
     }
 
     private void PlanArchive(

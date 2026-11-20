@@ -33,6 +33,81 @@ internal sealed partial class Planner
 
     private static string OptimizationName(ZigOptimization optimization) => optimization.ToString();
 
+    /// <summary>The file a Zig target makes, and what it tells dependents.</summary>
+    private (string Output, Action? After) ZigOutput(
+        ProjectTarget target, ZigCompiledSettings settings, TargetProducts products, string directory, List<string> command)
+    {
+        if (target.Kind == TargetKind.StaticLibrary)
+        {
+            var library = $"{directory}/{StaticLibraryName(target.Label.Name)}";
+            products.Library = library;
+            return (library, null);
+        }
+
+        if (target.Kind != TargetKind.SharedLibrary)
+        {
+            var program = $"{directory}/{ExecutableName(target.Label.Name)}";
+            products.Executable = program;
+            return (program, null);
+        }
+
+        var version = ((ZigSharedLibrarySettings)settings).LibraryVersion;
+        var (file, linkWith, soname) = SharedLibraryNames(directory, target.Label.Name, version);
+        products.Library = linkWith;
+        products.IsShared = true;
+        if (soname is not null && Options.Platform.GetOS() != OS.Windows)
+        {
+            command.Add($"-fsoname={soname}");
+        }
+
+        return (file, SonameLinks(file, soname, target.Label.Name));
+    }
+
+    /// <summary>The switches of the settings: libc, stripping, LTO and the test filter.</summary>
+    private static List<string> Switches(ZigCompiledSettings settings)
+    {
+        var switches = new List<string>();
+        switches.AddRange(settings.LinkCStandardLibrary ? ["-lc"] : []);
+        switches.AddRange(settings.StripSymbols ? ["-fstrip"] : []);
+        switches.AddRange(settings.LinkTimeOptimization ? ["-flto"] : []);
+        if (settings is ZigTestSettings test)
+        {
+            switches.AddRange(test.TestFilter is { } filter ? ["--test-filter", filter] : []);
+            switches.Add("--test-no-exec");
+        }
+
+        return switches;
+    }
+
+    /// <summary>
+    /// The root module and those it imports: per-module options come before the -M of the module they belong to,
+    /// the root module first. Returns the files they read.
+    /// </summary>
+    private List<string> AddModules(
+        ProjectTarget target, ZigCompiledSettings settings, ZigOptimization defaultOptimization, List<string> includeDirectories,
+        List<string> command)
+    {
+        var inputs = new List<string>();
+        command.AddRange(ModuleOptions(target, settings, settings.OptimizationMode ?? defaultOptimization, inputs, includeDirectories));
+        var cSources = FileSets.Resolve(settings.CSources, target.PackageDirectory, Layout.MainRoot, target.Place);
+        AddCSources(command, settings, cSources);
+        inputs.AddRange(cSources);
+        var modules = ImportedModules(target);
+        var names = ModuleNames(modules);
+        command.AddRange(target.ZigImports.SelectMany(entry => new[] { "--dep", $"{entry.Key}={names[entry.Value]}" }));
+        command.Add($"-Mroot={RootFile(target)}");
+        foreach (var module in modules)
+        {
+            var moduleSettings = (ZigModuleSettings)module.Settings;
+            command.AddRange(ModuleOptions(module, moduleSettings,
+                moduleSettings.OptimizationMode ?? settings.OptimizationMode ?? defaultOptimization, inputs, []));
+            command.AddRange(module.ZigImports.SelectMany(entry => new[] { "--dep", $"{entry.Key}={names[entry.Value]}" }));
+            command.Add($"-M{names[module]}={RootFile(module)}");
+        }
+
+        return inputs;
+    }
+
     private TargetProducts PlanZig(ProjectTarget target)
     {
         var products = new TargetProducts();
@@ -61,36 +136,9 @@ internal sealed partial class Planner
         }
 
         command.AddRange(["--cache-dir", Layout.ZigCache]);
-        string output;
-        Action? after = null;
-        var outputs = new List<string>();
-        switch (target.Kind)
-        {
-            case TargetKind.StaticLibrary:
-                output = $"{directory}/{StaticLibraryName(target.Label.Name)}";
-                products.Library = output;
-                break;
-            case TargetKind.SharedLibrary:
-                var version = ((ZigSharedLibrarySettings)settings).LibraryVersion;
-                var (file, linkWith, soname) = SharedLibraryNames(directory, target.Label.Name, version);
-                output = file;
-                products.Library = linkWith;
-                products.IsShared = true;
-                if (soname is not null && Options.Platform.GetOS() != OS.Windows)
-                {
-                    command.Add($"-fsoname={soname}");
-                }
-
-                after = SonameLinks(file, soname, target.Label.Name);
-                break;
-            default:
-                output = $"{directory}/{ExecutableName(target.Label.Name)}";
-                products.Executable = output;
-                break;
-        }
-
+        var (output, after) = ZigOutput(target, settings, products, directory, command);
         command.Add($"-femit-bin={output}");
-        outputs.Add(output);
+        var outputs = new List<string> { output };
         var emitHeader = settings switch
         {
             ZigStaticLibrarySettings library => library.EmitHeader,
@@ -105,31 +153,7 @@ internal sealed partial class Planner
             products.PublicIncludes.Add(Path.GetDirectoryName(header)!.Replace('\\', '/'));
         }
 
-        if (settings.LinkCStandardLibrary)
-        {
-            command.Add("-lc");
-        }
-
-        if (settings.StripSymbols)
-        {
-            command.Add("-fstrip");
-        }
-
-        if (settings.LinkTimeOptimization)
-        {
-            command.Add("-flto");
-        }
-
-        if (settings is ZigTestSettings test)
-        {
-            if (test.TestFilter is { } filter)
-            {
-                command.AddRange(["--test-filter", filter]);
-            }
-
-            command.Add("--test-no-exec");
-        }
-
+        command.AddRange(Switches(settings));
         command.AddRange(settings.ZigCompilerOptions);
         command.AddRange(Options.ZigCompilerOptions);
 
@@ -152,32 +176,7 @@ internal sealed partial class Planner
         command.AddRange(settings.LinkerOptions);
         command.AddRange(Options.LinkerOptions);
 
-        // Per-module options come before the -M of the module they belong to: first the root module.
-        var inputs = new List<string>();
-        command.AddRange(ModuleOptions(target, settings, settings.OptimizationMode ?? defaultOptimization, inputs, includeDirectories));
-        var cSources = FileSets.Resolve(settings.CSources, target.PackageDirectory, Layout.MainRoot, target.Place);
-        AddCSources(command, settings, cSources);
-        inputs.AddRange(cSources);
-        var modules = ImportedModules(target);
-        var names = ModuleNames(modules);
-        foreach (var (import, module) in target.ZigImports)
-        {
-            command.AddRange(["--dep", $"{import}={names[module]}"]);
-        }
-
-        command.Add($"-Mroot={RootFile(target)}");
-        foreach (var module in modules)
-        {
-            var moduleSettings = (ZigModuleSettings)module.Settings;
-            command.AddRange(ModuleOptions(module, moduleSettings,
-                moduleSettings.OptimizationMode ?? settings.OptimizationMode ?? defaultOptimization, inputs, []));
-            foreach (var (import, imported) in module.ZigImports)
-            {
-                command.AddRange(["--dep", $"{import}={names[imported]}"]);
-            }
-
-            command.Add($"-M{names[module]}={RootFile(module)}");
-        }
+        var inputs = AddModules(target, settings, defaultOptimization, includeDirectories, command);
 
         var action = new BuildAction
         {

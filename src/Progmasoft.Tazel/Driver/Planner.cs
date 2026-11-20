@@ -140,6 +140,25 @@ internal sealed partial class Planner
         }
     }
 
+    /// <summary>A library on the link line; one linked whole is wrapped so that none of its objects is dropped.</summary>
+    private static string[] LibraryArguments(string library, bool whole, OS os) =>
+        !whole ? [library]
+        : os == OS.MacOS ? [$"-Wl,-force_load,{library}"]
+        : ["-Wl,--whole-archive", library, "-Wl,--no-whole-archive"];
+
+    /// <summary>Where a program finds a shared library at run time, relative to itself; Windows has no run path.</summary>
+    private static string[] RunPath(string outputDirectory, string directory, OS os)
+    {
+        var relative = Path.GetRelativePath(outputDirectory, directory).Replace('\\', '/');
+        var suffix = relative == "." ? "" : "/" + relative;
+        return os switch
+        {
+            OS.MacOS => [$"-Wl,-rpath,@loader_path{suffix}"],
+            OS.Windows => [],
+            _ => [$"-Wl,-rpath,$ORIGIN{suffix}"],
+        };
+    }
+
     /// <summary>The linker arguments for the libraries of <paramref name="target"/>, and the actions that make them.</summary>
     private (List<string> Arguments, List<string> Inputs, List<BuildAction> Actions, List<string> SharedDirectories)
         LinkLibraries(ProjectTarget target, string outputDirectory, bool forZig = false)
@@ -160,42 +179,20 @@ internal sealed partial class Planner
             if (products.Library is { } library)
             {
                 inputs.Add(library);
-                if (products.AlwaysLink && !products.IsShared && !forZig)
+                arguments.AddRange(LibraryArguments(library, products.AlwaysLink && !products.IsShared && !forZig, os));
+                var directory = Path.GetDirectoryName(library)!.Replace('\\', '/');
+                if (products.IsShared && !sharedDirectories.Contains(directory))
                 {
-                    arguments.AddRange(os == OS.MacOS
-                        ? [$"-Wl,-force_load,{library}"]
-                        : ["-Wl,--whole-archive", library, "-Wl,--no-whole-archive"]);
-                }
-                else
-                {
-                    arguments.Add(library);
-                }
-
-                if (products.IsShared)
-                {
-                    var directory = Path.GetDirectoryName(library)!.Replace('\\', '/');
-                    if (!sharedDirectories.Contains(directory))
-                    {
-                        sharedDirectories.Add(directory);
-                    }
+                    sharedDirectories.Add(directory);
                 }
             }
 
             tail.AddRange(products.LinkTail);
         }
 
-        foreach (var directory in forZig ? [] : sharedDirectories)
+        if (!forZig)
         {
-            var relative = Path.GetRelativePath(outputDirectory, directory).Replace('\\', '/');
-            var suffix = relative == "." ? "" : "/" + relative;
-            if (os == OS.MacOS)
-            {
-                arguments.Add($"-Wl,-rpath,@loader_path{suffix}");
-            }
-            else if (os != OS.Windows)
-            {
-                arguments.Add($"-Wl,-rpath,$ORIGIN{suffix}");
-            }
+            arguments.AddRange(sharedDirectories.SelectMany(directory => RunPath(outputDirectory, directory, os)));
         }
 
         arguments.AddRange(tail);

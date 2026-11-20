@@ -28,6 +28,30 @@ internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Repo
     /// <summary>How many actions failed.</summary>
     public int Failed => _failed;
 
+    /// <summary>
+    /// Whether <paramref name="action"/> failed: its program said so, or an output it should have written is not there.
+    /// A failure is reported, and stops the build unless it keeps going.
+    /// </summary>
+    private async Task<bool> FailedAsync(BuildAction action, ProcessResult result, CancellationTokenSource stop)
+    {
+        var missing = action.Outputs.FirstOrDefault(output => !File.Exists(action.Full(output)));
+        if (result.ExitCode == 0 && missing is null)
+        {
+            return false;
+        }
+
+        var hint = missing is not null && action.MissingOutputHints.TryGetValue(missing, out var said) ? $"; {said}" : "";
+        var output = result.ExitCode == 0 ? result.Output + $"{missing} was not written{hint}\n" : result.Output;
+        Interlocked.Increment(ref _failed);
+        reporter.ActionFailed(action.Description, action.Command, output);
+        if (!keepGoing)
+        {
+            await stop.CancelAsync().ConfigureAwait(false);
+        }
+
+        return true;
+    }
+
     /// <summary>Runs <paramref name="goals"/> and what they need; true when all of them were made.</summary>
     public async Task<bool> RunAsync(IReadOnlyCollection<BuildAction> goals, CancellationToken cancel)
     {
@@ -81,24 +105,9 @@ internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Repo
                     ? await work(stop.Token).ConfigureAwait(false)
                     : await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
                         .ConfigureAwait(false);
-                if (result.Canceled)
+                // Stopped because another action failed: that one is reported, this one did not fail.
+                if (result.Canceled || await FailedAsync(action, result, stop).ConfigureAwait(false))
                 {
-                    // Stopped because another action failed: that one is reported, this one did not fail.
-                    return false;
-                }
-
-                var missing = action.Outputs.FirstOrDefault(output => !File.Exists(action.Full(output)));
-                if (result.ExitCode != 0 || missing is not null)
-                {
-                    var hint = missing is not null && action.MissingOutputHints.TryGetValue(missing, out var said) ? $"; {said}" : "";
-                    var output = result.ExitCode == 0 ? result.Output + $"{missing} was not written{hint}\n" : result.Output;
-                    Interlocked.Increment(ref _failed);
-                    reporter.ActionFailed(action.Description, action.Command, output);
-                    if (!keepGoing)
-                    {
-                        await stop.CancelAsync().ConfigureAwait(false);
-                    }
-
                     return false;
                 }
 
