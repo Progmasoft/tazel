@@ -31,7 +31,13 @@ internal sealed class TemporaryModule : IDisposable
     /// <summary>Writes <paramref name="text"/> to <paramref name="relative"/>, making its directories.</summary>
     public TemporaryModule Write(string relative, string text)
     {
-        var path = Path.Combine(Root, relative);
+        // A test writes inside its module only.
+        var path = Path.GetFullPath(Path.Combine(Root, relative));
+        if (!path.StartsWith(Path.GetFullPath(Root) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"'{relative}' is outside the module", nameof(relative));
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, text);
         return this;
