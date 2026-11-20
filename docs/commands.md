@@ -65,6 +65,11 @@ environment is `PATH`, its `InheritedEnvironmentVariables`, `TEST_TMPDIR`, `TEST
 variables and its `EnvironmentVariables`. Its log is `.tazel/testlogs/<package>/<name>/test.log`. A test tagged
 `exclusive` runs alone.
 
+A test that passed is not run again while what it runs with is the same: its program and the shared libraries
+beside it by content, its data, arguments and environment, its shards, timeout and retries, and the platform and mode.
+It shows as `PASSED (cached)` with the log of its last run. A test tagged `no-cache` runs every time, a flaky pass is
+not remembered, and `tazel coverage` runs every test.
+
 `tazel run` runs the program in its runfiles directory with Tazel's environment and the program's
 `EnvironmentVariables`, its `Arguments` and what follows `--`, and returns its exit status.
 
@@ -146,3 +151,67 @@ tazel portal-modules info --exact -- com.example:json
 with their push dates and dependencies; without `-e` the group may be left out unless the name is a module of more
 than one group. `--` ends the options, so a query may start with a dash.
 
+## tazel_envs.txt
+
+```text
+# comment
+<# comment #>
+
+example-version: '0.1.0';
+example-output: ("rustc" "--help");
+shell-expansion: s(`$HOME`);
+```
+
+`tazel_envs.txt` sits beside the `MODULE.csx` of a module and names values that its `MODULE.csx` and `BUILD.csx`
+files read:
+
+```cs
+using Progmasoft.Tazel.Dsl.Environment;
+
+var exampleVersion = GetEnvironment.From("example-version"); // "0.1.0"; null for a name the file does not have
+```
+
+- It is read with the lexer of `tazel_custom.txt`: the same comments and strings; every value ends with `;`.
+- A string is the value as written. `("program" "argument")` starts a program directly, each string one argument;
+  `s("line")` gives one line to `/bin/sh` on Linux, macOS and the BSDs and to `cmd.exe` on Windows. Their value is
+  what they print, less the line endings at its end. A program runs when its value is first asked for, once per
+  command, in the root of the module with Tazel's environment; one that fails stops the project file that asked.
+- A value is not an environment variable: it reaches no shell, no program Tazel runs and not Tazel itself; only
+  `GetEnvironment.From` reads it.
+
+## Errors
+
+Every error has a code, `E` and four digits, written as `error[E0406]:`. An error in `tazel_envs.txt`,
+`tazel_custom.txt` or `tazel_options.txt` shows where it is, the line, a mark under the problem, how to fix it, where
+to read more, and a light line:
+
+```text
+✖ error[E0406]: expected ';' after the value of example-version
+  ╭─[ tazel_envs.txt:1:25 ]
+  │
+1 │ example-version: '0.1.0'
+  │                         ┬
+  │                         ╰── a ';' goes here
+  │
+  ├─ 💡 help: end every value with ';': example-version: '0.1.0';
+  ├─ 📖 more: tazel explain E0406
+  ╰─ 🎭 Semicolons are small, but they hold this whole file together.
+```
+
+A terminal without Unicode gets the same picture in ASCII. Other errors say what went wrong, how to fix it where
+there is a way, where to read more, and a light line too; the same problem always gets the same line.
+
+`tazel explain E0406` prints what a code means with a fixed example; `tazel explain E0406 --long` says why and shows
+the wrong text and the right one side by side. The first two digits say where an error comes from:
+
+| Codes | From |
+| --- | --- |
+| `E00xx` | the text files: their comments, strings and placeholders |
+| `E01xx` | the command line |
+| `E02xx` | `tazel_options.txt` |
+| `E03xx` | `tazel_custom.txt` |
+| `E04xx` | `tazel_envs.txt` |
+| `E05xx` | `MODULE.csx`, `BUILD.csx` and builds |
+| `E06xx` | labels |
+
+A code, once given, keeps its meaning.

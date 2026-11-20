@@ -43,6 +43,9 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 return await BuildAsync(coverage.Labels, coverage.Flags, BuildKind.Coverage, null, cancel).ConfigureAwait(false);
             case QueryCommand query:
                 return await QueryAsync(query, cancel).ConfigureAwait(false);
+            case ExplainCommand explain:
+                Explain(explain);
+                return 0;
             case FetchCommand:
                 return await FetchAsync().ConfigureAwait(false);
             case VendorCommand:
@@ -50,14 +53,15 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             case PortalModulesCommand portal:
                 return await PortalModulesAsync(portal, cancel).ConfigureAwait(false);
             case DaemonCommand daemon:
-                reporter.Error($"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon");
+                reporter.Error(ErrorCodes.NoDaemon, $"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon", null,
+                    "Tazel is a morning person: awake at once, every time, no daemon needed.");
                 return 1;
             case CleanCommand clean:
                 return Clean(clean);
             case PackageCommand:
                 return await PackageAsync().ConfigureAwait(false);
             case CustomCommandLine custom:
-                return Custom(custom);
+                return await CustomAsync(custom, cancel).ConfigureAwait(false);
             case BuildCommand build:
                 return await BuildAsync(build.Labels, build.Flags, BuildKind.Build, null, cancel).ConfigureAwait(false);
             case TestCommand test:
@@ -79,8 +83,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     }
 
     /// <summary>
-    /// Stops a command that would run what a project brings when a sandbox is asked for: this Tazel has no MicroVM to
-    /// start, so nothing runs rather than run on the host.
+    /// Stops a command that would run what a project brings when a sandbox is asked for: this Tazel runs tazel custom
+    /// inside its MicroVM, and builds, tests and plugins not, so nothing runs rather than run on the host.
     /// </summary>
     private void RefuseWithoutSandbox()
     {
@@ -88,8 +92,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         if (file is not null)
         {
             throw new ProjectException(
-                $"{file} asks for sandboxing-with-microvm, and this Tazel has no MicroVM to start, so nothing ran; " +
-                "set it to false to run without the sandbox");
+                $"{file} asks for sandboxing-with-microvm; this Tazel runs tazel custom inside its MicroVM, and not " +
+                "builds, tests or plugins, so nothing ran; set it to false to run them without the sandbox");
         }
     }
 
@@ -145,9 +149,9 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         return 0;
     }
 
-    private int Custom(CustomCommandLine custom)
+    private async Task<int> CustomAsync(CustomCommandLine custom, CancellationToken cancel)
     {
-        RefuseWithoutSandbox();
+        var (options, sandboxFile) = TazelOptionsFile.Effective(workingDirectory);
         var file = Path.Combine(workingDirectory, CustomCommandFiles.FileName);
         if (!File.Exists(file))
         {
@@ -172,6 +176,11 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         if (arguments.Count > command.Required && !command.TakesAll)
         {
             throw new CommandLineException($"'{command.Name}' takes {command.Required} arguments, and {arguments.Count} were given");
+        }
+
+        if (sandboxFile is not null)
+        {
+            return await CustomInMicroVMAsync(command, arguments, options, sandboxFile, cancel).ConfigureAwait(false);
         }
 
         var environment = Processes.Inherited();
@@ -263,7 +272,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 var outcomes = await new TestRunner(planner.Layout, buildOptions.Jobs, reporter, buildOptions.Coverage)
                     .RunAsync(tests, cancel).ConfigureAwait(false);
                 reporter.TestSummary(outcomes);
-                var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Flaky);
+                var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Cached or TestStatus.Flaky);
                 if (kind == BuildKind.Coverage)
                 {
                     var reported = await CoverageReport.WriteAsync(planner, chooser, tests, reporter, cancel).ConfigureAwait(false);
@@ -294,7 +303,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             default:
                 if (!built)
                 {
-                    reporter.Error($"{executor.Failed} action{(executor.Failed == 1 ? "" : "s")} failed");
+                    reporter.Error(ErrorCodes.ActionsFailed, $"{executor.Failed} action{(executor.Failed == 1 ? "" : "s")} failed", "the FAILED lines above say what each one printed; --keep-going shows every failure at once",
+                        Dsl.Custom.Jokes.ForProject($"{executor.Failed}"));
                     return 1;
                 }
 

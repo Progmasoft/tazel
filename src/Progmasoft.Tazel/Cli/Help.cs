@@ -55,8 +55,10 @@ internal static class Help
 
             Builds the tests of the labels and runs each in its runfiles directory, with its own TEST_TMPDIR, the
             shard variables, and a timeout from its TestSize (1, 5, 15, 60 minutes) or its Timeout; a flaky test runs
-            up to three times, and a test tagged exclusive runs alone. Logs go to .tazel/testlogs/; the output of a
-            test that failed is printed, then a table of every test.
+            up to three times, and a test tagged exclusive runs alone. A test that passed is not run again while its
+            program, data, arguments and environment are the same; it shows as PASSED (cached), and a test tagged
+            no-cache runs every time. Logs go to .tazel/testlogs/; the output of a test that failed is printed, then a
+            table of every test.
 
             {Labels}
 
@@ -161,6 +163,24 @@ internal static class Help
             Runs a command of the tazel_custom.txt of the current directory. The longest name that fits wins; -- ends
             the name, and what follows is arguments, which <1>, <2>... and <*> take. Everything after custom belongs to
             the command, its options too.
+            """),
+        ["explain"] = new("tazel explain <code> [--long]: what an error code means and how to fix it.", """
+            tazel explain <code> [--long]
+
+            Every error of Tazel has a code, E and four digits, as in error[E0406]. tazel explain prints what the code
+            means and a fixed example; --long says why, and shows the wrong text and the right one side by side.
+            The first two digits say where an error comes from:
+              00  the text files (their comments, strings and placeholders)
+              01  the command line
+              02  tazel_options.txt
+              03  tazel_custom.txt
+              04  tazel_envs.txt
+              05  MODULE.csx, BUILD.csx and builds
+              06  labels
+
+            Examples:
+              tazel explain E0406
+              tazel explain E0406 --long
             """),
         ["version"] = new("tazel version: prints the version of Tazel.", """
             tazel version

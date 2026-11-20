@@ -19,8 +19,12 @@ namespace Progmasoft.Tazel.Project;
 internal sealed record ModuleInfo(string Group, string Name, NuGetVersion Version, ModuleDefinition Definition);
 
 /// <summary>A module whose MODULE.csx ran: the main one, or a dependency by the name its labels use.</summary>
-internal sealed class LoadedModule(string root, string? repository, ModuleGlobals globals, ModuleInfo info)
+internal sealed class LoadedModule(
+    string root, string? repository, ModuleGlobals globals, ModuleInfo info, Dsl.Envs.ModuleEnvironment? environment)
 {
+    /// <summary>The values of its <c>tazel_envs.txt</c>, or null when it has none.</summary>
+    public Dsl.Envs.ModuleEnvironment? Environment { get; } = environment;
+
     public string Root { get; } = root;
 
     public string? Repository { get; } = repository;
@@ -123,8 +127,22 @@ internal sealed class Workspace
         var file = Path.Combine(root, ModuleFiles.ModuleFile);
         var shown = repository is null ? ModuleFiles.ModuleFile : $"@{repository}//{ModuleFiles.ModuleFile}";
         var globals = new ModuleGlobals();
-        await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals)
-            .ConfigureAwait(false);
+        var envsShown = repository is null ? Dsl.Envs.TazelEnvsFile.FileName : $"@{repository}//{Dsl.Envs.TazelEnvsFile.FileName}";
+        Dsl.Envs.ModuleEnvironment? environment;
+        try
+        {
+            environment = Dsl.Envs.ModuleEnvironment.Load(root, envsShown);
+        }
+        catch (Dsl.Custom.CustomCommandsException error)
+        {
+            throw new ProjectException(error.Message, error);
+        }
+
+        using (Dsl.Environment.EnvironmentValues.Enter(environment))
+        {
+            await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals)
+                .ConfigureAwait(false);
+        }
         var definition = globals.module?.Definition
             ?? throw new ProjectException($"{shown} sets no module: module = Module.Define(new() {{ ... }});");
         if (!Labels.IsName(definition.Name))
@@ -149,7 +167,8 @@ internal sealed class Workspace
                 $"{shown} builds with Tazel {compatibility}; this is Tazel {tazelVersion.ToString(3)}");
         }
 
-        return new LoadedModule(root, repository, globals, new ModuleInfo(definition.Group, definition.Name, version, definition));
+        return new LoadedModule(root, repository, globals, new ModuleInfo(definition.Group, definition.Name, version, definition),
+            environment);
     }
 
     private static bool IsGroup(string group) =>
@@ -248,6 +267,7 @@ internal sealed class Workspace
             var scope = new DeclarationScope(package.Path, shown);
             var code = await File.ReadAllTextAsync(package.File).ConfigureAwait(false);
             using (Declarations.Enter(scope))
+            using (Dsl.Environment.EnvironmentValues.Enter(module.Environment))
             {
                 await ScriptHost.RunAsync(code, shown, new BuildGlobals(build), environment).ConfigureAwait(false);
             }

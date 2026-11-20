@@ -25,6 +25,9 @@ internal enum When
 internal enum TestStatus
 {
     Passed,
+
+    /// <summary>It passed before with the same program, data, arguments and environment, so it did not run again.</summary>
+    Cached,
     Failed,
     TimedOut,
     Flaky,
@@ -126,13 +129,85 @@ internal sealed class Reporter
         }
     }
 
-    /// <summary>What went wrong, ending the command.</summary>
-    public void Error(string message)
+    /// <summary>What went wrong, ending the command, with how to fix it and a light line when there are ones.</summary>
+    public void Error(string code, string message, string? help = null, string? joke = null)
     {
         lock (_lock)
         {
-            Console.MarkupLine($"[red bold]error[/]: {Markup.Escape(message)}");
+            var fancy = Console.Profile.Capabilities.Unicode;
+            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Heading(code)}[/] [bold]{Markup.Escape(message)}[/]");
+            if (help is not null)
+            {
+                Console.MarkupLine($"  [blue]{(fancy ? "├─" : "|-")}[/] [green]{(fancy ? "💡 " : "")}help:[/] {Markup.Escape(help)}");
+            }
+
+            Console.MarkupLine($"  [blue]{(fancy ? "├─" : "|-")}[/] [cyan]{(fancy ? "📖 " : "")}more:[/] tazel explain {code}");
+
+            if (joke is not null)
+            {
+                Console.MarkupLine($"  [blue]{(fancy ? "╰─" : "`-")}[/] [magenta italic]{(fancy ? "🎭 " : "")}{Markup.Escape(joke)}[/]");
+            }
         }
+    }
+
+    /// <summary>
+    /// A problem in a file the user wrote, drawn as a little picture: the line, a mark under the problem with what it
+    /// says, how to fix it, and a light line.
+    /// </summary>
+    public void Diagnostic(Dsl.Custom.Diagnostic diagnostic)
+    {
+        ArgumentNullException.ThrowIfNull(diagnostic);
+        lock (_lock)
+        {
+            var fancy = Console.Profile.Capabilities.Unicode;
+            var number = diagnostic.Line.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var pad = new string(' ', number.Length);
+            var bar = fancy ? "│" : "|";
+            var before = new string(' ', Math.Max(0, diagnostic.Column - 1));
+            var width = Math.Max(1, diagnostic.Width);
+            string Gutter(string left) => $"[blue]{left} {bar}[/]";
+
+            Console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Heading(diagnostic.Code)}[/] [bold]{Markup.Escape(diagnostic.Message)}[/]");
+            Console.MarkupLine($"[blue]{pad} {(fancy ? "╭─[[" : ",-[[")}[/] [cyan]{Markup.Escape($"{Shown(diagnostic.File)}:{diagnostic.Line}:{diagnostic.Column}")}[/] [blue]]][/]");
+            Console.MarkupLine(Gutter(pad));
+            if (diagnostic.SourceLine.Length > 0 || diagnostic.Column == 1)
+            {
+                Console.MarkupLine($"{Gutter(number)} {Markup.Escape(diagnostic.SourceLine)}");
+                var mark = fancy
+                    ? (width == 1 ? "┬" : new string('─', width / 2) + "┬" + new string('─', width - (width / 2) - 1))
+                    : new string('^', width);
+                var tee = fancy ? before + new string(' ', width / 2) : before;
+                Console.MarkupLine($"{Gutter(pad)} [red bold]{Markup.Escape(before + mark)}[/]");
+                Console.MarkupLine($"{Gutter(pad)} [red bold]{Markup.Escape(tee + (fancy ? "╰── " : "`-- "))}{Markup.Escape(diagnostic.Label)}[/]");
+                Console.MarkupLine(Gutter(pad));
+            }
+
+            if (diagnostic.Help is not null)
+            {
+                Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [green]{(fancy ? "💡 " : "")}help:[/] {Markup.Escape(diagnostic.Help)}");
+            }
+
+            Console.MarkupLine($"[blue]{pad} {(fancy ? "├─" : "|-")}[/] [cyan]{(fancy ? "📖 " : "")}more:[/] tazel explain {diagnostic.Code}");
+            if (diagnostic.Joke is not null)
+            {
+                Console.MarkupLine($"[blue]{pad} {(fancy ? "╰─" : "`-")}[/] [magenta italic]{(fancy ? "🎭 " : "")}{Markup.Escape(diagnostic.Joke)}[/]");
+            }
+        }
+    }
+
+    // error[E0406]: the code in brackets, as rustc writes it; markup needs its brackets doubled.
+    private static string Heading(string code) => $"error[[{Markup.Escape(code)}]]:";
+
+    // A file below the current directory is shown from there, which is shorter and what the user typed.
+    private static string Shown(string file)
+    {
+        if (!System.IO.Path.IsPathRooted(file))
+        {
+            return file;
+        }
+
+        var relative = System.IO.Path.GetRelativePath(Environment.CurrentDirectory, file);
+        return relative.StartsWith("..", StringComparison.Ordinal) ? file : relative;
     }
 
     /// <summary>Something the user should know that does not stop the command.</summary>
@@ -157,6 +232,7 @@ internal sealed class Reporter
             var status = outcome.Status switch
             {
                 TestStatus.Passed => "[green]PASSED[/]",
+                TestStatus.Cached => "[green]PASSED[/] [grey](cached)[/]",
                 TestStatus.Flaky => "[yellow]FLAKY[/]",
                 TestStatus.TimedOut => "[red]TIMEOUT[/]",
                 TestStatus.NotBuilt => "[red]NOT BUILT[/]",

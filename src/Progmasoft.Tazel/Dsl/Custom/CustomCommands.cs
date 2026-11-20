@@ -16,6 +16,16 @@ public sealed class CustomCommandsException : Exception
     {
     }
 
+    /// <summary>A problem of the file, with all it takes to show it well.</summary>
+    public CustomCommandsException(Diagnostic diagnostic)
+        : base((diagnostic ?? throw new ArgumentNullException(nameof(diagnostic))).Plain)
+    {
+        Diagnostic = diagnostic;
+    }
+
+    /// <summary>The place, the line, the help and the joke, when the problem has a place.</summary>
+    public Diagnostic? Diagnostic { get; }
+
     /// <summary>Nothing to say.</summary>
     public CustomCommandsException()
     {

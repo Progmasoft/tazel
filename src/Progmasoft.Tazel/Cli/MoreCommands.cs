@@ -127,6 +127,111 @@ internal sealed partial class Commands
         return new PackageId(null, path);
     }
 
+    /// <summary>What an error code means; with --long, why, and the wrong and right text side by side.</summary>
+    private void Explain(ExplainCommand command)
+    {
+        var entry = ErrorCodes.Find(command.Code)!;
+        var console = reporter.Console;
+        var fancy = console.Profile.Capabilities.Unicode;
+        console.MarkupLine($"[red bold]{(fancy ? "✖ " : "")}{Markup.Escape(entry.Code)}[/]: [bold]{Markup.Escape(entry.Title)}[/]  [grey]({Markup.Escape(entry.Where)})[/]");
+        if (!command.Long)
+        {
+            var first = entry.Explanation.IndexOf(". ", StringComparison.Ordinal);
+            console.WriteLine(first < 0 ? entry.Explanation : entry.Explanation[..(first + 1)]);
+            if (entry.Right is not null)
+            {
+                console.MarkupLine($"[green]{(fancy ? "✔ " : "")}for example:[/] {Markup.Escape(entry.Right.Replace("\n", " ", StringComparison.Ordinal))}");
+            }
+
+            console.MarkupLine($"[grey]More: tazel explain {entry.Code} --long[/]");
+            return;
+        }
+
+        console.WriteLine();
+        console.WriteLine(entry.Explanation);
+        if (entry.Wrong is not null && entry.Right is not null)
+        {
+            console.WriteLine();
+            var wrong = new Panel(new Text(entry.Wrong)).Header(fancy ? " ✖ wrong " : " wrong ").BorderColor(Color.Red);
+            var right = new Panel(new Text(entry.Right)).Header(fancy ? " ✔ right " : " right ").BorderColor(Color.Green);
+            if (!fancy)
+            {
+                wrong.Border = BoxBorder.Ascii;
+                right.Border = BoxBorder.Ascii;
+            }
+
+            console.Write(new Columns(wrong, right) { Expand = false });
+        }
+
+        var related = ErrorCodes.Codes.Where(other => other.Where == entry.Where && other.Code != entry.Code).Select(other => other.Code).ToList();
+        if (related.Count > 0)
+        {
+            console.WriteLine();
+            console.MarkupLine($"[grey]The other errors of {Markup.Escape(entry.Where)}: {string.Join(", ", related)}[/]");
+        }
+    }
+
+    /// <summary>
+    /// Runs the steps of a custom command inside a MicroVM that sees the module, or the directory of the command when
+    /// it is in no module, and the host's /usr read-only; a shell step goes to the guest's /bin/sh.
+    /// </summary>
+    private async Task<int> CustomInMicroVMAsync(
+        Dsl.Custom.CustomCommand command, IReadOnlyList<string> arguments, TazelOptions options, string sandboxFile,
+        CancellationToken cancel)
+    {
+        if (options.MicroVMNetwork)
+        {
+            throw new MicroVM.MicroVMException(
+                $"{sandboxFile} asks for microvm-network, and this Tazel's MicroVM has no network, so nothing ran; " +
+                "set microvm-network: false;");
+        }
+
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new MicroVM.MicroVMException(
+                $"{sandboxFile} asks for sandboxing-with-microvm, and this Tazel starts its MicroVM on Linux only");
+        }
+
+        string shared;
+        try
+        {
+            shared = ModuleFiles.FindRoot(workingDirectory);
+        }
+        catch (ProjectException)
+        {
+            shared = Path.GetFullPath(workingDirectory);
+        }
+
+        var files = await MicroVM.MicroVMFiles.FindAsync(TazelVersion, reporter.Status, cancel).ConfigureAwait(false);
+        var size = new MicroVM.MicroVMSize(
+            options.MicroVMMemory.Amount ?? 1024, options.MicroVMCpus.Amount ?? Math.Clamp(Environment.ProcessorCount / 2, 1, 4));
+        reporter.Status($"starting the MicroVM ({size.MemoryMiB} MiB, {size.Processors} processor{(size.Processors == 1 ? "" : "s")})");
+        var sandbox = await MicroVM.Sandbox.StartAsync(files, [new MicroVM.SharedDirectory(shared, ReadOnly: false)], size, cancel)
+            .ConfigureAwait(false);
+        await using (sandbox.ConfigureAwait(false))
+        {
+            var output = Console.OpenStandardOutput();
+            var errors = Console.OpenStandardError();
+            foreach (var step in command.Steps)
+            {
+                var started = step switch
+                {
+                    Dsl.Custom.CustomStep.Program program => program.Expanded(arguments),
+                    Dsl.Custom.CustomStep.Shell shell => shell.Started(windows: false),
+                    _ => throw new InvalidOperationException("a step of no kind"),
+                };
+                var status = await sandbox.RunAsync(started, Path.GetFullPath(workingDirectory), output, errors, cancel)
+                    .ConfigureAwait(false);
+                if (status != 0)
+                {
+                    return status;
+                }
+            }
+        }
+
+        return 0;
+    }
+
     private async Task<int> FetchAsync()
     {
         RefuseWithoutSandbox();

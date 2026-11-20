@@ -29,16 +29,16 @@ public sealed record TazelOptions
     /// <summary>
     /// Whether what a project brings to run, custom commands and the build among it, runs inside a MicroVM.
     /// </summary>
-    public bool SandboxingWithMicrovm { get; init; }
+    public bool SandboxingWithMicroVM { get; init; }
 
     /// <summary>Whether the MicroVM reaches the network.</summary>
-    public bool MicrovmNetwork { get; init; }
+    public bool MicroVMNetwork { get; init; }
 
     /// <summary>The memory of the MicroVM, in MiB.</summary>
-    public Allocation MicrovmMemory { get; init; } = Allocation.Auto;
+    public Allocation MicroVMMemory { get; init; } = Allocation.Auto;
 
     /// <summary>The processors of the MicroVM.</summary>
-    public Allocation MicrovmCpus { get; init; } = Allocation.Auto;
+    public Allocation MicroVMCpus { get; init; } = Allocation.Auto;
 
     /// <summary>The platform commands build for unless <c>--platform</c> names one; default: the host's.</summary>
     public Platform? Platform { get; init; }
@@ -52,6 +52,16 @@ public sealed class TazelOptionsException : Exception
         : base(message)
     {
     }
+
+    /// <summary>A problem of the file, with all it takes to show it well.</summary>
+    public TazelOptionsException(Diagnostic diagnostic)
+        : base((diagnostic ?? throw new ArgumentNullException(nameof(diagnostic))).Plain)
+    {
+        Diagnostic = diagnostic;
+    }
+
+    /// <summary>The place, the line, the help and the joke, when the problem has a place.</summary>
+    public Diagnostic? Diagnostic { get; }
 
     /// <summary>Nothing to say.</summary>
     public TazelOptionsException()
@@ -88,10 +98,10 @@ public static class TazelOptionsFile
         }
         catch (CustomCommandsException error)
         {
-            throw new TazelOptionsException(error.Message, error);
+            throw error.Diagnostic is { } diagnostic ? new TazelOptionsException(diagnostic) : new TazelOptionsException(error.Message, error);
         }
 
-        return new Reader(tokens, file).Options();
+        return new Reader(tokens, file, text).Options();
     }
 
     /// <summary>Every <c>tazel_options.txt</c> at or above <paramref name="directory"/>, the nearest first.</summary>
@@ -146,8 +156,8 @@ public static class TazelOptionsFile
             return (new TazelOptions(), null);
         }
 
-        var asking = files.FirstOrDefault(entry => entry.Options.SandboxingWithMicrovm).File;
-        return (files[0].Options with { SandboxingWithMicrovm = asking is not null }, asking);
+        var asking = files.FirstOrDefault(entry => entry.Options.SandboxingWithMicroVM).File;
+        return (files[0].Options with { SandboxingWithMicroVM = asking is not null }, asking);
     }
 
     private static TazelOptions Read(string file)
@@ -169,7 +179,7 @@ public static class TazelOptionsFile
         return Parse(text, file);
     }
 
-    private sealed class Reader(IReadOnlyList<Token> tokens, string file)
+    private sealed class Reader(IReadOnlyList<Token> tokens, string file, string text)
     {
         private int _position;
 
@@ -182,27 +192,33 @@ public static class TazelOptionsFile
                 var key = Take(TokenKind.Name, "the name of an option");
                 if (!Keys.Contains(key.Text, StringComparer.Ordinal))
                 {
-                    throw Fail(key, $"'{key.Text}' is not an option; the options are {string.Join(", ", Keys)}");
+                    var near = Cli.Suggestions.Nearest(key.Text, Keys);
+                    throw Fail(Output.ErrorCodes.OptionsUnknown, key, $"'{key.Text}' is not an option", "this one",
+                        near is null ? $"the options are {string.Join(", ", Keys)}" : $"did you mean {near}?",
+                        $"Tazel read its own manual twice; '{key.Text}' is not in it.");
                 }
 
                 if (!seen.Add(key.Text))
                 {
-                    throw Fail(key, $"'{key.Text}' is set twice");
+                    throw Fail(Output.ErrorCodes.OptionsTwice, key, $"'{key.Text}' is set twice", "the second one", "keep one of them",
+                        "Saying it twice does not make it twice as true.");
                 }
 
                 Take(TokenKind.Colon, $"':' after {key.Text}");
                 if (_position >= tokens.Count || tokens[_position].Kind is not (TokenKind.Name or TokenKind.String))
                 {
-                    throw Fail(_position < tokens.Count ? tokens[_position] : key, $"expected a value for {key.Text}");
+                    throw new TazelOptionsException(Diagnostic.After(Output.ErrorCodes.OptionsNoValue, text, file, tokens[_position - 1],
+                        $"expected a value for {key.Text}", "the value goes here", $"for example {key.Text}: {Example(key.Text)};",
+                        "A name, a colon, and then... silence."));
                 }
 
                 var value = tokens[_position++];
                 options = key.Text switch
                 {
-                    "sandboxing-with-microvm" => options with { SandboxingWithMicrovm = Boolean(value) },
-                    "microvm-network" => options with { MicrovmNetwork = Boolean(value) },
-                    "microvm-memory" => options with { MicrovmMemory = Amount(value, MinMemory, MaxMemory, "MiB") },
-                    "microvm-cpus" => options with { MicrovmCpus = Amount(value, 1, MaxCpus, "processors") },
+                    "sandboxing-with-microvm" => options with { SandboxingWithMicroVM = Boolean(value) },
+                    "microvm-network" => options with { MicroVMNetwork = Boolean(value) },
+                    "microvm-memory" => options with { MicroVMMemory = Amount(value, MinMemory, MaxMemory, "MiB") },
+                    "microvm-cpus" => options with { MicroVMCpus = Amount(value, 1, MaxCpus, "processors") },
                     _ => options with { Platform = PlatformOf(value) },
                 };
 
@@ -216,46 +232,81 @@ public static class TazelOptionsFile
             return options;
         }
 
-        private TazelOptionsException Fail(Token token, string message) =>
-            new($"{file}:{token.Line}:{token.Column}: {message}");
+        private TazelOptionsException Fail(string code, Token token, string message, string label, string help, string joke) =>
+            new(Diagnostic.AtToken(code, text, file, token, message, label, help, joke));
+
+        private static string Example(string key) => key switch
+        {
+            "platform" => "linux-amd64",
+            "microvm-memory" => "2048",
+            "microvm-cpus" => "2",
+            _ => "true",
+        };
 
         private Token Take(TokenKind kind, string wanted)
         {
-            if (_position >= tokens.Count || tokens[_position].Kind != kind)
+            if (_position < tokens.Count && tokens[_position].Kind == kind)
             {
-                throw Fail(_position < tokens.Count ? tokens[_position] : tokens[^1], $"expected {wanted}");
+                return tokens[_position++];
             }
 
-            return tokens[_position++];
+            var code = kind switch
+            {
+                TokenKind.Semicolon => Output.ErrorCodes.OptionsNoSemicolon,
+                TokenKind.Colon => Output.ErrorCodes.OptionsNoColon,
+                _ => Output.ErrorCodes.OptionsUnexpected,
+            };
+            var help = kind switch
+            {
+                TokenKind.Semicolon => "end the value with ';': platform: linux-amd64;",
+                TokenKind.Colon => "an option and its value are joined by ':': platform: linux-amd64;",
+                _ => "an option is: name: value;",
+            };
+            if (_position > 0 && (_position >= tokens.Count || kind is TokenKind.Semicolon or TokenKind.Colon))
+            {
+                throw new TazelOptionsException(Diagnostic.After(code, text, file, tokens[_position - 1], $"expected {wanted}",
+                    kind == TokenKind.Semicolon ? "a ';' goes here" : kind == TokenKind.Colon ? "a ':' goes here" : "something goes here",
+                    help, Jokes.Missing(kind)));
+            }
+
+            throw Fail(code, tokens[_position], $"expected {wanted}", "not this", help, Jokes.Missing(kind));
         }
 
         private bool Boolean(Token value) => value is { Kind: TokenKind.Name, Text: "true" } ? true
             : value is { Kind: TokenKind.Name, Text: "false" } ? false
-            : throw Fail(value, "expected true or false");
+            : throw Fail(Output.ErrorCodes.OptionsNotBoolean, value, "expected true or false", "this one", "write true or false, bare: sandboxing-with-microvm: true;",
+                "It is a yes-or-no question. Tazel accepts no 'maybe'.");
 
         // "auto" is a string, in any of the three quotes; a number stands bare.
         private Allocation Amount(Token value, int min, int max, string unit)
         {
             if (value.Kind == TokenKind.String)
             {
-                return value.Text == "auto" ? Allocation.Auto : throw Fail(value, "the only string here is \"auto\"");
+                return value.Text == "auto" ? Allocation.Auto : throw Fail(Output.ErrorCodes.OptionsStringNotAuto, value, "the only string here is \"auto\"", "this string",
+                    $"write a number of {unit}, bare, or \"auto\"", "Tazel speaks only one word in quotes here, and it is \"auto\".");
             }
 
             if (value.Text.Length == 0 || value.Text[0] == '0' || value.Text.Length > 9 ||
                 !value.Text.All(char.IsAsciiDigit))
             {
-                throw Fail(value, $"expected a number of {unit} or \"auto\"");
+                throw Fail(Output.ErrorCodes.OptionsNotANumber, value, $"expected a number of {unit} or \"auto\"", "this one", $"for example {min * 2} or \"auto\"",
+                    "Digits only, and no zero up front: this is a number, not a phone number.");
             }
 
             var amount = int.Parse(value.Text, CultureInfo.InvariantCulture);
             return amount < min || amount > max
-                ? throw Fail(value, $"{amount} is outside {min} to {max} {unit}")
+                ? throw Fail(Output.ErrorCodes.OptionsOutOfRange, value, $"{amount} is outside {min} to {max} {unit}", "this number",
+                    $"pick a number from {min} to {max}", amount > max ? "Ambitious! A little too ambitious." : "Tazel needs a bit more than that to work with.")
                 : new Allocation(amount);
         }
 
         private Platform PlatformOf(Token value) =>
             value.Kind == TokenKind.Name && Platforms.TryParse(value.Text, out var platform)
                 ? platform
-                : throw Fail(value, $"'{value.Text}' is not a platform; the platforms are {string.Join(", ", Platforms.Names)}");
+                : throw Fail(Output.ErrorCodes.OptionsNotAPlatform, value, $"'{value.Text}' is not a platform", "this one",
+                    Cli.Suggestions.Nearest(value.Text, Platforms.Names) is { } near
+                        ? $"did you mean {near}?"
+                        : $"the platforms are {string.Join(", ", Platforms.Names)}",
+                    "Tazel looked on every map; there is no such place.");
     }
 }

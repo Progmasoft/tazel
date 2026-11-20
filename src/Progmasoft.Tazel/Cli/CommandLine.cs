@@ -93,6 +93,8 @@ internal sealed record QueryCommand(OutputOptions Output, QueryKind Kind, string
 
 internal sealed record FetchCommand(OutputOptions Output) : Command(Output);
 
+internal sealed record ExplainCommand(OutputOptions Output, string Code, bool Long) : Command(Output);
+
 internal sealed record VendorCommand(OutputOptions Output) : Command(Output);
 
 /// <summary>Searching Tazel Portal Modules, or the versions of one module.</summary>
@@ -118,7 +120,7 @@ internal static class CommandLine
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
         ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
-            "portal-modules", "version", "help", "dotnet"];
+            "portal-modules", "explain", "version", "help", "dotnet"];
 
     private enum Kind
     {
@@ -149,7 +151,7 @@ internal static class CommandLine
         new("linker-options", Kind.List, null, Building),
         new("zig-compiler-options", Kind.List, null, Building),
         new("expunge", Kind.Flag, null, "clean"),
-        new("long", Kind.Flag, null, "help"),
+        new("long", Kind.Flag, null, "help", "explain"),
         new("exact", Kind.Flag, null, "portal-modules"),
         new("output", Kind.Value, ["label", "label_kind"], "query", "cquery", "aquery"),
     ];
@@ -255,6 +257,8 @@ internal static class CommandLine
                     "cquery" => QueryKind.CQuery,
                     _ => QueryKind.AQuery,
                 }, string.Join(' ', positional), Flags(seen), Last(seen, "output") ?? "label");
+            case "explain":
+                return Explain(output, positional, seen.Any(entry => entry.Option.Long == "long"));
             case "fetch":
                 NoPositional(command, positional);
                 return new FetchCommand(output);
@@ -484,6 +488,28 @@ internal static class CommandLine
         }
 
         return new PortalModulesCommand(output, positional[0] == "search" ? PortalAction.Search : PortalAction.Info, query, exact);
+    }
+
+    private static ExplainCommand Explain(OutputOptions output, List<string> positional, bool @long)
+    {
+        if (positional.Count != 1)
+        {
+            throw new CommandLineException("tazel explain takes one error code, such as tazel explain E0406");
+        }
+
+        var code = positional[0].ToUpperInvariant();
+        if (!ErrorCodes.IsCode(code))
+        {
+            throw new CommandLineException($"'{positional[0]}' is not an error code: E and four digits, such as E0406");
+        }
+
+        if (ErrorCodes.Find(code) is null)
+        {
+            var near = Suggestions.Nearest(code, ErrorCodes.Codes.Select(entry => entry.Code).ToList());
+            throw new CommandLineException($"Tazel has no error {code}{(near is null ? "" : $"; did you mean {near}?")}");
+        }
+
+        return new ExplainCommand(output, code, @long);
     }
 
     private static void NoPositional(string command, List<string> positional)
