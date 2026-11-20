@@ -174,3 +174,23 @@ var exampleVersion = GetEnvironment.From("example-version"); // "0.1.0"; null fo
 - A value is not an environment variable: it reaches no shell, no program Tazel runs and not Tazel itself; only
   `GetEnvironment.From` reads it.
 
+## Errors
+
+An error in `tazel_envs.txt`, `tazel_custom.txt` or `tazel_options.txt` shows where it is, the line, a mark under
+the problem, how to fix it and a light line:
+
+```text
+✖ error: expected ';' after the value of example-version
+  ╭─[ tazel_envs.txt:1:25 ]
+  │
+1 │ example-version: '0.1.0'
+  │                         ┬
+  │                         ╰── a ';' goes here
+  │
+  ├─ 💡 help: end every value with ';': example-version: '0.1.0';
+  ╰─ 🎭 Semicolons are small, but they hold this whole file together.
+```
+
+A terminal without Unicode gets the same picture in ASCII. Other errors say what went wrong, where to read more
+when there is a place, and a light line too; the same problem always gets the same line.
+

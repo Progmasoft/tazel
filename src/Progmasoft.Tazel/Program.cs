@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 using System;
+using System.Linq;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -41,7 +42,8 @@ internal static class Program
         }
         catch (CommandLineException error)
         {
-            new Reporter(Reporter.CreateConsole(When.Auto, output), quiet: false, When.Never).Error(error.Message);
+            new Reporter(Reporter.CreateConsole(When.Auto, output), quiet: false, When.Never).Error(error.Message,
+                HelpFor(arguments), Jokes.ForCommandLine(error.Message));
             return UsageError;
         }
 
@@ -52,13 +54,18 @@ internal static class Program
         }
         catch (CommandLineException error)
         {
-            reporter.Error(error.Message);
+            reporter.Error(error.Message, HelpFor(arguments), Jokes.ForCommandLine(error.Message));
             return UsageError;
+        }
+        catch (Exception error) when (Placed(error) is { } diagnostic)
+        {
+            reporter.Diagnostic(diagnostic);
+            return 1;
         }
         catch (Exception error) when (error is ProjectException or LabelException or TazelOptionsException or
             CustomCommandsException)
         {
-            reporter.Error(error.Message);
+            reporter.Error(error.Message, null, Jokes.ForProject(error.Message));
             return 1;
         }
         catch (OperationCanceledException)
@@ -66,5 +73,29 @@ internal static class Program
             reporter.Error("stopped");
             return 130;
         }
+    }
+
+    /// <summary>The diagnostic of a problem with a place in a file, found through the causes too.</summary>
+    private static Diagnostic? Placed(Exception? error)
+    {
+        for (; error is not null; error = error.InnerException)
+        {
+            switch (error)
+            {
+                case CustomCommandsException { Diagnostic: { } custom }:
+                    return custom;
+                case TazelOptionsException { Diagnostic: { } options }:
+                    return options;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Where to read about the command that was typed.</summary>
+    private static string HelpFor(string[] arguments)
+    {
+        var command = arguments.FirstOrDefault(argument => CommandLine.Commands.Contains(argument, StringComparer.Ordinal));
+        return command is null ? "tazel help lists the commands" : $"tazel help {command} --long says what {command} takes";
     }
 }

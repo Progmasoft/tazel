@@ -48,18 +48,22 @@ public static class TazelEnvsFile
     /// <summary>The entries of <paramref name="text"/>; <paramref name="file"/> names it in messages.</summary>
     public static IReadOnlyList<EnvEntry> Parse(string text, string file = FileName)
     {
+        ArgumentNullException.ThrowIfNull(text);
         var tokens = new CustomLexer(text, file).Tokens();
         var entries = new List<EnvEntry>();
-        var names = new HashSet<string>(StringComparer.Ordinal);
+        var names = new Dictionary<string, Token>(StringComparer.Ordinal);
         var i = 0;
         while (i < tokens.Count)
         {
             var name = Take(TokenKind.Name, "the name of a value");
-            if (!names.Add(name.Text))
+            if (names.TryGetValue(name.Text, out var first))
             {
-                throw Fail(name, $"'{name.Text}' is set twice");
+                throw Fail(name, $"'{name.Text}' is set twice", "the second one",
+                    $"keep one of them; the first is on line {first.Line}",
+                    "Two values, one name. Tazel is not going to flip a coin.");
             }
 
+            names[name.Text] = name;
             Take(TokenKind.Colon, $"':' after {name.Text}");
             EnvValue value;
             if (Peek() is { Kind: TokenKind.String } literal)
@@ -75,7 +79,8 @@ public static class TazelEnvsFile
                 Take(TokenKind.Close, "')' after the line of s(...)");
                 value = strings.Count == 1
                     ? new EnvValue.Shell(strings[0])
-                    : throw Fail(open, "s(...) takes one string, the whole line: s(`$HOME`)");
+                    : throw Fail(open, "s(...) takes one string, the whole line", "this s(...)",
+                        $"write one line: {name.Text}: s(`echo $HOME`);", "One shell, one line. It is not a group chat.");
             }
             else if (Peek() is { Kind: TokenKind.Open })
             {
@@ -84,11 +89,21 @@ public static class TazelEnvsFile
                 Take(TokenKind.Close, "')' after the strings of a program");
                 value = strings.Count > 0
                     ? new EnvValue.Program(strings)
-                    : throw Fail(open, "a program names at least itself: (\"rustc\" \"--help\")");
+                    : throw Fail(open, "a program names at least itself", "these parentheses are empty",
+                        $"name the program first: {name.Text}: (\"rustc\" \"--version\");",
+                        "Empty parentheses: a program that forgot its own name.");
+            }
+            else if (Peek() is { } stranger)
+            {
+                throw Fail(stranger, $"expected the value of {name.Text}", "this is not a value",
+                    $"a value is a string, a program or a shell line: {name.Text}: '0.1.0'; or {name.Text}: (\"git\" \"describe\"); or {name.Text}: s(`date`);",
+                    stranger.Kind == TokenKind.Name ? $"'{stranger.Text}' without quotes is a name, and names are not values. Quotes, please!"
+                        : "Tazel expected a value and got something else entirely.");
             }
             else
             {
-                throw Fail(Peek() ?? name, $"expected the value of {name.Text}: a string, (\"program\" \"argument\") or s(\"line\")");
+                throw new CustomCommandsException(Diagnostic.After(text, file, tokens[i - 1], $"expected the value of {name.Text}",
+                    "the value goes here", $"for example {name.Text}: '0.1.0';", "A name, a colon, and then... silence."));
             }
 
             Take(TokenKind.Semicolon, $"';' after the value of {name.Text}");
@@ -101,13 +116,34 @@ public static class TazelEnvsFile
 
         Token Take(TokenKind kind, string wanted)
         {
-            if (Peek() is not { } token || token.Kind != kind)
+            if (Peek() is { } token && token.Kind == kind)
             {
-                throw Fail(Peek() ?? tokens[^1], $"expected {wanted}");
+                i++;
+                return token;
             }
 
-            i++;
-            return token;
+            var help = kind switch
+            {
+                TokenKind.Semicolon => "end every value with ';': example-version: '0.1.0';",
+                TokenKind.Colon => "a name and its value are joined by ':': example-version: '0.1.0';",
+                TokenKind.Close => "close it with ')'",
+                TokenKind.Open => "open it with '(': s(`date`)",
+                _ => "an entry is: name: value;",
+            };
+            if (i > 0 && (Peek() is null || kind is TokenKind.Semicolon or TokenKind.Colon))
+            {
+                throw new CustomCommandsException(Diagnostic.After(text, file, tokens[i - 1], $"expected {wanted}",
+                    kind switch
+                    {
+                        TokenKind.Semicolon => "a ';' goes here",
+                        TokenKind.Colon => "a ':' goes here",
+                        TokenKind.Close => "a ')' goes here",
+                        _ => "something goes here",
+                    },
+                    help, Jokes.Missing(kind)));
+            }
+
+            throw Fail(Peek()!, $"expected {wanted}", "not this", help, Jokes.Missing(kind));
         }
 
         List<string> Strings()
@@ -121,13 +157,15 @@ public static class TazelEnvsFile
 
             if (Peek() is { Kind: TokenKind.Placeholder } placeholder)
             {
-                throw Fail(placeholder, "a value of tazel_envs.txt takes no <N> or <*>");
+                throw Fail(placeholder, "a value of tazel_envs.txt takes no <N> or <*>", "this placeholder",
+                    "write the argument itself, in quotes", "Nobody passes arguments to a file. It just sits there.");
             }
 
             return strings;
         }
 
-        CustomCommandsException Fail(Token token, string message) => new($"{file}:{token.Line}:{token.Column}: {message}");
+        CustomCommandsException Fail(Token token, string message, string label, string help, string joke) =>
+            new(Diagnostic.AtToken(text, file, token, message, label, help, joke));
     }
 }
 
