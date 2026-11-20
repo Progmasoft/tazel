@@ -1,0 +1,17 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The types MODULE.csx and BUILD.csx are written against. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Progmasoft.Tazel.Dsl</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>Progmasoft.Tazel.Dsl</PackageId>
+    <Description>The types MODULE.csx and BUILD.csx files of Tazel are written against.</Description>
+    <PackageTags>tazel;build</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="tazel" />
+    <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
+    <InternalsVisibleTo Include="Progmasoft.Tazel.PluginApi" />
+  </ItemGroup>
+</Project>

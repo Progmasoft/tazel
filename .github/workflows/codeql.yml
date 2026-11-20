@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+# SPDX-License-Identifier: MIT
+
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: ${{ matrix.language }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      actions: read # the analysis reads the workflow run it belongs to
+      contents: read # the checkout
+      security-events: write # the findings go to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, csharp]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        if: matrix.language == 'csharp'
+        with:
+          global-json-file: global.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.language == 'csharp' && 'manual' || 'none' }}
+          queries: security-extended
+
+      - name: Build for extraction
+        if: matrix.language == 'csharp'
+        run: dotnet build Tazel.slnx -c Release --no-incremental
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

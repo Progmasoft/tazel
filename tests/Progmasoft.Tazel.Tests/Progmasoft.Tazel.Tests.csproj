@@ -1,0 +1,24 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+    <!-- Tests are not an API; their names say what they check. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Snapshots are found beside the test's source file, so its path stays the real one in CI builds too. -->
+    <DeterministicSourcePaths>false</DeterministicSourcePaths>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Progmasoft.Tazel/Progmasoft.Tazel.csproj" />
+    <ProjectReference Include="../../src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
+    <ProjectReference Include="../../src/Progmasoft.Tazel.Guest/Progmasoft.Tazel.Guest.csproj" Aliases="guest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="CsCheck" />
+    <PackageReference Include="Snapshooter.Xunit3" />
+    <PackageReference Include="coverlet.MTP" />
+    <PackageReference Include="Microsoft.Testing.Extensions.HangDump" />
+  </ItemGroup>
+</Project>

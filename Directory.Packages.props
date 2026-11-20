@@ -1,0 +1,23 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Every package and its version, in one place; the projects name packages without versions. -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.12.0" />
+    <PackageVersion Include="NuGet.Versioning" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Z3" Version="4.12.2" />
+    <PackageVersion Include="Lzma.Net" Version="5.8.4.3" />
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    <PackageVersion Include="CsCheck" Version="5.0.1" />
+    <PackageVersion Include="Snapshooter.Xunit3" Version="1.3.1" />
+    <PackageVersion Include="coverlet.MTP" Version="10.1.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.5.3" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="Microsoft.Build.Utilities.Core" Version="18.0.2" />
+    <PackageVersion Include="SharpFuzz" Version="2.3.0" />
+  </ItemGroup>
+</Project>

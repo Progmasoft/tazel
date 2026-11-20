@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+# SPDX-License-Identifier: MIT
+
+bin/
+obj/
+artifacts/
+TestResults/
+# Snapshooter writes what a test made here when it differs from the stored snapshot.
+__mismatch__/
+*.user
+.vs/
+.idea/
+# What Tazel writes when it builds a module: outputs, records of actions, unpacked dependencies.
+.tazel/

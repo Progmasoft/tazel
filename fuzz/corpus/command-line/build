@@ -1,0 +1,4 @@
+build
+//...
+--compiler-options=-O2,-Wl\,x
+--color:never

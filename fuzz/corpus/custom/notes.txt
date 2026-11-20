@@ -1,0 +1,65 @@
+# comment
+<# comment #>
+
+build-no-cache: ("tazel" 'build' `--no-cache`);
+# The reason for accepting the above is that it accepts double quotes, single quotes, and backticks.
+
+# No tazel requirement:
+npm-dev: ('npm' 'dev');
+
+<#
+tazel custom build-no-cache
+tazel custom npm-dev
+#>
+
+# Multiple:
+fetch:
+    ("cargo" "fetch")
+    ("tazel" "fetch");
+# Newline insensitive.
+
+# There are no escape characters. You cannot write " inside "...", ' inside '...', or ` inside `...`.
+
+# Does not send to the default shell.
+
+npm-dev-sh: s('npm dev');
+
+fetch-sh:
+    s("cargo fetch")
+    ("tazel" "fetch");
+
+fetch-fully-sh:
+    s("cargo fetch")
+    s("tazel fetch");
+
+# Those with s(...) go to CMD on Windows, and sh on Linux/macOS.
+# s(...) takes exactly one string, the whole command line (USER, 2026-10-31).
+
+npm-dev-zsh: ("zsh" "-lc" "npm dev");
+
+fetch-zsh:
+    ("zsh" "-lc" "cargo fetch")
+    ("tazel" "fetch");
+
+fetch-fully-zsh:
+    ("zsh" "-lc" "cargo fetch")
+    ("zsh" "-lc" "tazel fetch");
+
+<# Implemented 2026-11-01. A step's program is a string, and the longest name that fits wins. #>
+
+# A name may hold several words:
+build no-cache: ("tazel" "build" "--no-cache");
+# tazel custom build no-cache
+# Everything after `tazel custom`, the words of the name included, is at most 191 arguments:
+# this name uses 2, so 189 remain.
+
+# Arguments of the command line, by position:
+build with: ("tazel" "build" <1> <2>);
+# tazel custom build with -e MyApp
+# <N> starts at 1 and passes the Nth argument; <*> passes all of them.
+# s(...) takes no arguments.
+<# USER, 2026-11-02.
+`tazel custom first second` selects the command `first second` when one exists. For `second` to be an argument of `first`,
+either no such command exists, or it is written `tazel custom first -- second`.
+Tazel Custom Commands has no escape characters of its own. A line given to the shell is interpreted by that shell, so
+Tazel does not process escape characters in it. #>

@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
+    <Project Path="src/Progmasoft.Tazel/Progmasoft.Tazel.csproj" />
+    <Project Path="src/Progmasoft.Tazel.Guest/Progmasoft.Tazel.Guest.csproj" />
+    <Project Path="src/Progmasoft.Tazel.PluginApi/Progmasoft.Tazel.PluginApi.csproj" />
+    <Project Path="src/Progmasoft.Tazel.PluginSdk/Progmasoft.Tazel.PluginSdk.csproj" />
+    <Project Path="src/Progmasoft.Tazel.PluginTemplates/Progmasoft.Tazel.PluginTemplates.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Progmasoft.Tazel.Tests/Progmasoft.Tazel.Tests.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Progmasoft.Tazel.Benchmarks/Progmasoft.Tazel.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/Progmasoft.Tazel.Fuzz/Progmasoft.Tazel.Fuzz.csproj" />
+  </Folder>
+</Solution>

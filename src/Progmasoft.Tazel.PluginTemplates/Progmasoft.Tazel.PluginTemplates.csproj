@@ -1,0 +1,34 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The template of dotnet new tazel-plugin. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Progmasoft.Tazel.PluginTemplates</PackageId>
+    <PackageType>Template</PackageType>
+    <Description>dotnet new tazel-plugin: a Tazel plugin with a build step.</Description>
+    <PackageTags>tazel;build;plugin;template</PackageTags>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <!-- The project of the template names the SDK of this version. -->
+  <Target Name="WriteTemplateProject" BeforeTargets="GenerateNuspec;_GetPackageFiles">
+    <PropertyGroup>
+      <_TazelTemplateProject>$(IntermediateOutputPath)PluginProject.csproj</_TazelTemplateProject>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_TazelTemplateProject)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/content/tazel-plugin/PluginProject.csproj.in').Replace('@VERSION@', '$(Version)'))" />
+    <ItemGroup>
+      <Content Include="content/tazel-plugin/.template.config/template.json" Pack="true"
+               PackagePath="content/tazel-plugin/.template.config/template.json" />
+      <Content Include="content/tazel-plugin/Plugin.cs" Pack="true" PackagePath="content/tazel-plugin/Plugin.cs" />
+      <Content Include="$(_TazelTemplateProject)" Pack="true" PackagePath="content/tazel-plugin/PluginProject.csproj" />
+    </ItemGroup>
+  </Target>
+</Project>
