@@ -1,0 +1,7 @@
+<Project Sdk="Progmasoft.Tazel.PluginSdk/@VERSION@">
+  <PropertyGroup>
+    <TazelPluginGroup>com.example.plugins</TazelPluginGroup>
+    <TazelPluginName>PLUGIN_NAME</TazelPluginName>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

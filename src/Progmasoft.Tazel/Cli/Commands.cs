@@ -99,11 +99,6 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
         {
             reporter.Warning("MODULE.csx sets Execution.Memory; this Tazel limits the actions by Jobs only");
         }
-
-        if (globals.plugins?.Items.Count > 0)
-        {
-            reporter.Warning("MODULE.csx names plugins; this Tazel loads no plugins");
-        }
     }
 
     private int Clean(CleanCommand clean)
@@ -198,8 +193,8 @@ internal sealed class Commands(Reporter reporter, string workingDirectory)
         var platform = flags.Platform ?? options.Platform ?? Host.Platform;
         var mode = flags.Mode ?? BuildMode.Debug;
         reporter.Status($"loading the module for {platform.Name()}, {mode.ToString().ToLowerInvariant()}");
-        var workspace = await Workspace.LoadAsync(workingDirectory, new BuildContext(mode, platform), TazelVersion)
-            .ConfigureAwait(false);
+        var workspace = await Workspace.LoadAsync(workingDirectory, new BuildContext(mode, platform), TazelVersion,
+            reporter.Status).ConfigureAwait(false);
         WarnAboutWhatThisTazelDoesNotDo(workspace.Main.Globals);
         var execution = workspace.Main.Globals.execution?.Settings;
         var buildOptions = new BuildOptions

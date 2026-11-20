@@ -36,6 +36,9 @@ internal enum Family
     CC,
     ObjectiveC,
     Zig,
+
+    /// <summary>A build step a plugin adds.</summary>
+    Plugin,
 }
 
 /// <summary>What a target makes.</summary>
@@ -46,6 +49,9 @@ internal enum TargetKind
     Executable,
     Test,
     Module,
+
+    /// <summary>A build step of a plugin.</summary>
+    Step,
 }
 
 /// <summary>A target as a project file declared it, before anything is checked against other files.</summary>

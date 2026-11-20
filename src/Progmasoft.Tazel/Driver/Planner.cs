@@ -79,7 +79,12 @@ internal sealed partial class Planner
             return known;
         }
 
-        var products = target.Family == Family.Zig ? PlanZig(target) : PlanCC(target);
+        var products = target.Family switch
+        {
+            Family.Zig => PlanZig(target),
+            Family.Plugin => PlanStep(target),
+            _ => PlanCC(target),
+        };
         _planned[target] = products;
         return products;
     }

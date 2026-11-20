@@ -1,0 +1,55 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The second half of the SDK of Tazel plugins, imported after the project. -->
+<Project>
+  <!--
+    The plugin compiles against the plugin API and never ships it: Tazel loads its own copy once, so every plugin shares
+    its types. The API is not passed on to what depends on the plugin either.
+  -->
+  <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' != 'true'">
+    <PackageReference Include="Progmasoft.Tazel.PluginApi" Version="$(TazelPluginSdkVersion)"
+                      ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+  <!-- With central package management the version of the SDK still decides the version of the API. -->
+  <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' == 'true'">
+    <PackageReference Include="Progmasoft.Tazel.PluginApi" VersionOverride="$(TazelPluginSdkVersion)"
+                      ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+  <ItemGroup>
+    <AssemblyAttribute Include="Progmasoft.Tazel.PluginApi.TazelPluginAttribute">
+      <_Parameter1>$(TazelPluginGroup)</_Parameter1>
+      <_Parameter2>$(TazelPluginName)</_Parameter2>
+      <_Parameter3>$(Version)</_Parameter3>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <Target Name="TazelPluginCheck" BeforeTargets="CoreCompile">
+    <Error Condition="'$(TazelPluginGroup)' == ''"
+           Text="A Tazel plugin needs its group: &lt;TazelPluginGroup&gt;com.example.plugins&lt;/TazelPluginGroup&gt;" />
+    <Error Condition="'$(TazelPluginGroup)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(TazelPluginGroup)', '^[A-Za-z0-9_+-]+(\.[A-Za-z0-9_+-]+)*$'))"
+           Text="The group '$(TazelPluginGroup)' must be names joined by dots, such as com.example.plugins" />
+    <Error Condition="'$(TazelPluginName)' == ''"
+           Text="A Tazel plugin needs its name: &lt;TazelPluginName&gt;plugin&lt;/TazelPluginName&gt;" />
+    <Error Condition="'$(TazelPluginName)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(TazelPluginName)', '^[A-Za-z0-9_+.-]+$'))"
+           Text="The name '$(TazelPluginName)' must be letters, digits and _ + . -" />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(Version)', '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'))"
+           Text="The version '$(Version)' of a Tazel plugin is a SemVer version such as 0.1.0" />
+    <Error Condition="'$(TargetFramework)' != 'net10.0'"
+           Text="A Tazel plugin targets net10.0, the runtime of Tazel, not $(TargetFramework)" />
+  </Target>
+
+  <UsingTask TaskName="Progmasoft.Tazel.PluginSdk.PackTazelPlugin"
+             AssemblyFile="$(MSBuildThisFileDirectory)../tasks/net10.0/Progmasoft.Tazel.PluginSdk.dll" />
+
+  <!-- dotnet pack makes the plugin's .tazel.tar.xz and its .sha256sums instead of a .nupkg. -->
+  <Target Name="Pack" DependsOnTargets="Build">
+    <PackTazelPlugin OutputDirectory="$(TargetDir)" EntryAssembly="$(TargetFileName)" Group="$(TazelPluginGroup)"
+                     Name="$(TazelPluginName)" Version="$(Version)" PluginApiVersion="$(TazelPluginSdkVersion)"
+                     PackageOutputPath="$([System.IO.Path]::GetFullPath('$(PackageOutputPath)'))">
+      <Output TaskParameter="Archive" PropertyName="TazelPluginArchive" />
+    </PackTazelPlugin>
+  </Target>
+</Project>

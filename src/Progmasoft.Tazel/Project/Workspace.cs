@@ -96,16 +96,17 @@ internal sealed class Workspace
     public List<ProjectToolchain> Registered { get; } = [];
 
     /// <summary>Loads the module that <paramref name="directory"/> is in, with the modules it depends on.</summary>
-    public static async Task<Workspace> LoadAsync(string directory, BuildContext build, Version tazelVersion)
+    public static async Task<Workspace> LoadAsync(
+        string directory, BuildContext build, Version tazelVersion, Action<string>? status = null)
     {
         var root = ModuleFiles.FindRoot(directory);
         var main = await LoadModuleAsync(root, null, tazelVersion).ConfigureAwait(false);
         var workspace = new Workspace(main);
         await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
-        await workspace.LoadPackagesAsync(main, build).ConfigureAwait(false);
+        await workspace.LoadPackagesAsync(main, build, status ?? (_ => { })).ConfigureAwait(false);
         foreach (var module in workspace.External.Values)
         {
-            await workspace.LoadPackagesAsync(module, build).ConfigureAwait(false);
+            await workspace.LoadPackagesAsync(module, build, status ?? (_ => { })).ConfigureAwait(false);
         }
 
         workspace.Resolve();
@@ -184,8 +185,14 @@ internal sealed class Workspace
         }
     }
 
-    private async Task LoadPackagesAsync(LoadedModule module, BuildContext build)
+    /// <summary>The plugins each module loaded, by its repository (null for the main module).</summary>
+    public Dictionary<string, IReadOnlyList<LoadedPlugin>> PluginsOf { get; } = new(StringComparer.Ordinal);
+
+    private async Task LoadPackagesAsync(LoadedModule module, BuildContext build, Action<string> status)
     {
+        var plugins = Plugins.Load(Main.Root, module, build, status);
+        PluginsOf[module.Repository ?? ""] = plugins;
+        var environment = Plugins.EnvironmentFor(plugins);
         var packages = ModuleFiles.Packages(module.Root);
         var scopes = await Task.WhenAll(packages.Select(package => Task.Run(async () =>
         {
@@ -194,7 +201,7 @@ internal sealed class Workspace
             var code = await File.ReadAllTextAsync(package.File).ConfigureAwait(false);
             using (Declarations.Enter(scope))
             {
-                await ScriptHost.RunAsync(code, shown, new BuildGlobals(build)).ConfigureAwait(false);
+                await ScriptHost.RunAsync(code, shown, new BuildGlobals(build), environment).ConfigureAwait(false);
             }
 
             return (Package: package, Scope: scope);
@@ -241,7 +248,8 @@ internal sealed class Workspace
             foreach (var reference in target.Settings.Depends.Items)
             {
                 var found = Find(reference.Label, target);
-                if (found.Kind is TargetKind.Executable or TargetKind.Test)
+                // A step may need a program the build makes; what compiles and links takes libraries and steps.
+                if (found.Kind is TargetKind.Executable or TargetKind.Test && target.Family != Family.Plugin)
                 {
                     throw new ProjectException($"{target.Place}: {found.Label} is a {Describe(found)}; only libraries are linked");
                 }

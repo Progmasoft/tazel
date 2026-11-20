@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
     <Project Path="src/Progmasoft.Tazel/Progmasoft.Tazel.csproj" />
+    <Project Path="src/Progmasoft.Tazel.PluginApi/Progmasoft.Tazel.PluginApi.csproj" />
+    <Project Path="src/Progmasoft.Tazel.PluginSdk/Progmasoft.Tazel.PluginSdk.csproj" />
+    <Project Path="src/Progmasoft.Tazel.PluginTemplates/Progmasoft.Tazel.PluginTemplates.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Progmasoft.Tazel.Tests/Progmasoft.Tazel.Tests.csproj" />

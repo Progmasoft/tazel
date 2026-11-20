@@ -53,8 +53,9 @@ toolchains = Toolchains.Define("//toolchains:clang");
 - A dependency is a `LocalModule`: Tazel checks its archive against the SHA-256 and unpacks it once below `.tazel/`.
   Its public targets are `@name//dir:x`. `Module.From`, a module of Tazel Portal Modules, is refused by this Tazel,
   which fetches nothing.
-- This Tazel reads `Cache.Remote`, `Execution.Remote`, `Execution.Memory` and `plugins` and says, as a warning, that
-  it does not act on them.
+- `plugins` loads local plugin archives ([Plugins](plugins.md)).
+- This Tazel reads `Cache.Remote`, `Execution.Remote` and `Execution.Memory` and says, as a warning, that it does not
+  act on them.
 
 ## BUILD.csx
 

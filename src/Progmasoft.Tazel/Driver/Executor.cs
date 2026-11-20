@@ -77,8 +77,10 @@ internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Repo
                 }
 
                 cache.Forget(action);
-                var result = await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
-                    .ConfigureAwait(false);
+                var result = action.Work is { } work
+                    ? await work(stop.Token).ConfigureAwait(false)
+                    : await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
+                        .ConfigureAwait(false);
                 if (result.Canceled)
                 {
                     // Stopped because another action failed: that one is reported, this one did not fail.

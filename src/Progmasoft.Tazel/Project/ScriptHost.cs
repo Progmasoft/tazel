@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
+using Microsoft.CodeAnalysis.Scripting.Hosting;
 using Progmasoft.Tazel.Dsl;
 
 namespace Progmasoft.Tazel.Project;
@@ -43,16 +44,19 @@ internal static class ScriptHost
     /// <summary>The namespace every project file sees without a <c>using</c>.</summary>
     public const string CommonNamespace = "Progmasoft.Tazel.Dsl.Common";
 
-    private static readonly ScriptOptions BaseOptions = CreateOptions();
+    /// <summary>The options every project file is compiled with.</summary>
+    internal static ScriptOptions BaseOptions { get; } = CreateOptions();
 
     /// <summary>
     /// Compiles and runs <paramref name="code"/> with <paramref name="globals"/>; <paramref name="shownPath"/> names
     /// the file in messages. A compile error or an exception of the script becomes a <see cref="ProjectException"/>.
     /// </summary>
-    public static async Task RunAsync<TGlobals>(string code, string shownPath, TGlobals globals)
+    public static async Task RunAsync<TGlobals>(
+        string code, string shownPath, TGlobals globals, ScriptEnvironment? environment = null)
         where TGlobals : class
     {
-        var script = CSharpScript.Create(code, BaseOptions.WithFilePath(shownPath), typeof(TGlobals));
+        var used = environment ?? ScriptEnvironment.Default;
+        var script = CSharpScript.Create(code, used.Options.WithFilePath(shownPath), typeof(TGlobals), used.Loader);
         var errors = script.Compile().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
         if (errors.Count > 0)
         {
@@ -90,7 +94,11 @@ internal static class ScriptHost
             }
         }
 
-        foreach (var assembly in new[] { typeof(object).Assembly, typeof(Enumerable).Assembly, typeof(DslException).Assembly })
+        foreach (var assembly in new[]
+                 {
+                     typeof(object).Assembly, typeof(Enumerable).Assembly, typeof(DslException).Assembly,
+                     typeof(PluginApi.ITazelPlugin).Assembly,
+                 })
         {
             references.Add(MetadataReference.CreateFromFile(assembly.Location));
         }
@@ -134,10 +142,27 @@ internal static class ScriptHost
 
         return "";
     }
+}
 
-    /// <summary>Whether a type is from the DSL, for messages that name what a script returned.</summary>
-    public static bool IsDslType(Type type) => type.Assembly == typeof(DslException).Assembly;
+/// <summary>What a project file is compiled with beyond the DSL: the plugins' references, imports and loader.</summary>
+internal sealed class ScriptEnvironment
+{
+    private ScriptEnvironment(ScriptOptions options, InteractiveAssemblyLoader? loader)
+    {
+        Options = options;
+        Loader = loader;
+    }
 
-    /// <summary>The assembly of the DSL, for diagnostics.</summary>
-    public static Assembly DslAssembly => typeof(DslException).Assembly;
+    /// <summary>The DSL alone.</summary>
+    public static ScriptEnvironment Default { get; } = new(ScriptHost.BaseOptions, null);
+
+    public ScriptOptions Options { get; }
+
+    /// <summary>The loader that finds the plugins' assemblies in their load contexts; null without plugins.</summary>
+    public InteractiveAssemblyLoader? Loader { get; }
+
+    /// <summary>This environment with more references and imports, and the loader of the plugins.</summary>
+    public ScriptEnvironment With(
+        IEnumerable<MetadataReference> references, IEnumerable<string> imports, InteractiveAssemblyLoader loader) =>
+        new(Options.AddReferences(references).AddImports(imports), loader);
 }

@@ -9,6 +9,10 @@
 | --- | --- |
 | `src/Progmasoft.Tazel.Dsl` | the types project files are written against; scripts reference this assembly alone |
 | `src/Progmasoft.Tazel` | the `tazel` command |
+| `src/Progmasoft.Tazel.PluginApi` | the API of plugins and their build steps (NuGet `Progmasoft.Tazel.PluginApi`) |
+| `src/Progmasoft.Tazel.PluginSdk` | the MSBuild project SDK of plugins and the task that packs them |
+| `src/Progmasoft.Tazel.PluginTemplates` | `dotnet new tazel-plugin` |
+| `src/Shared` | the reproducible archive writer, compiled into tazel and the SDK task |
 | `tests/Progmasoft.Tazel.Tests` | xUnit tests, with CsCheck for properties and Snapshooter for snapshots |
 | `benchmarks/Progmasoft.Tazel.Benchmarks` | BenchmarkDotNet measurements of the readers |
 | `fuzz/Progmasoft.Tazel.Fuzz` | SharpFuzz targets for libFuzzer |

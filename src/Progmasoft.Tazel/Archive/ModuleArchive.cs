@@ -28,14 +28,6 @@ internal static class ModuleArchive
     /// <summary>The most entries an archive may hold.</summary>
     public const int MaxEntries = 100_000;
 
-    private const UnixFileMode FileMode =
-        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
-
-    private const UnixFileMode ExecutableMode = FileMode |
-        UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
-
-    private const UnixFileMode DirectoryMode = ExecutableMode | UnixFileMode.UserWrite;
-
     /// <summary><c>$group.$module-$version</c>, the name of an archive without its extension.</summary>
     public static string BaseName(string group, string module, string version) => $"{group}.{module}-{version}";
 
@@ -83,58 +75,15 @@ internal static class ModuleArchive
     }
 
     /// <summary>Writes <paramref name="files"/> of the module at <paramref name="root"/> below <paramref name="baseName"/>.</summary>
-    public static void Write(string root, string baseName, string archive, IReadOnlyList<string> files)
-    {
-        ArgumentNullException.ThrowIfNull(files);
-        var directory = Path.GetDirectoryName(Path.GetFullPath(archive))!;
-        Directory.CreateDirectory(directory);
-        var temporary = Path.Combine(directory, $".{Path.GetFileName(archive)}.{Guid.NewGuid():N}.partial");
-        try
-        {
-            using (var output = System.IO.File.Create(temporary))
-            using (var xz = new XzCompressStream(output, new XzCompressOptions { Threads = 1 }, leaveOpen: false))
-            using (var tar = new TarWriter(xz, TarEntryFormat.Ustar, leaveOpen: false))
-            {
-                foreach (var (path, isDirectory) in PathsAndDirectories(files))
-                {
-                    var name = path.Length == 0 ? $"{baseName}/" : isDirectory ? $"{baseName}/{path}/" : $"{baseName}/{path}";
-                    var entry = new UstarTarEntry(isDirectory ? TarEntryType.Directory : TarEntryType.RegularFile, name)
-                    {
-                        ModificationTime = DateTimeOffset.UnixEpoch,
-                        Uid = 0,
-                        Gid = 0,
-                        UserName = "",
-                        GroupName = "",
-                    };
-                    var source = Path.Combine(root, path);
-                    entry.Mode = isDirectory ? DirectoryMode : IsExecutable(source) ? ExecutableMode : FileMode;
-                    if (isDirectory)
-                    {
-                        tar.WriteEntry(entry);
-                    }
-                    else
-                    {
-                        using var data = System.IO.File.OpenRead(source);
-                        entry.DataStream = data;
-                        tar.WriteEntry(entry);
-                    }
-                }
-            }
-
-            System.IO.File.Move(temporary, archive, overwrite: true);
-        }
-        finally
-        {
-            System.IO.File.Delete(temporary);
-        }
-    }
+    public static void Write(string root, string baseName, string archive, IReadOnlyList<string> files) =>
+        ReproducibleArchive.Write(root, baseName, archive, files);
 
     /// <summary>
     /// Unpacks <paramref name="archive"/> into <paramref name="destination"/>, which must not exist, and returns the
     /// directory of the module in it. Every entry must be below one top directory; links, devices, absolute paths and
     /// <c>..</c> are refused, as are archives over <see cref="MaxUnpackedBytes"/> or <see cref="MaxEntries"/>.
     /// </summary>
-    public static string Unpack(string archive, string destination)
+    public static string Unpack(string archive, string destination, string requiredFile = ModuleFiles.ModuleFile)
     {
         var shown = Path.GetFileName(archive);
         var parent = Path.GetDirectoryName(Path.GetFullPath(destination))!;
@@ -198,9 +147,9 @@ internal static class ModuleArchive
                 throw new ProjectException($"{shown} is empty");
             }
 
-            if (!System.IO.File.Exists(Path.Combine(work, top, ModuleFiles.ModuleFile)))
+            if (!System.IO.File.Exists(Path.Combine(work, top, requiredFile)))
             {
-                throw new ProjectException($"{shown} has no {top}/{ModuleFiles.ModuleFile}");
+                throw new ProjectException($"{shown} has no {top}/{requiredFile}");
             }
 
             Directory.Move(work, destination);
@@ -219,39 +168,16 @@ internal static class ModuleArchive
         }
     }
 
-    private static bool IsExecutable(string file) =>
-        !OperatingSystem.IsWindows() &&
-        (System.IO.File.GetUnixFileMode(file) & UnixFileMode.UserExecute) != 0;
-
-    private static IEnumerable<(string Path, bool IsDirectory)> PathsAndDirectories(IReadOnlyList<string> files)
-    {
-        var directories = new SortedSet<string>(StringComparer.Ordinal) { "" };
-        foreach (var file in files)
-        {
-            var parts = file.Split('/');
-            for (var depth = 1; depth < parts.Length; depth++)
-            {
-                directories.Add(string.Join('/', parts.Take(depth)));
-            }
-        }
-
-        return directories.Select(d => (d, true)).Concat(files.Select(f => (f, false)))
-            .OrderBy(entry => entry.Item1, StringComparer.Ordinal);
-    }
 }
 
 /// <summary>The SHA-256 of an archive and the <c>.sha256sums</c> file beside it, as <c>sha256sum</c> writes it.</summary>
 internal static class Sha256Sums
 {
     /// <summary>The SHA-256 of <paramref name="file"/> in lower-case hexadecimal.</summary>
-    public static string Sha256(string file)
-    {
-        using var stream = System.IO.File.OpenRead(file);
-        return Convert.ToHexStringLower(SHA256.HashData(stream));
-    }
+    public static string Sha256(string file) => ReproducibleArchive.Sha256(file);
 
     /// <summary>The line of a <c>.sha256sums</c> file for <paramref name="file"/>.</summary>
-    public static string SumsLine(string file) => $"{Sha256(file)}  {Path.GetFileName(file)}\n";
+    public static string SumsLine(string file) => ReproducibleArchive.SumsLine(file);
 
     /// <summary>
     /// The SHA-256 that the <c>.sha256sums</c> text <paramref name="sums"/> gives for <paramref name="name"/>. Lines are

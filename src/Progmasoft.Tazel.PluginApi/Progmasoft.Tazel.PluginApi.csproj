@@ -1,0 +1,19 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- The API Tazel plugins are written against; the NuGet package Progmasoft.Tazel.PluginApi. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Progmasoft.Tazel.PluginApi</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>Progmasoft.Tazel.PluginApi</PackageId>
+    <Description>The API of Tazel plugins: a plugin, and the build steps it adds to BUILD.csx files.</Description>
+    <PackageTags>tazel;build;plugin</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="tazel" />
+    <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
+  </ItemGroup>
+</Project>

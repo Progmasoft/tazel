@@ -1,0 +1,44 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!--
+  The MSBuild project SDK of Tazel plugins: <Project Sdk="Progmasoft.Tazel.PluginSdk/x.y.z">. The package holds
+  Sdk/Sdk.props and Sdk/Sdk.targets, and in tasks/ the task that makes the plugin archive on dotnet pack.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Progmasoft.Tazel.PluginSdk</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>Progmasoft.Tazel.PluginSdk</PackageId>
+    <PackageType>MSBuildSdk</PackageType>
+    <Description>The MSBuild project SDK of Tazel plugins: it references the plugin API, checks the plugin, and makes its .tazel.tar.xz on dotnet pack.</Description>
+    <PackageTags>tazel;build;plugin;msbuildsdk</PackageTags>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <NoWarn>$(NoWarn);NU5100;NU5128</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/*.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Utilities.Core" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Lzma.Net" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Sdk/Sdk.targets" Pack="true" PackagePath="Sdk/" />
+  </ItemGroup>
+
+  <!-- Sdk.props carries the version of the SDK, which is the version of the plugin API it references. -->
+  <Target Name="WriteSdkProps" BeforeTargets="GenerateNuspec;_GetPackageFiles">
+    <PropertyGroup>
+      <_TazelSdkProps>$(IntermediateOutputPath)Sdk.props</_TazelSdkProps>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_TazelSdkProps)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/Sdk/Sdk.props.in').Replace('@VERSION@', '$(Version)'))" />
+    <ItemGroup>
+      <None Include="$(_TazelSdkProps)" Pack="true" PackagePath="Sdk/Sdk.props" />
+      <None Include="$(OutputPath)Progmasoft.Tazel.PluginSdk.dll" Pack="true" PackagePath="tasks/net10.0/" />
+      <None Include="$(OutputPath)LzmaNet.dll" Pack="true" PackagePath="tasks/net10.0/" />
+    </ItemGroup>
+  </Target>
+</Project>
