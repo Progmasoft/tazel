@@ -105,7 +105,10 @@ jobs:
         if: runner.os == 'macOS'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: nohup bash .github/macos-watchdog.sh > "$RUNNER_TEMP/watchdog.log" 2>&1 &
+        # As root: a signal the user runner sends to every process it may signal does not reach root.
+        run: >-
+          sudo --preserve-env=GH_TOKEN,GITHUB_REPOSITORY,GITHUB_SHA,RUNNER_TEMP,PATH
+          nohup bash .github/macos-watchdog.sh > "$RUNNER_TEMP/watchdog.log" 2>&1 &
 
       - name: Test ActionCacheTests (macOS)
         if: runner.os == 'macOS'
@@ -337,7 +340,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OUTCOME: ${{ job.status }}
         run: |
-          pkill -f macos-watchdog.sh || true
+          sudo pkill -f macos-watchdog.sh || true
           id=$(cat "$RUNNER_TEMP/watchdog-check-run" 2>/dev/null) || exit 0
           conclusion=neutral
           [ "$OUTCOME" = success ] && conclusion=success
