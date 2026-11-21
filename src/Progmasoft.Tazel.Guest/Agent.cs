@@ -115,7 +115,7 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
                 var connection = Libc.Accept(listener, IntPtr.Zero, IntPtr.Zero);
                 if (connection >= 0)
                 {
-                    _ = Task.Run(() => ServeAsync(new VsockStream(connection), off));
+                    _ = Task.Run(() => ServeAsync(new VsockStream(connection), off.Set));
                 }
             }
         }) { IsBackground = true, Name = "vsock" };
@@ -193,8 +193,9 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
         return "/" + string.Join('/', parts);
     }
 
+    /// <summary>Serves one connection: Hello, a command, or the order to power off, which calls <paramref name="off"/>.</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private async Task ServeAsync(VsockStream stream, ManualResetEventSlim off)
+    internal async Task ServeAsync(Stream stream, Action off)
     {
         using (stream)
         {
@@ -211,7 +212,7 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
                         await RunAsync(stream, MicroVMProtocol.DecodeRun(message.Value.Payload)).ConfigureAwait(false);
                         break;
                     case MessageKind.PowerOff:
-                        off.Set();
+                        off();
                         break;
                     default:
                         // A connection opens with Hello, Run or PowerOff; anything else is closed unanswered.
@@ -226,7 +227,7 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private async Task RunAsync(VsockStream stream, RunRequest request)
+    private async Task RunAsync(Stream stream, RunRequest request)
     {
         if (request.Arguments.Count == 0)
         {
@@ -296,8 +297,10 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
                 process.Kill(entireProcessTree: true);
             }
         });
-        var output = Pump(process.StandardOutput.BaseStream, 1, stream);
-        var errors = Pump(process.StandardError.BaseStream, 2, stream);
+        // Output and errors are written from two tasks; the frames go out one at a time.
+        using var writing = new SemaphoreSlim(1, 1);
+        var output = Pump(process.StandardOutput.BaseStream, 1, stream, writing);
+        var errors = Pump(process.StandardError.BaseStream, 2, stream, writing);
         await Task.WhenAll(output, errors).ConfigureAwait(false);
         await process.WaitForExitAsync().ConfigureAwait(false);
         await MicroVMProtocol.WriteAsync(stream, MessageKind.Exit, MicroVMProtocol.EncodeStatus(process.ExitCode), CancellationToken.None)
@@ -306,7 +309,7 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private static async Task Pump(Stream from, byte which, VsockStream to)
+    private static async Task Pump(Stream from, byte which, Stream to, SemaphoreSlim writing)
     {
         var buffer = new byte[65536];
         while (true)
@@ -318,13 +321,21 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
             }
 
             buffer[0] = which;
-            await MicroVMProtocol.WriteAsync(to, MessageKind.Output, buffer.AsMemory(0, read + 1), CancellationToken.None)
-                .ConfigureAwait(false);
+            await writing.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await MicroVMProtocol.WriteAsync(to, MessageKind.Output, buffer.AsMemory(0, read + 1), CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                writing.Release();
+            }
         }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private static Task Refuse(VsockStream stream, string why) =>
+    private static Task Refuse(Stream stream, string why) =>
         MicroVMProtocol.WriteAsync(stream, MessageKind.Error, Encoding.UTF8.GetBytes(why), CancellationToken.None);
 
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]

@@ -76,15 +76,12 @@ internal static class MicroVMProtocol
     public static async Task WriteAsync(Stream stream, MessageKind kind, ReadOnlyMemory<byte> payload, CancellationToken cancel)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        var header = new byte[5];
-        header[0] = (byte)kind;
-        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(1), payload.Length);
-        await stream.WriteAsync(header, cancel).ConfigureAwait(false);
-        if (payload.Length > 0)
-        {
-            await stream.WriteAsync(payload, cancel).ConfigureAwait(false);
-        }
-
+        // One write for the whole frame, so that frames written from two tasks never interleave.
+        var frame = new byte[5 + payload.Length];
+        frame[0] = (byte)kind;
+        BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(1), payload.Length);
+        payload.CopyTo(frame.AsMemory(5));
+        await stream.WriteAsync(frame, cancel).ConfigureAwait(false);
         await stream.FlushAsync(cancel).ConfigureAwait(false);
     }
 
