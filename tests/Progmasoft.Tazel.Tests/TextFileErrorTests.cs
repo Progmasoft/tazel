@@ -91,7 +91,7 @@ public sealed class TextFileErrorTests
     [InlineData("build ('tazel' 'build');", "E0306")]
     [InlineData("build: 'tazel' 'build');", "E0307")]
     [InlineData("build: ('tazel' 'build';", "E0308")]
-    [InlineData("build: ('tazel' 'build')", "E0305")]
+    [InlineData("build: ('tazel' 'build') test: ('tazel');", "E0305")]
     [InlineData("build: ;", "E0307")]
     [InlineData("('x');", "E0309")]
     [InlineData("build: (", "E0308")]
