@@ -105,7 +105,9 @@ build with: ("tazel" "build" <1> <2>);
 A command is a name of one or more words, a colon, and steps that run in order until one fails. `("program" "arg")`
 starts a program directly; `s("line")` gives one line to the shell (CMD on Windows, `sh` elsewhere). Strings take
 double quotes, single quotes or backticks and have no escapes. `<N>` is the Nth argument after the name, `<*>` all of
-them. The longest name that fits the command line wins, and `--` ends the name.
+them. The longest name that fits the command line wins, and `--` ends the name. Each command ends with `;`, which the
+last one in the file may leave out, as may the last option of `tazel_options.txt` and the last value of
+`tazel_envs.txt`.
 
 ## Queries
 
@@ -172,7 +174,8 @@ using Progmasoft.Tazel.Dsl.Environment;
 var exampleVersion = GetEnvironment.From("example-version"); // "0.1.0"; null for a name the file does not have
 ```
 
-- It is read with the lexer of `tazel_custom.txt`: the same comments and strings; every value ends with `;`.
+- It is read with the lexer of `tazel_custom.txt`: the same comments and strings; every value ends with `;`, which
+  the last one in the file may leave out.
 - A string is the value as written. `("program" "argument")` starts a program directly, each string one argument;
   `s("line")` gives one line to `/bin/sh` on Linux, macOS and the BSDs and to `cmd.exe` on Windows. Their value is
   what they print, less the line endings at its end. A program runs when its value is first asked for, once per

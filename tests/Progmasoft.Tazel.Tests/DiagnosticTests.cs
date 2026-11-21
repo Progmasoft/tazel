@@ -16,7 +16,7 @@ namespace Progmasoft.Tazel.Tests;
 public sealed class DiagnosticTests
 {
     [Theory]
-    [InlineData("envs", "x: '1'")]
+    [InlineData("envs", "x: '1' y: '2';")]
     [InlineData("envs", "x '1';")]
     [InlineData("envs", "x: '1';\nx: '2';")]
     [InlineData("envs", "x: version;")]
@@ -28,7 +28,7 @@ public sealed class DiagnosticTests
     [InlineData("envs", "<# open")]
     [InlineData("envs", "x: @;")]
     [InlineData("custom", "build (\"tazel\");")]
-    [InlineData("custom", "build: (\"tazel\")")]
+    [InlineData("custom", "build: (\"tazel\") test: (\"tazel\");")]
     [InlineData("custom", "build: ();")]
     [InlineData("custom", "build: s(\"a\" \"b\");")]
     [InlineData("custom", "build: (<1>);")]
@@ -56,7 +56,7 @@ public sealed class DiagnosticTests
     [Fact]
     public void AMissingSemicolonIsMarkedRightAfterTheValue()
     {
-        var diagnostic = DiagnosticOf("envs", "example-version: '0.1.0'\n")!;
+        var diagnostic = DiagnosticOf("envs", "example-version: '0.1.0'\nexample-name: 'tazel';\n")!;
         Assert.Equal((1, 25), (diagnostic.Line, diagnostic.Column));
         Assert.Equal("a ';' goes here", diagnostic.Label);
         Assert.Contains("example-version: '0.1.0';", diagnostic.Help, StringComparison.Ordinal);
@@ -74,7 +74,7 @@ public sealed class DiagnosticTests
     public async Task TheErrorIsDrawnWithTheLineAMarkHelpAndAJoke()
     {
         using var module = new TemporaryModule().Write("MODULE.csx", TemporaryModule.ModuleFile)
-            .Write("tazel_envs.txt", "example-version: '0.1.0'\n");
+            .Write("tazel_envs.txt", "example-version: '0.1.0'\nexample-name: 'tazel';\n");
         var (status, output) = await module.TazelAsync(".", "build", "//...", "--quiet");
         Assert.Equal(1, status);
         Assert.Contains("error[E0406]: expected ';' after the value of example-version", output, StringComparison.Ordinal);
@@ -102,16 +102,33 @@ public sealed class DiagnosticTests
     }
 
     [Theory]
-    [InlineData("envs", "x: '1'", "E0406")]
+    [InlineData("envs", "x: '1' y: '2';", "E0406")]
     [InlineData("envs", "x '1';", "E0407")]
     [InlineData("envs", "x: version;", "E0404")]
     [InlineData("envs", "x: \"open", "E0003")]
-    [InlineData("custom", "build: (\"tazel\")", "E0305")]
+    [InlineData("custom", "build: (\"tazel\") test: (\"tazel\");", "E0305")]
     [InlineData("custom", "build: s(\"a\" \"b\");", "E0311")]
     [InlineData("options", "platform: linux-amd46;", "E0211")]
     [InlineData("options", "microvm-cpus: 99999;", "E0210")]
     public void EachProblemHasItsOwnCode(string reader, string text, string code) =>
         Assert.Equal(code, DiagnosticOf(reader, text)!.Code);
+
+    [Theory]
+    [InlineData("envs", "x: '1'")]
+    [InlineData("envs", "x: '1'; y: s(\"echo 2\")")]
+    [InlineData("custom", "build: (\"tazel\")")]
+    [InlineData("custom", "build: (\"tazel\") s(\"echo done\"); test: (\"tazel\" \"test\")")]
+    [InlineData("options", "platform: linux-amd64")]
+    public void TheLastEntryMayEndTheFileWithoutItsSemicolon(string reader, string text)
+    {
+        var entries = reader switch
+        {
+            "envs" => TazelEnvsFile.Parse(text).Count,
+            "custom" => CustomParser.Parse(text).Count,
+            _ => TazelOptionsFile.Parse(text).Platform is null ? 0 : 1,
+        };
+        Assert.True(entries >= 1);
+    }
 
     [Fact]
     public void EveryCodeIsWrittenOnceAndExplained()

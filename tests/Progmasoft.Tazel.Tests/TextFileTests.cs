@@ -67,7 +67,7 @@ public sealed class CustomCommandTests
     [InlineData("x: ('a' <0>);", "<0> is not an argument")]
     [InlineData("x: ('a);", "has no closing '")]
     [InlineData("<# x", "no closing #>")]
-    [InlineData("x: ('a')", "expected ';' at the end of a command")]
+    [InlineData("x: ('a') y: ('b');", "expected ';' at the end of a command")]
     [InlineData("x -- y: ('a');", "cannot hold it")]
     public void RefusesWhatIsWrongWithItsPlace(string text, string reason)
     {
