@@ -204,6 +204,14 @@ jobs:
           --filter-class Progmasoft.Tazel.Tests.EnvsTests
           --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
 
+      - name: Test ExceptionTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.ExceptionTests
+          --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+
       - name: Test GlobTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
@@ -242,6 +250,14 @@ jobs:
         run: >-
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
           --filter-class Progmasoft.Tazel.Tests.MicroVMBootTests
+          --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+
+      - name: Test MicroVMDownloadTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.MicroVMDownloadTests
           --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
 
       - name: Test MicroVMFilesTests (macOS)

@@ -13,6 +13,21 @@ using Progmasoft.Tazel.Driver;
 
 namespace Progmasoft.Tazel.MicroVM;
 
+/// <summary>Where the files of a MicroVM come from: the releases of Tazel, the monitor and its SHA-256, and KVM.</summary>
+/// <param name="Releases">The address the image of a Tazel release is under, as <c>tazel-&lt;version&gt;/&lt;name&gt;</c>.</param>
+/// <param name="Monitor">The address of the static Cloud Hypervisor.</param>
+/// <param name="MonitorSha256">The SHA-256 the monitor must have.</param>
+/// <param name="Kvm">The KVM device.</param>
+internal sealed record MicroVMSources(string Releases, string Monitor, string MonitorSha256, string Kvm)
+{
+    /// <summary>The releases on GitHub and the host's KVM.</summary>
+    public static MicroVMSources Published { get; } = new(
+        "https://github.com/Progmasoft/tazel/releases/download",
+        $"https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/{MicroVMFiles.MonitorVersion}/cloud-hypervisor-static",
+        "ce7133bf535ed5a4e2a63ea1f26025445a5b1241f73ddfb81ff2fbcb2e803a59",
+        "/dev/kvm");
+}
+
 /// <summary>What a MicroVM is started from: the guest kernel and initramfs, the monitor, and virtiofsd.</summary>
 /// <param name="Kernel">The guest kernel, an ELF vmlinux that boots through PVH.</param>
 /// <param name="Initramfs">The initramfs with the agent.</param>
@@ -23,27 +38,30 @@ internal sealed record MicroVMFiles(string Kernel, string Initramfs, string Moni
     /// <summary>The Cloud Hypervisor release Tazel runs, and the SHA-256 of its static x86_64 program.</summary>
     public const string MonitorVersion = "v55.0";
 
-    private const string MonitorSha256 = "ce7133bf535ed5a4e2a63ea1f26025445a5b1241f73ddfb81ff2fbcb2e803a59";
-
     /// <summary>
     /// Finds every file, fetching what is missing into the cache of the user: the image from
     /// <c>TAZEL_MICROVM_IMAGE</c> (a directory with <c>SHA256SUMS</c>, as <c>microvm/build.cs</c> writes it) or the
     /// release of this Tazel, the monitor from <c>TAZEL_CLOUD_HYPERVISOR</c> or its release, and virtiofsd from the
     /// host. Each file is checked against its SHA-256 before it is used.
     /// </summary>
-    public static async Task<MicroVMFiles> FindAsync(Version tazel, Action<string> status, CancellationToken cancel)
+    public static Task<MicroVMFiles> FindAsync(Version tazel, Action<string> status, CancellationToken cancel) =>
+        FindAsync(tazel, status, MicroVMSources.Published, cancel);
+
+    /// <summary>The same, from <paramref name="sources"/>.</summary>
+    internal static async Task<MicroVMFiles> FindAsync(Version tazel, Action<string> status, MicroVMSources sources, CancellationToken cancel)
     {
         ArgumentNullException.ThrowIfNull(tazel);
         ArgumentNullException.ThrowIfNull(status);
+        ArgumentNullException.ThrowIfNull(sources);
         if (!OperatingSystem.IsLinux() || RuntimeInformation.OSArchitecture != Architecture.X64)
         {
             throw new MicroVMException(
                 $"this Tazel starts its MicroVM on x86_64 Linux with KVM, and this machine is {RuntimeInformation.RuntimeIdentifier}");
         }
 
-        if (!File.Exists("/dev/kvm"))
+        if (!File.Exists(sources.Kvm))
         {
-            throw new MicroVMException("/dev/kvm is not there; the MicroVM needs KVM, so turn on virtualization in the firmware");
+            throw new MicroVMException($"{sources.Kvm} is not there; the MicroVM needs KVM, so turn on virtualization in the firmware");
         }
 
         var cache = Path.Combine(Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } xdg
@@ -51,11 +69,11 @@ internal sealed record MicroVMFiles(string Kernel, string Initramfs, string Moni
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache"), "tazel");
         var image = Environment.GetEnvironmentVariable("TAZEL_MICROVM_IMAGE") is { Length: > 0 } given
             ? given
-            : await FetchImageAsync(tazel, Path.Combine(cache, "microvm", tazel.ToString(3)), status, cancel).ConfigureAwait(false);
+            : await FetchImageAsync(tazel, Path.Combine(cache, "microvm", tazel.ToString(3)), sources, status, cancel).ConfigureAwait(false);
         CheckImage(image);
         var monitor = Environment.GetEnvironmentVariable("TAZEL_CLOUD_HYPERVISOR") is { Length: > 0 } chosen
             ? chosen
-            : await FetchMonitorAsync(Path.Combine(cache, "cloud-hypervisor", MonitorVersion), status, cancel).ConfigureAwait(false);
+            : await FetchMonitorAsync(Path.Combine(cache, "cloud-hypervisor", MonitorVersion), sources, status, cancel).ConfigureAwait(false);
         var virtiofsd = Environment.GetEnvironmentVariable("TAZEL_VIRTIOFSD") is { Length: > 0 } daemon
             ? daemon
             : new[] { "/usr/libexec/virtiofsd", "/usr/lib/virtiofsd", "/usr/lib/qemu/virtiofsd" }.FirstOrDefault(File.Exists)
@@ -86,7 +104,9 @@ internal sealed record MicroVMFiles(string Kernel, string Initramfs, string Moni
         }
     }
 
-    private static async Task<string> FetchImageAsync(Version tazel, string directory, Action<string> status, CancellationToken cancel)
+    /// <summary>The image of <paramref name="tazel"/>'s release in <paramref name="directory"/>, fetched once and checked.</summary>
+    internal static async Task<string> FetchImageAsync(
+        Version tazel, string directory, MicroVMSources sources, Action<string> status, CancellationToken cancel)
     {
         if (File.Exists(Path.Combine(directory, "SHA256SUMS")))
         {
@@ -95,7 +115,7 @@ internal sealed record MicroVMFiles(string Kernel, string Initramfs, string Moni
 
         var version = tazel.ToString(3);
         var name = $"tazel-microvm-{version}-x86_64.tazel.tar.xz";
-        var url = $"https://github.com/Progmasoft/tazel/releases/download/tazel-{version}/{name}";
+        var url = $"{sources.Releases}/tazel-{version}/{name}";
         status($"fetching the MicroVM image {name}");
         var downloads = directory + ".download";
         Directory.CreateDirectory(downloads);
@@ -119,21 +139,23 @@ internal sealed record MicroVMFiles(string Kernel, string Initramfs, string Moni
         return directory;
     }
 
+    /// <summary>Cloud Hypervisor in <paramref name="directory"/>, fetched once and checked against its SHA-256.</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private static async Task<string> FetchMonitorAsync(string directory, Action<string> status, CancellationToken cancel)
+    internal static async Task<string> FetchMonitorAsync(
+        string directory, MicroVMSources sources, Action<string> status, CancellationToken cancel)
     {
         var path = Path.Combine(directory, "cloud-hypervisor");
-        if (File.Exists(path) && Sha256Sums.Sha256(path) == MonitorSha256)
+        if (File.Exists(path) && Sha256Sums.Sha256(path) == sources.MonitorSha256)
         {
             return path;
         }
 
         status($"fetching Cloud Hypervisor {MonitorVersion}");
         Directory.CreateDirectory(directory);
-        var url = $"https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/{MonitorVersion}/cloud-hypervisor-static";
+        var url = sources.Monitor;
         await DownloadAsync(url, path + ".partial", cancel).ConfigureAwait(false);
         var actual = Sha256Sums.Sha256(path + ".partial");
-        if (actual != MonitorSha256)
+        if (actual != sources.MonitorSha256)
         {
             File.Delete(path + ".partial");
             throw new MicroVMException($"{url} has the SHA-256 {actual}, not that of Cloud Hypervisor {MonitorVersion}");
