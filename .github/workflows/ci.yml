@@ -284,6 +284,14 @@ jobs:
           --filter-class Progmasoft.Tazel.Tests.PlannerTests
           --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
 
+      - name: Test PluginErrorTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.PluginErrorTests
+          --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+
       - name: Test PluginLoadingTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
