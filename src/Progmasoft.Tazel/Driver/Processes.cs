@@ -82,7 +82,7 @@ internal static class Processes
         }
         catch (OperationCanceledException)
         {
-            process.Kill(entireProcessTree: true);
+            ProcessTree.Kill(process);
             await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
             var canceled = cancel.IsCancellationRequested;
             return new ProcessResult(-1, Text(output), TimedOut: !canceled, Canceled: canceled);

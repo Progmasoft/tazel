@@ -11,6 +11,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Progmasoft.Tazel.Driver;
 
 namespace Progmasoft.Tazel.MicroVM;
 
@@ -351,7 +352,7 @@ internal sealed class Sandbox : IAsyncDisposable
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                ProcessTree.Kill(process);
                 process.WaitForExit(5000);
             }
         }
