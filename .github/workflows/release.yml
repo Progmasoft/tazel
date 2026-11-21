@@ -3,28 +3,37 @@
 
 # Runs when a GitHub release of Tazel is published: builds Tazel for each platform, attaches the archives and their
 # SHA-256 sums to the release, and publishes the NuGet packages of the plugin API, the plugin SDK and its templates.
+# Started by hand with the tag of a published release, it builds and attaches that release's archives again from the
+# tag's sources; the NuGet packages are pushed only by a published release.
 name: Release
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of a published release, such as tazel-0.1.0
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 # One run per release; a second publication of the same release waits instead of uploading twice.
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 env:
   DOTNET_NOLOGO: "1"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   build:
     name: Build (${{ matrix.rid }})
-    if: startsWith(github.event.release.tag_name, 'tazel-')
+    if: startsWith(github.event.release.tag_name || inputs.tag, 'tazel-')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -44,7 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event.release.tag_name }}
+          ref: refs/tags/${{ env.TAG }}
 
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
@@ -52,8 +61,6 @@ jobs:
 
       - name: Check the version
         shell: bash
-        env:
-          TAG: ${{ github.event.release.tag_name }}
         run: |
           version=$(dotnet msbuild src/Progmasoft.Tazel -getProperty:Version)
           test "tazel-$version" = "$TAG" || { echo "the tag $TAG is not tazel-$version" >&2; exit 1; }
@@ -63,7 +70,6 @@ jobs:
         shell: bash
         env:
           RID: ${{ matrix.rid }}
-          TAG: ${{ github.event.release.tag_name }}
         run: |
           dotnet publish src/Progmasoft.Tazel -c Release -r "$RID" --self-contained false -o "artifacts/$TAG-$RID"
           cd artifacts
@@ -82,23 +88,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
-    name: Attach and publish
+  attach:
+    name: Attach
     needs: build
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    environment: release
     permissions:
       contents: write # to attach the archives to the release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event.release.tag_name }}
-
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
-        with:
-          global-json-file: global.json
+          ref: refs/tags/${{ env.TAG }}
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -109,13 +110,30 @@ jobs:
       - name: Attach the archives and their sums
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
         run: |
           cd artifacts/release
           sha256sum -- *.tar.xz *.zip > "$TAG.sha256sums"
-          gh release upload "$TAG" -- *.tar.xz *.zip "$TAG.sha256sums" --repo "$GITHUB_REPOSITORY"
+          # The options come before --: what follows it are the files, whatever their names.
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber -- *.tar.xz *.zip "$TAG.sha256sums"
 
-      - name: Publish the NuGet packages
+  nuget:
+    name: Publish the NuGet packages
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Publish
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
