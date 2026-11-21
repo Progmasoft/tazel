@@ -49,6 +49,21 @@ tazel package
 
 The [documentation](docs/README.md) covers the project files, the commands and how Tazel is built.
 
+## Installing Tazel
+
+Tazel runs on the .NET 10 runtime. Each [release](https://github.com/Progmasoft/tazel/releases) has an archive for
+Linux (`linux-x64`, `linux-arm64`, and `linux-musl-x64`, `linux-musl-arm64` for musl systems such as Alpine), macOS
+(`osx-arm64`, `osx-x64`) and Windows (`win-x64`, `win-arm64`), and a `.sha256sums` file to check them against:
+
+```text
+sha256sum --check --ignore-missing tazel-0.1.0.sha256sums
+tar -xJf tazel-0.1.0-linux-x64.tar.xz
+tazel-0.1.0-linux-x64/tazel version
+```
+
+Put the unpacked directory on `PATH`. On Windows, unpack the `.zip` and run `tazel.exe`. Plugins are built with the
+NuGet packages `Progmasoft.Tazel.PluginSdk` and `Progmasoft.Tazel.PluginApi` ([plugins](docs/plugins.md)).
+
 ## Building Tazel
 
 ```text

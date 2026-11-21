@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+# SPDX-License-Identifier: MIT
+
+rules:
+  # NuGet packages are pushed with an API key held by the release environment, which only tazel-* tags reach;
+  # trusted publishing is not used, by decision.
+  use-trusted-publishing:
+    ignore:
+      - release.yml

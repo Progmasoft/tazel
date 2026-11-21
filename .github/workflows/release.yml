@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com>
+# SPDX-License-Identifier: MIT
+
+# Runs when a GitHub release of Tazel is published: builds Tazel for each platform, attaches the archives and their
+# SHA-256 sums to the release, and publishes the NuGet packages of the plugin API, the plugin SDK and its templates.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# One run per release; a second publication of the same release waits instead of uploading twice.
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  build:
+    name: Build (${{ matrix.rid }})
+    if: startsWith(github.event.release.tag_name, 'tazel-')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: ubuntu-26.04, rid: linux-x64 }
+          - { os: ubuntu-26.04, rid: linux-arm64 }
+          - { os: ubuntu-26.04, rid: linux-musl-x64 }
+          - { os: ubuntu-26.04, rid: linux-musl-arm64 }
+          - { os: ubuntu-26.04, rid: win-x64 }
+          - { os: ubuntu-26.04, rid: win-arm64 }
+          # On macOS, so that the SDK signs the launcher, which arm64 Macs require.
+          - { os: macos-15, rid: osx-arm64 }
+          - { os: macos-15, rid: osx-x64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Check the version
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(dotnet msbuild src/Progmasoft.Tazel -getProperty:Version)
+          test "tazel-$version" = "$TAG" || { echo "the tag $TAG is not tazel-$version" >&2; exit 1; }
+
+      # Framework-dependent: the archive runs on the .NET 10 runtime of the machine.
+      - name: Publish
+        shell: bash
+        env:
+          RID: ${{ matrix.rid }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          dotnet publish src/Progmasoft.Tazel -c Release -r "$RID" --self-contained false -o "artifacts/$TAG-$RID"
+          cd artifacts
+          if [[ "$RID" == win-* ]]; then
+            zip -qr "$TAG-$RID.zip" "$TAG-$RID"
+          else
+            tar -cJf "$TAG-$RID.tar.xz" "$TAG-$RID"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: archive-${{ matrix.rid }}
+          path: |
+            artifacts/*.tar.xz
+            artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach and publish
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write # to attach the archives to the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: archive-*
+          path: artifacts/release
+          merge-multiple: true
+
+      - name: Attach the archives and their sums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          cd artifacts/release
+          sha256sum -- *.tar.xz *.zip > "$TAG.sha256sums"
+          gh release upload "$TAG" -- *.tar.xz *.zip "$TAG.sha256sums" --repo "$GITHUB_REPOSITORY"
+
+      - name: Publish the NuGet packages
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet pack Tazel.slnx -c Release -o artifacts/packages
+          dotnet nuget push "artifacts/packages/*.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json --skip-duplicate
