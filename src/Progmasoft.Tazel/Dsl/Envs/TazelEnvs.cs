@@ -76,7 +76,12 @@ public static class TazelEnvsFile
                 names[name.Text] = name;
                 Take(TokenKind.Colon, $"':' after {name.Text}");
                 var value = Value(name);
-                Take(TokenKind.Semicolon, $"';' after the value of {name.Text}");
+                // The last value may end the file without a ';'.
+                if (Peek is not null)
+                {
+                    Take(TokenKind.Semicolon, $"';' after the value of {name.Text}");
+                }
+
                 entries.Add(new EnvEntry(name.Text, value, name.Line));
             }
 
