@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- The last entry of `tazel_envs.txt`, `tazel_custom.txt` and `tazel_options.txt` may end the file without its `;`;
+  between two entries the `;` is needed, and its absence is still `error[E0406]` and `error[E0305]`.
+
 - Signed remote cache results: `PublicKey` and `SigningKey` of `Remote.From`, written as `ed25519:`, `rsa-4096:` or
   `ml-dsa-65:` and the key in base64. Writers sign each result; readers take only results signed with their key's
   algorithm and verified by it. `tazel cache keygen [--algorithm ed25519|rsa-4096|ml-dsa]` makes a pair; a key Tazel

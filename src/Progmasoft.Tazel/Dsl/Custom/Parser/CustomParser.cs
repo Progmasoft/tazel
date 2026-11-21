@@ -57,9 +57,14 @@ public static class CustomParser
                 {
                     steps.Add(Step());
                 }
-                while (Peek() is { Kind: not TokenKind.Semicolon });
+                while (StartsAStep());
 
-                Take(TokenKind.Semicolon, "';' at the end of a command");
+                // The last command may end the file without a ';'; between two commands it is needed.
+                if (Peek() is not null)
+                {
+                    Take(TokenKind.Semicolon, "';' at the end of a command");
+                }
+
                 var joined = string.Join(' ', words);
                 if (commands.ContainsKey(joined))
                 {
@@ -159,6 +164,11 @@ public static class CustomParser
             token.Kind == TokenKind.String ? new CustomArgument.Text(token.Text)
             : token.Text == "*" ? new CustomArgument.All()
             : new CustomArgument.Position(int.Parse(token.Text, CultureInfo.InvariantCulture));
+
+        /// <summary>Whether a step comes next: a '(', or the s of an s(...).</summary>
+        private bool StartsAStep() =>
+            Peek() is { Kind: TokenKind.Open } ||
+            (Peek() is { Kind: TokenKind.Name, Text: "s" } && _position + 1 < tokens.Count && tokens[_position + 1].Kind == TokenKind.Open);
 
         private CustomStep Step()
         {

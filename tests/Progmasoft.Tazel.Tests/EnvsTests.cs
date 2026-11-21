@@ -39,7 +39,6 @@ public sealed class EnvsTests
 
     [Theory]
     [InlineData("a: 'x';\na: 'y';", "'a' is set twice")]
-    [InlineData("a: 'x'", "expected ';' after the value of a")]
     [InlineData("a: 'x' b: 'y';", "expected ';' after the value of a")]
     [InlineData("a 'x'", "expected ':' after a")]
     [InlineData("a: ();", "a program names at least itself")]
