@@ -164,6 +164,14 @@ jobs:
           --filter-class Progmasoft.Tazel.Tests.CoverageTests
           --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
 
+      - name: Test CrossPlannerTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.CrossPlannerTests
+          --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+
       - name: Test CustomCommandTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
