@@ -20,5 +20,7 @@
     <RepositoryUrl>https://github.com/Progmasoft/tazel</RepositoryUrl>
     <Version>0.1.0</Version>
     <IsPackable>false</IsPackable>
+    <!-- Tazel speaks English; the compilers' message translations are left out of what it ships. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 </Project>

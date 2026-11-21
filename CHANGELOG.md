@@ -5,7 +5,10 @@
 
 ## Unreleased
 
-The first version of Tazel, written in C# for .NET 10.
+## 0.1.0 - 2026-11-20
+
+The first release of Tazel, written in C# for .NET 10. Archives for Linux, macOS and Windows,
+and the NuGet packages of the plugin API, the plugin SDK and its templates.
 
 - Project files are C# scripts: `MODULE.csx` at the root of a module, `BUILD.csx` in each package, run with the C#
   scripting of Roslyn.
