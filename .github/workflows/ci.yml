@@ -340,6 +340,14 @@ jobs:
           --filter-class Progmasoft.Tazel.Tests.TestCacheTests
           --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
 
+      - name: Test TextFileErrorTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.TextFileErrorTests
+          --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+
       - name: Test WorkspaceTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
