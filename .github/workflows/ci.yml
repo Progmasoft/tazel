@@ -121,6 +121,13 @@ jobs:
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
           --filter-class Progmasoft.Tazel.Tests.BuildCommandTests
 
+      - name: Test CacheSigningTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.CacheSigningTests
+
       - name: Test CommandLineTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10

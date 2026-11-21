@@ -54,8 +54,8 @@ toolchains = Toolchains.Define("//toolchains:clang");
   Its public targets are `@name//dir:x`. `Module.From`, a module of Tazel Portal Modules, is refused by this Tazel,
   which fetches nothing.
 - `plugins` loads local plugin archives ([Plugins](plugins.md)).
-- `Cache.Remote` is a remote cache ([Remote cache](remote-cache.md)). This Tazel reads the `PublicKey` and
-  `SigningKey` of it, `Execution.Remote` and `Execution.Memory` and says, as a warning, that it does not act on them.
+- `Cache.Remote` is a remote cache, with its `PublicKey` and `SigningKey` ([Remote cache](remote-cache.md)). This
+  Tazel reads `Execution.Remote` and `Execution.Memory` and says, as a warning, that it does not act on them.
 
 ## BUILD.csx
 

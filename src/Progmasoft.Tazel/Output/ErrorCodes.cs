@@ -76,6 +76,7 @@ internal static partial class ErrorCodes
     public const string NoDaemon = "E0502";
     public const string Stopped = "E0503";
     public const string MicroVM = "E0504";
+    public const string CacheKey = "E0505";
     public const string Label = "E0600";
 
     private const string Lexer = "the text files: tazel_custom.txt, tazel_options.txt and tazel_envs.txt";
@@ -247,6 +248,12 @@ internal static partial class ErrorCodes
             "dotnet run microvm/build.cs. The message says which of these failed. The MicroVM has no network, so " +
             "microvm-network: true is refused, and builds, tests and plugins do not run in it, so a sandbox stops them.",
             "microvm-network: true;", "microvm-network: false;", "MODULE.csx, BUILD.csx and builds"),
+        new(CacheKey, "a key of the remote cache Tazel cannot read",
+            "The PublicKey and the SigningKey of Remote.From in MODULE.csx name their algorithm: ed25519:, rsa-4096: or " +
+            "ml-dsa-65:, then the key in base64. A public key is 32 bytes for Ed25519, the SubjectPublicKeyInfo of a " +
+            "4096-bit key for RSA and 1952 bytes for ML-DSA-65; a signing key is a 32-byte seed for Ed25519 and " +
+            "ML-DSA-65 and a PKCS #8 key for RSA. tazel cache keygen makes a pair.",
+            "PublicKey = \"AAECAwQF...\"", "PublicKey = \"ed25519:AAECAwQF...\"", "MODULE.csx"),
         new(Label, "a label Tazel cannot read",
             "A label names a target: //dir:name, //:name, :name in the current package, @dependency//dir:name; //dir/... " +
             "and //... are patterns of packages. Names hold letters, digits and _ + . -.",

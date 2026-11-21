@@ -16,6 +16,7 @@
 | `tazel vendor` | copies the modules of Tazel Portal Modules and their indexes into `vendor/` |
 | `tazel portal-modules search\|info [-e] [--] <module\|group:module>` | searches Tazel Portal Modules, or shows one module |
 | `tazel clean [--expunge]` | removes the outputs, the test logs and zig's cache; `--expunge` removes all of `.tazel` |
+| `tazel cache keygen [--algorithm ed25519\|rsa-4096\|ml-dsa]` | prints a key pair for signing the results of a remote cache ([Remote cache](remote-cache.md)) |
 | `tazel package` | writes `.tazel/package/$group.$module-$version.tazel.tar.xz` and its `.sha256sums` |
 | `tazel custom <name> [arguments]` | runs a command of the `tazel_custom.txt` of the current directory |
 | `tazel version`, `tazel help [command] [--long]` | print the version, or what Tazel or one command does |

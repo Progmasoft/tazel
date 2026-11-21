@@ -112,6 +112,9 @@ internal sealed record PortalModulesCommand(OutputOptions Output, PortalAction A
 
 internal sealed record DaemonCommand(OutputOptions Output, string Action) : Command(Output);
 
+/// <summary><c>tazel cache keygen</c>: a key pair for signing the results of a remote cache.</summary>
+internal sealed record CacheKeygenCommand(OutputOptions Output, Cache.SigningAlgorithm Algorithm) : Command(Output);
+
 /// <summary>
 /// Reads command lines by hand, into typed values. Long options take their value after whitespace, <c>=</c> or
 /// <c>:</c>; short options also joined (<c>-hbuild</c> is not an option, as <c>-h</c> takes none). A list is
@@ -123,7 +126,7 @@ internal static class CommandLine
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
         ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
-            "portal-modules", "explain", "version", "help", "dotnet"];
+            "portal-modules", "cache", "explain", "version", "help", "dotnet"];
 
     private enum Kind
     {
@@ -156,6 +159,7 @@ internal static class CommandLine
         new("expunge", Kind.Flag, null, "clean"),
         new("long", Kind.Flag, null, "help", "explain"),
         new("exact", Kind.Flag, null, "portal-modules"),
+        new("algorithm", Kind.Value, ["ed25519", "rsa-4096", "ml-dsa"], "cache"),
         new("output", Kind.Value, ["label", "label_kind"], "query", "cquery", "aquery"),
     ];
 
@@ -274,6 +278,7 @@ internal static class CommandLine
             : new CustomCommandLine(output, scanned.Positional),
         ["version"] = (scanned, output) => Bare(scanned, new VersionCommand(output)),
         ["dotnet"] = MakeDaemon,
+        ["cache"] = MakeCache,
     };
 
     private static Command Bare(Scanned scanned, Command command)
@@ -308,6 +313,22 @@ internal static class CommandLine
         var near = positional.Count == 1 ? Suggestions.Nearest(positional[0], actions) : null;
         throw new CommandLineException(
             $"tazel dotnet takes start-daemon, restart-daemon or stop-daemon{(near is null ? "" : $"; did you mean {near}?")}");
+    }
+
+    private static Command MakeCache(Scanned scanned, OutputOptions output)
+    {
+        if (scanned.Positional is not ["keygen"])
+        {
+            throw new CommandLineException("tazel cache takes keygen: tazel cache keygen [--algorithm ed25519|rsa-4096|ml-dsa]");
+        }
+
+        var algorithm = Last(scanned.Seen, "algorithm") switch
+        {
+            "rsa-4096" => Cache.SigningAlgorithm.Rsa4096,
+            "ml-dsa" => Cache.SigningAlgorithm.MlDsa65,
+            _ => Cache.SigningAlgorithm.Ed25519,
+        };
+        return new CacheKeygenCommand(output, algorithm);
     }
 
     private static Command MakeHelp(Scanned scanned, OutputOptions output) =>

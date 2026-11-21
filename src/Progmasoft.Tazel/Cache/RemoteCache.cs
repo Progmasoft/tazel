@@ -137,5 +137,8 @@ internal sealed class RemoteCache : IDisposable
     }
 }
 
+/// <summary>A key of the remote cache in MODULE.csx cannot be read.</summary>
+public sealed class CacheKeyException(string message) : Exception(message);
+
 /// <summary>A remote cache answered with an error or could not be reached.</summary>
 public sealed class RemoteCacheException(string message) : Exception(message);

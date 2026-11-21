@@ -32,13 +32,25 @@ namespace Progmasoft.Tazel.Cache;
 /// is put in place, and a result whose paths would leave the action's directory is refused.
 /// </para>
 /// <para>
+/// With a <c>SigningKey</c>, each result written carries a signature, as one more file named <see cref="Signature"/>:
+/// its algorithm and the signature of the action's key and the result's other files. With a <c>PublicKey</c>, only a
+/// result signed with the algorithm of that key, and verified by it, is taken.
+/// </para>
+/// <para>
 /// A cache that cannot be reached or answers with an error is said once, and the build goes on without it.
 /// </para>
 /// </remarks>
-internal sealed class RemoteActions(RemoteCache cache, bool read, bool write, Digests digests, Action<string> warn)
+internal sealed class RemoteActions(
+    RemoteCache cache, bool read, bool write, Digests digests, Action<string> warn, CacheKey? trusted = null,
+    CacheKey? signing = null)
 {
     /// <summary>The name, in a result, of the list of the inputs the action found by itself.</summary>
     public const string DiscoveredInputs = "@tazel/discovered-inputs";
+
+    /// <summary>The name, in a result, of its signature.</summary>
+    public const string Signature = "@tazel/signature";
+
+    private int _unsigned;
 
     private static readonly HashSet<string> UserDirectories = new(StringComparer.Ordinal) { "HOME", "TMPDIR", "TMP", "TEMP" };
 
@@ -133,19 +145,15 @@ internal sealed class RemoteActions(RemoteCache cache, bool read, bool write, Di
             return false;
         }
 
-        var byPath = new Dictionary<string, OutputFile>(StringComparer.Ordinal);
-        foreach (var file in files)
+        if (!await IsTrustedAsync(key, files, cancel).ConfigureAwait(false))
         {
-            if (file.Path != DiscoveredInputs && !IsInside(file.Path))
-            {
-                return false;
-            }
-
-            byPath[file.Path] = file;
+            SayUntrusted();
+            return false;
         }
 
         var wanted = Wanted(action).Select(Portable).ToList();
-        if (!wanted.All(byPath.ContainsKey) || !byPath.TryGetValue(DiscoveredInputs, out var list) ||
+        if (ByPath(files) is not { } byPath || !wanted.All(byPath.ContainsKey) ||
+            !byPath.TryGetValue(DiscoveredInputs, out var list) ||
             !await DiscoveredInputsHoldAsync(action, list, cancel).ConfigureAwait(false))
         {
             return false;
@@ -160,6 +168,33 @@ internal sealed class RemoteActions(RemoteCache cache, bool read, bool write, Di
         }
 
         return true;
+    }
+
+    /// <summary>The files of a result by their paths; null when one of them would leave the action's directory.</summary>
+    private static Dictionary<string, OutputFile>? ByPath(List<OutputFile> files)
+    {
+        var byPath = new Dictionary<string, OutputFile>(StringComparer.Ordinal);
+        foreach (var file in files)
+        {
+            if (file.Path is not (DiscoveredInputs or Signature) && !IsInside(file.Path))
+            {
+                return null;
+            }
+
+            byPath[file.Path] = file;
+        }
+
+        return byPath;
+    }
+
+    /// <summary>Says once that results not signed with the trusted key are left in the cache.</summary>
+    private void SayUntrusted()
+    {
+        if (Interlocked.Exchange(ref _unsigned, 1) == 0)
+        {
+            warn($"the remote cache at {cache.Address.Host} holds results that are not signed with the PublicKey " +
+                $"({CacheKey.NameOf(trusted!.Algorithm)}); they are not taken");
+        }
     }
 
     /// <summary>Whether every input the action found by itself there has here the digest it had there.</summary>
@@ -260,8 +295,71 @@ internal sealed class RemoteActions(RemoteCache cache, bool read, bool write, Di
         var listHash = Digests.Sha256(bytes);
         await cache.PutContentAsync(listHash, bytes, cancel).ConfigureAwait(false);
         files.Add(new OutputFile(DiscoveredInputs, listHash, bytes.Length, IsExecutable: false));
+        if (signing is not null)
+        {
+            var record = Encoding.UTF8.GetBytes(
+                $"tazel signature 1\nalgorithm {CacheKey.NameOf(signing.Algorithm)}\n" +
+                $"signature {Convert.ToBase64String(signing.Sign(SignedMessage(key, files)))}\n");
+            var recordHash = Digests.Sha256(record);
+            await cache.PutContentAsync(recordHash, record, cancel).ConfigureAwait(false);
+            files.Add(new OutputFile(Signature, recordHash, record.Length, IsExecutable: false));
+        }
+
         await cache.PutActionAsync(key, ActionResultMessage.Encode(files), cancel).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Whether a result may be taken: any result when no PublicKey is trusted; otherwise one whose signature record
+    /// names the algorithm of the trusted key and whose signature that key verifies.
+    /// </summary>
+    private async Task<bool> IsTrustedAsync(string key, List<OutputFile> files, CancellationToken cancel)
+    {
+        if (trusted is null)
+        {
+            return true;
+        }
+
+        var signed = files.Where(file => file.Path != Signature).ToList();
+        if (files.Count - signed.Count != 1 || files[^1].Path != Signature ||
+            await SignatureOfAsync(files[^1], cancel).ConfigureAwait(false) is not { } record)
+        {
+            return false;
+        }
+
+        return record.Algorithm == trusted.Algorithm && trusted.Verify(SignedMessage(key, signed), record.Signature);
+    }
+
+    /// <summary>The algorithm and signature of a signature record; null when it is not one.</summary>
+    private async Task<(SigningAlgorithm Algorithm, byte[] Signature)?> SignatureOfAsync(OutputFile file, CancellationToken cancel)
+    {
+        if (file.Size > 64 * 1024 || await cache.GetContentAsync(file.Hash, cancel).ConfigureAwait(false) is not { } record ||
+            Digests.Sha256(record) != file.Hash)
+        {
+            return null;
+        }
+
+        var lines = Encoding.UTF8.GetString(record).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines is not ["tazel signature 1", var algorithm, var signature] ||
+            !algorithm.StartsWith("algorithm ", StringComparison.Ordinal) ||
+            CacheKey.AlgorithmNamed(algorithm["algorithm ".Length..]) is not { } named ||
+            !signature.StartsWith("signature ", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        try
+        {
+            return (named, Convert.FromBase64String(signature["signature ".Length..]));
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What a signature covers: the action's key, and the result's files but the signature, in their order.</summary>
+    private static byte[] SignedMessage(string key, IEnumerable<OutputFile> files) =>
+        [.. Encoding.UTF8.GetBytes($"tazel signed result 1\n{key}\n"), .. ActionResultMessage.Encode(files)];
 
     /// <summary>The files of a result: the outputs, and the depfile, which the local cache reads after a hit.</summary>
     private static IEnumerable<string> Wanted(BuildAction action) =>

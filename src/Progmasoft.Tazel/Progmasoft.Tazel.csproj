@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
     <PackageReference Include="NuGet.Versioning" />
     <PackageReference Include="Lzma.Net" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
