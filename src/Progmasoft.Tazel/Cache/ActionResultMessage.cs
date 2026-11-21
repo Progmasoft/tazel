@@ -82,21 +82,25 @@ internal static class ActionResultMessage
         string? path = null, hash = null;
         long size = -1;
         var executable = false;
-        foreach (var field in Fields(bytes) ?? [new Field(0, -1, 0, null)])
+        if (Fields(bytes) is not { } fields)
         {
-            switch (field)
+            return null;
+        }
+
+        // Fields Tazel does not read are passed over.
+        foreach (var field in fields)
+        {
+            if (field is { Number: 1, Wire: WireLength })
             {
-                case { Number: 1, Wire: WireLength }:
-                    path = Encoding.UTF8.GetString(field.Body!);
-                    break;
-                case { Number: 2, Wire: WireLength }:
-                    (hash, size) = DecodeDigest(field.Body!);
-                    break;
-                case { Number: 4, Wire: WireVarint }:
-                    executable = field.Value != 0;
-                    break;
-                case { Wire: -1 }:
-                    return null;
+                path = Encoding.UTF8.GetString(field.Body!);
+            }
+            else if (field is { Number: 2, Wire: WireLength })
+            {
+                (hash, size) = DecodeDigest(field.Body!);
+            }
+            else if (field is { Number: 4, Wire: WireVarint })
+            {
+                executable = field.Value != 0;
             }
         }
 
