@@ -192,6 +192,15 @@ internal static class Help
 
             Prints what Tazel can do, or what one command does; --long says more.
             """),
+        ["cache"] = new("tazel cache keygen: a key pair that signs and checks the results of a remote cache.", """
+            tazel cache keygen [--algorithm ed25519|rsa-4096|ml-dsa]
+
+            Prints a PublicKey and a SigningKey for Remote.From in MODULE.csx, each written as its algorithm and the key
+            in base64. The machines that write to the cache sign with the SigningKey; every machine that reads checks with
+            the PublicKey and takes only results signed by it. Keep the SigningKey secret, as a secret of your CI.
+
+              --algorithm ed25519|rsa-4096|ml-dsa  the algorithm; default: ed25519. ml-dsa is ML-DSA-65 (FIPS 204).
+            """),
         ["dotnet"] = new("tazel dotnet start-daemon|restart-daemon|stop-daemon: the daemon of Tazel.", """
             tazel dotnet start-daemon|restart-daemon|stop-daemon
 

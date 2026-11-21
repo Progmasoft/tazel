@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- Signed remote cache results: `PublicKey` and `SigningKey` of `Remote.From`, written as `ed25519:`, `rsa-4096:` or
+  `ml-dsa-65:` and the key in base64. Writers sign each result; readers take only results signed with their key's
+  algorithm and verified by it. `tazel cache keygen [--algorithm ed25519|rsa-4096|ml-dsa]` makes a pair; a key Tazel
+  cannot read is `error[E0505]`.
+
 - A remote cache: `Cache.Remote` takes results of actions from a cache that speaks Bazel's HTTP protocol, such as
   bazel-remote, and gives it the results of actions run here. Keys do not depend on where the module is; headers a
   compiler found are checked by digest before a result is taken, and every file by its SHA-256. A cache that cannot

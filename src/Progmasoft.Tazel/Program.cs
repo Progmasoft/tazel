@@ -62,6 +62,12 @@ internal static class Program
             reporter.Diagnostic(diagnostic);
             return 1;
         }
+        catch (Cache.CacheKeyException error)
+        {
+            reporter.Error(ErrorCodes.CacheKey, error.Message, "make a key pair with tazel cache keygen",
+                "A key with no name on it opens nothing, least of all a cache.");
+            return 1;
+        }
         catch (MicroVM.MicroVMException error)
         {
             reporter.Error(ErrorCodes.MicroVM, error.Message, null,

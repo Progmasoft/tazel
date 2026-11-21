@@ -46,8 +46,40 @@ outside the module is refused. Steps of plugins run in Tazel itself and are neve
 A cache that cannot be reached, or answers with an error, is said once as a warning, and the build goes on without
 it. A build never fails because of its remote cache.
 
-## What it does not do
+## Signed results
 
-The results are not signed: whoever may write to the cache decides what readers take. Give `Write` and its token only
-to machines you trust, such as the builds of the default branch. `PublicKey` and `SigningKey` are read and not acted
-on.
+Without keys, whoever may write to the cache decides what readers take. With keys, readers take only what the holder
+of the signing key wrote:
+
+```text
+tazel cache keygen                      # ed25519
+tazel cache keygen --algorithm=rsa-4096
+tazel cache keygen --algorithm=ml-dsa   # ML-DSA-65, FIPS 204
+```
+
+```cs
+using System;
+
+cache = Cache.Define(new() {
+    Remote = Remote.From("https://cache.example.com", new() {
+        Write = Environment.GetEnvironmentVariable("CI") == "true",
+        Token = Environment.GetEnvironmentVariable("TAZEL_CACHE_TOKEN"),
+        PublicKey = "ed25519:…",                                          // every reader
+        SigningKey = Environment.GetEnvironmentVariable("TAZEL_CACHE_SIGNING_KEY")   // the writers only
+    })
+});
+```
+
+- A key says its algorithm: `ed25519:`, `rsa-4096:` or `ml-dsa-65:`, then the key in base64. Nothing else chooses
+  it. A key Tazel cannot read stops the build with `error[E0505]`.
+- With a `SigningKey`, each result written gets one more file, its signature record: the algorithm and the signature
+  of the action's key and of the result's other files. Ed25519 and ML-DSA-65 come from BouncyCastle, RSA-4096 is
+  RSA-PSS with SHA-256 from .NET.
+- With a `PublicKey`, a result is taken only when its record names the algorithm of that key and the key verifies
+  its signature. An unsigned result, one signed by another key, and one signed with another algorithm are not taken;
+  that is said once as a warning, and the actions run here.
+- Writing with a `PublicKey` and no `SigningKey` is said as a warning: no reader that trusts the key takes what such a
+  build writes.
+
+The public key belongs in `MODULE.csx`. Keep the signing key as a secret of the machines that write, such as the CI of
+the default branch.

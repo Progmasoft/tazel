@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.12.0" />
     <PackageVersion Include="NuGet.Versioning" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Z3" Version="4.12.2" />

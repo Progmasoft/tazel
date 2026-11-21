@@ -63,6 +63,15 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 return 0;
             case CleanCommand clean:
                 return Clean(clean.Expunge);
+            case CacheKeygenCommand keygen:
+            {
+                var (publicKey, signingKey) = Cache.CacheKey.Generate(keygen.Algorithm);
+                reporter.Plain($"PublicKey:  {publicKey}");
+                reporter.Plain($"SigningKey: {signingKey}");
+                reporter.Status("give the PublicKey to every machine that reads; keep the SigningKey secret, for the machines that write");
+                return 0;
+            }
+
             case DaemonCommand daemon:
                 reporter.Error(ErrorCodes.NoDaemon,
                     $"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon", null,
@@ -99,12 +108,6 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     /// <summary>Says which settings of MODULE.csx this Tazel reads but does not act on, so none is taken for granted.</summary>
     private void WarnAboutWhatThisTazelDoesNotDo(Dsl.Module.Prelude.ModuleGlobals globals)
     {
-        if (globals.cache?.Settings.Remote?.Settings is { } cache && (cache.PublicKey is not null || cache.SigningKey is not null))
-        {
-            reporter.Warning("MODULE.csx gives the remote cache a PublicKey or a SigningKey; this Tazel neither signs " +
-                "the results it writes nor checks the ones it reads with them");
-        }
-
         if (globals.execution?.Settings.Remote is { } remote)
         {
             reporter.Warning($"MODULE.csx names the remote execution {remote.Url}; this Tazel runs every action on this machine");
@@ -291,14 +294,36 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         using var remoteCache = cacheSettings?.Remote is { } remote
             ? new Cache.RemoteCache(remote.Url, remote.Settings.Token)
             : null;
-        var remoteActions = remoteCache is null
-            ? null
-            : new Cache.RemoteActions(remoteCache, cacheSettings!.Remote!.Settings.Read, cacheSettings.Remote.Settings.Write,
-                digests, reporter.Warning);
+        var remoteActions = remoteCache is null ? null : RemoteActionsOf(remoteCache, cacheSettings!.Remote!.Settings, digests);
         var executor = new Executor(buildOptions.Jobs, buildOptions.KeepGoing || kind is BuildKind.Test or BuildKind.Coverage,
             new ActionCache(digests, enabled: cacheSettings?.Local ?? true), reporter, remoteActions);
         var succeeded = await executor.RunAsync(goals, cancel).ConfigureAwait(false);
         return new Built(buildOptions, planner, chooser, executor, succeeded, planned);
+    }
+
+    /// <summary>The remote cache as MODULE.csx sets it up, with its keys read.</summary>
+    private Cache.RemoteActions RemoteActionsOf(Cache.RemoteCache cache, Dsl.Module.Prelude.RemoteSettings settings, Digests digests)
+    {
+        Cache.CacheKey? trusted, signing;
+        try
+        {
+            trusted = settings.PublicKey is { Length: > 0 } text ? Cache.CacheKey.ParsePublic(text, "the PublicKey of the remote cache") : null;
+            signing = settings.SigningKey is { Length: > 0 } secret
+                ? Cache.CacheKey.ParseSigning(secret, "the SigningKey of the remote cache")
+                : null;
+        }
+        catch (FormatException error)
+        {
+            throw new Cache.CacheKeyException(error.Message);
+        }
+
+        if (settings.Write && trusted is not null && signing is null)
+        {
+            reporter.Warning("MODULE.csx trusts a PublicKey for the remote cache and writes to it without a SigningKey; " +
+                "no one who trusts that key takes what this build writes");
+        }
+
+        return new Cache.RemoteActions(cache, settings.Read, settings.Write, digests, reporter.Warning, trusted, signing);
     }
 
     private async Task<int> FinishTestsAsync(Built built, BuildKind kind, CancellationToken cancel)
