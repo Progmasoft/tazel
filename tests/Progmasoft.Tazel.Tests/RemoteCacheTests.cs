@@ -46,13 +46,16 @@ public sealed class RemoteCacheTests
             .Write("main.c", "#include \"value.h\"\nint main(void) { return VALUE == 42 ? 0 : 1; }\n");
 
     [Fact]
-    public async Task AProjectFileReadsItsTokenFromTheEnvironment()
+    public async Task AProjectFileUsesTheBaseClassLibraryThroughItsUsings()
     {
-        // As the examples write it: Environment without System., which project files import.
+        // A project file reaches the whole base class library, naming each namespace with using.
         using var module = new TemporaryModule()
             .Write("MODULE.csx", """
+                using System;
+                using System.Text.Json;
                 using Progmasoft.Tazel.Dsl.Module.Prelude;
-                module = Module.Define(new() { Group = "com.example", Name = "sample", Version = "0.1.0" });
+                var parsed = JsonDocument.Parse("{\"group\": \"com.example\"}").RootElement.GetProperty("group").GetString();
+                module = Module.Define(new() { Group = parsed!, Name = "sample", Version = "0.1.0" });
                 cache = Cache.Define(new() {
                     Remote = Remote.From("https://cache.example.com", new() { Token = Environment.GetEnvironmentVariable("TAZEL_TEST_NO_SUCH_TOKEN") })
                 });
@@ -63,6 +66,21 @@ public sealed class RemoteCacheTests
 
         Assert.Equal("cache.example.com", workspace.Main.Globals.cache!.Settings.Remote!.Url.Host);
         Assert.Null(workspace.Main.Globals.cache!.Settings.Remote!.Settings.Token);
+    }
+
+    [Fact]
+    public async Task NothingIsImportedThatAProjectFileDoesNotName()
+    {
+        using var module = new TemporaryModule()
+            .Write("MODULE.csx", """
+                using Progmasoft.Tazel.Dsl.Module.Prelude;
+                module = Module.Define(new() { Group = Environment.UserName, Name = "sample", Version = "0.1.0" });
+                """)
+            .Write("BUILD.csx", "using Progmasoft.Tazel.Dsl.Build.Prelude;\n");
+
+        var error = await Assert.ThrowsAsync<Progmasoft.Tazel.Project.ProjectException>(() => module.LoadAsync());
+
+        Assert.Contains("CS0103", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

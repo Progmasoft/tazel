@@ -83,15 +83,15 @@ internal static class ScriptHost
 
     private static ScriptOptions CreateOptions()
     {
+        // The whole base class library: every managed assembly of the .NET runtime Tazel runs on, as the host lists
+        // them. A project file still names what it uses with using; nothing of it is imported for it.
         var runtime = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
         var references = new List<MetadataReference>();
-        foreach (var name in new[] { "System.Runtime.dll", "System.Collections.dll", "System.Linq.dll", "netstandard.dll" })
+        var trusted = (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "").Split(Path.PathSeparator);
+        foreach (var file in trusted.Where(file => file.Length > 0 &&
+                     string.Equals(Path.GetDirectoryName(file), runtime, StringComparison.Ordinal)))
         {
-            var file = Path.Combine(runtime, name);
-            if (File.Exists(file))
-            {
-                references.Add(MetadataReference.CreateFromFile(file));
-            }
+            references.Add(MetadataReference.CreateFromFile(file));
         }
 
         foreach (var assembly in new[]
@@ -105,8 +105,7 @@ internal static class ScriptHost
 
         return ScriptOptions.Default
             .WithReferences(references)
-            // System for what the examples of the project files use, such as Environment.GetEnvironmentVariable.
-            .WithImports(CommonNamespace, "System")
+            .WithImports(CommonNamespace)
             .WithLanguageVersion(LanguageVersion.Latest)
             .WithOptimizationLevel(OptimizationLevel.Debug)
             .WithEmitDebugInformation(false)

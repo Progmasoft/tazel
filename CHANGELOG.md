@@ -9,7 +9,8 @@
   bazel-remote, and gives it the results of actions run here. Keys do not depend on where the module is; headers a
   compiler found are checked by digest before a result is taken, and every file by its SHA-256. A cache that cannot
   be reached is said once, and the build goes on.
-- Project files import `System`, so `Environment.GetEnvironmentVariable` works as the examples write it.
+- Project files reach the whole base class library of .NET; each namespace is named with `using`, and none is
+  imported for them.
 
 ## 0.1.0 - 2026-11-20
 

@@ -8,6 +8,8 @@ instead of running the compiler again. Tazel speaks Bazel's HTTP caching protoco
 [bazel-remote](https://github.com/buchgr/bazel-remote) serves it.
 
 ```cs
+using System;
+
 cache = Cache.Define(new() {
     Remote = Remote.From("https://cache.example.com", new() {
         Read = true,                                              // default: true
