@@ -138,4 +138,4 @@ internal sealed class RemoteCache : IDisposable
 }
 
 /// <summary>A remote cache answered with an error or could not be reached.</summary>
-internal sealed class RemoteCacheException(string message) : Exception(message);
+public sealed class RemoteCacheException(string message) : Exception(message);

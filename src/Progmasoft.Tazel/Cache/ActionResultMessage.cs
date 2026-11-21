@@ -97,8 +97,6 @@ internal static class ActionResultMessage
                     break;
                 case { Wire: -1 }:
                     return null;
-                default:
-                    break;
             }
         }
 

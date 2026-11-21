@@ -20,9 +20,9 @@ cache = Cache.Define(new() {
 ```
 
 - The URL is `https`; `http` only for a cache on this machine (`localhost`, `127.0.0.1`, `[::1]`).
-- `Token` goes in the `Authorization` header. One that starts with `Basic ` or `Bearer ` is sent as it is, so a cache
-  behind HTTP basic authentication takes `Basic ` and the base64 of `user:password`; any other token is sent as
-  `Bearer <token>`.
+- `Token` goes in the `Authorization` header. One that starts with the word `Basic` or `Bearer` and a space is sent as
+  it is, so a cache behind HTTP basic authentication takes `Basic`, a space, and the base64 of `user:password`; any
+  other token is sent after `Bearer` and a space.
 - `Read` takes results from the cache before an action runs; `Write` gives it the results of actions that ran here.
   A machine that only reads, such as a pull request build, never writes.
 

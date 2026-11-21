@@ -295,32 +295,44 @@ internal sealed class FakeRemoteCache : IDisposable
         var key = parts[1];
         switch (context.Request.HttpMethod)
         {
-            case "GET" or "HEAD" when store.TryGetValue(key, out var bytes):
-                context.Response.StatusCode = 200;
-                context.Response.ContentLength64 = bytes.Length;
-                if (context.Request.HttpMethod == "GET")
-                {
-                    await context.Response.OutputStream.WriteAsync(bytes);
-                }
-
+            case "GET" or "HEAD":
+                await GetAsync(context, store, key);
                 break;
             case "PUT":
-                using (var body = new MemoryStream())
-                {
-                    await context.Request.InputStream.CopyToAsync(body);
-                    var bytes = body.ToArray();
-                    var valid = store == Actions ? ActionResultMessage.Decode(bytes) is not null : Digests.Sha256(bytes) == key;
-                    context.Response.StatusCode = valid ? 200 : 400;
-                    if (valid)
-                    {
-                        store[key] = bytes;
-                    }
-                }
-
+                await PutAsync(context, store, key);
                 break;
             default:
                 context.Response.StatusCode = 404;
                 break;
+        }
+    }
+
+    private static async Task GetAsync(HttpListenerContext context, ConcurrentDictionary<string, byte[]> store, string key)
+    {
+        if (!store.TryGetValue(key, out var bytes))
+        {
+            context.Response.StatusCode = 404;
+            return;
+        }
+
+        context.Response.StatusCode = 200;
+        context.Response.ContentLength64 = bytes.Length;
+        if (context.Request.HttpMethod == "GET")
+        {
+            await context.Response.OutputStream.WriteAsync(bytes);
+        }
+    }
+
+    private async Task PutAsync(HttpListenerContext context, ConcurrentDictionary<string, byte[]> store, string key)
+    {
+        using var body = new MemoryStream();
+        await context.Request.InputStream.CopyToAsync(body);
+        var bytes = body.ToArray();
+        var valid = store == Actions ? ActionResultMessage.Decode(bytes) is not null : Digests.Sha256(bytes) == key;
+        context.Response.StatusCode = valid ? 200 : 400;
+        if (valid)
+        {
+            store[key] = bytes;
         }
     }
 }
