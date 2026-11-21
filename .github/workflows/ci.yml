@@ -247,6 +247,13 @@ jobs:
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
           --filter-class Progmasoft.Tazel.Tests.PortalTests
 
+      - name: Test ProcessTreeTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.ProcessTreeTests
+
       - name: Test QueryTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
