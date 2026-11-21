@@ -232,12 +232,7 @@ internal sealed partial class Commands
             var errors = Console.OpenStandardError();
             foreach (var step in command.Steps)
             {
-                var started = step switch
-                {
-                    Dsl.Custom.CustomStep.Program program => program.Expanded(arguments),
-                    Dsl.Custom.CustomStep.Shell shell => shell.Started(windows: false),
-                    _ => throw new InvalidOperationException("a step of no kind"),
-                };
+                var started = step.ToStart(arguments, windows: false);
                 var status = await sandbox.RunAsync(started, Path.GetFullPath(workingDirectory), output, errors, cancel)
                     .ConfigureAwait(false);
                 if (status != 0)

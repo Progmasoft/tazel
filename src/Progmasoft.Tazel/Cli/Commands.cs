@@ -72,13 +72,12 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 return 0;
             }
 
-            case DaemonCommand daemon:
-                reporter.Error(ErrorCodes.NoDaemon,
-                    $"tazel dotnet {daemon.Action}: this Tazel runs every command in a process of its own and has no daemon", null,
-                    "Tazel is a morning person: awake at once, every time, no daemon needed.");
-                return 1;
             default:
-                throw new InvalidOperationException($"no handler for {command.GetType().Name}");
+                // The daemon's command, the one left: RunAsync gives every other kind to its own handler.
+                reporter.Error(ErrorCodes.NoDaemon,
+                    $"tazel dotnet {((DaemonCommand)command).Action}: this Tazel runs every command in a process of its own " +
+                    "and has no daemon", null, "Tazel is a morning person: awake at once, every time, no daemon needed.");
+                return 1;
         }
     }
 
@@ -192,12 +191,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         var environment = Processes.Inherited();
         foreach (var step in command.Steps)
         {
-            var started = step switch
-            {
-                CustomStep.Program program => program.Expanded(arguments),
-                CustomStep.Shell shell => shell.Started(OperatingSystem.IsWindows()),
-                _ => throw new InvalidOperationException("a step of no kind"),
-            };
+            var started = step.ToStart(arguments, OperatingSystem.IsWindows());
             var found = Host.Which(started[0]) ?? throw new CustomCommandsException(
                 $"'{command.Name}': the program '{started[0]}' is not found");
             var status = Processes.RunAttached([found, .. started.Skip(1)], workingDirectory, environment);
