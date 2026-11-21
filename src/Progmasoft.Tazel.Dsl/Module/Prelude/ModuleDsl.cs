@@ -197,7 +197,9 @@ public sealed class Remote
     public static Remote From(string url, RemoteSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
+        // http only for a service on this machine, such as a cache beside the build.
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) ||
+            !(parsed.Scheme == Uri.UriSchemeHttps || (parsed.Scheme == Uri.UriSchemeHttp && parsed.IsLoopback)))
         {
             throw new DslException($"'{url}' is not an https URL");
         }

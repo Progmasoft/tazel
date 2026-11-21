@@ -5,6 +5,12 @@
 
 ## Unreleased
 
+- A remote cache: `Cache.Remote` takes results of actions from a cache that speaks Bazel's HTTP protocol, such as
+  bazel-remote, and gives it the results of actions run here. Keys do not depend on where the module is; headers a
+  compiler found are checked by digest before a result is taken, and every file by its SHA-256. A cache that cannot
+  be reached is said once, and the build goes on.
+- Project files import `System`, so `Environment.GetEnvironmentVariable` works as the examples write it.
+
 The first version of Tazel, written in C# for .NET 10.
 
 - Project files are C# scripts: `MODULE.csx` at the root of a module, `BUILD.csx` in each package, run with the C#

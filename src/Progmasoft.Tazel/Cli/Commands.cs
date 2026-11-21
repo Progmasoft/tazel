@@ -99,9 +99,10 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     /// <summary>Says which settings of MODULE.csx this Tazel reads but does not act on, so none is taken for granted.</summary>
     private void WarnAboutWhatThisTazelDoesNotDo(Dsl.Module.Prelude.ModuleGlobals globals)
     {
-        if (globals.cache?.Settings.Remote is { } cache)
+        if (globals.cache?.Settings.Remote?.Settings is { } cache && (cache.PublicKey is not null || cache.SigningKey is not null))
         {
-            reporter.Warning($"MODULE.csx names the remote cache {cache.Url}; this Tazel uses the cache on this machine only");
+            reporter.Warning("MODULE.csx gives the remote cache a PublicKey or a SigningKey; this Tazel neither signs " +
+                "the results it writes nor checks the ones it reads with them");
         }
 
         if (globals.execution?.Settings.Remote is { } remote)
@@ -286,8 +287,16 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         var goals = planned.Select(entry => entry.Products.Main).OfType<BuildAction>().Distinct().ToList();
         reporter.Status($"building {selected.Count} target{(selected.Count == 1 ? "" : "s")}");
         var cacheSettings = workspace.Main.Globals.cache?.Settings;
+        var digests = new Digests();
+        using var remoteCache = cacheSettings?.Remote is { } remote
+            ? new Cache.RemoteCache(remote.Url, remote.Settings.Token)
+            : null;
+        var remoteActions = remoteCache is null
+            ? null
+            : new Cache.RemoteActions(remoteCache, cacheSettings!.Remote!.Settings.Read, cacheSettings.Remote.Settings.Write,
+                digests, reporter.Warning);
         var executor = new Executor(buildOptions.Jobs, buildOptions.KeepGoing || kind is BuildKind.Test or BuildKind.Coverage,
-            new ActionCache(new Digests(), enabled: cacheSettings?.Local ?? true), reporter);
+            new ActionCache(digests, enabled: cacheSettings?.Local ?? true), reporter, remoteActions);
         var succeeded = await executor.RunAsync(goals, cancel).ConfigureAwait(false);
         return new Built(buildOptions, planner, chooser, executor, succeeded, planned);
     }

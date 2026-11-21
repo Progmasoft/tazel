@@ -105,7 +105,8 @@ internal static class ScriptHost
 
         return ScriptOptions.Default
             .WithReferences(references)
-            .WithImports(CommonNamespace)
+            // System for what the examples of the project files use, such as Environment.GetEnvironmentVariable.
+            .WithImports(CommonNamespace, "System")
             .WithLanguageVersion(LanguageVersion.Latest)
             .WithOptimizationLevel(OptimizationLevel.Debug)
             .WithEmitDebugInformation(false)

@@ -16,7 +16,8 @@ namespace Progmasoft.Tazel.Driver;
 /// action starts unless <c>keepGoing</c> asks for it; those running are let finish, so no compiler is left writing
 /// behind the back of the command.
 /// </summary>
-internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Reporter reporter)
+internal sealed class Executor(
+    int jobs, bool keepGoing, ActionCache cache, Reporter reporter, Cache.RemoteActions? remote = null)
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<BuildAction, bool> _made = new();
     private int _done;
@@ -80,48 +81,74 @@ internal sealed class Executor(int jobs, bool keepGoing, ActionCache cache, Repo
             await slots.WaitAsync(CancellationToken.None).ConfigureAwait(false);
             try
             {
-                if (stop.IsCancellationRequested)
-                {
-                    return false;
-                }
-
-                if (cache.IsCurrent(action))
-                {
-                    action.After?.Invoke();
-                    Interlocked.Increment(ref _done);
-                    _made[action] = true;
-                    return true;
-                }
-
-                foreach (var output in action.Outputs)
-                {
-                    var full = action.Full(output);
-                    Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-                    File.Delete(full);
-                }
-
-                cache.Forget(action);
-                var result = action.Work is { } work
-                    ? await work(stop.Token).ConfigureAwait(false)
-                    : await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
-                        .ConfigureAwait(false);
-                // Stopped because another action failed: that one is reported, this one did not fail.
-                if (result.Canceled || await FailedAsync(action, result, stop).ConfigureAwait(false))
-                {
-                    return false;
-                }
-
-                cache.Record(action);
-                action.After?.Invoke();
-                _made[action] = true;
-                reporter.ActionDone(Interlocked.Increment(ref _done), total, action.Description, result.Output);
-                return true;
+                return !stop.IsCancellationRequested && await MakeAsync(action, total, stop).ConfigureAwait(false);
             }
             finally
             {
                 slots.Release();
             }
         }
+    }
+
+    /// <summary>
+    /// Makes <paramref name="action"/>: it is current here, or the remote cache has its outputs, or it runs, and then the
+    /// caches record it.
+    /// </summary>
+    private async Task<bool> MakeAsync(BuildAction action, int total, CancellationTokenSource stop)
+    {
+        if (cache.IsCurrent(action))
+        {
+            action.After?.Invoke();
+            Interlocked.Increment(ref _done);
+            _made[action] = true;
+            return true;
+        }
+
+        foreach (var output in action.Outputs)
+        {
+            var full = action.Full(output);
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            File.Delete(full);
+        }
+
+        cache.Forget(action);
+        if (remote is not null && await remote.FetchAsync(action, stop.Token).ConfigureAwait(false))
+        {
+            Made(action, total, $"{action.Description} (remote cache)", "", record: true);
+            return true;
+        }
+
+        var result = action.Work is { } work
+            ? await work(stop.Token).ConfigureAwait(false)
+            : await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
+                .ConfigureAwait(false);
+        // Stopped because another action failed: that one is reported, this one did not fail.
+        if (result.Canceled || await FailedAsync(action, result, stop).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        cache.Record(action);
+        if (remote is { Writes: true })
+        {
+            await remote.StoreAsync(action, stop.Token).ConfigureAwait(false);
+        }
+
+        Made(action, total, action.Description, result.Output, record: false);
+        return true;
+    }
+
+    /// <summary>Marks <paramref name="action"/> made and says so; with <paramref name="record"/>, the local cache records it.</summary>
+    private void Made(BuildAction action, int total, string description, string output, bool record)
+    {
+        if (record)
+        {
+            cache.Record(action);
+        }
+
+        action.After?.Invoke();
+        _made[action] = true;
+        reporter.ActionDone(Interlocked.Increment(ref _done), total, description, output);
     }
 
     private static List<BuildAction> Closure(IEnumerable<BuildAction> goals)

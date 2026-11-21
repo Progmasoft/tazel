@@ -261,6 +261,13 @@ jobs:
           dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
           --filter-class Progmasoft.Tazel.Tests.QueryTests
 
+      - name: Test RemoteCacheTests (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: >-
+          dotnet test --project tests/Progmasoft.Tazel.Tests -c Release --no-build --output Detailed
+          --filter-class Progmasoft.Tazel.Tests.RemoteCacheTests
+
       - name: Test SnapshotTests (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
