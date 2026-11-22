@@ -65,8 +65,6 @@ internal sealed class ProjectTarget
 
     public bool IsManual => Settings.Tags.Contains("manual", StringComparer.Ordinal);
 
-    public bool IsLibrary => Kind is TargetKind.StaticLibrary or TargetKind.SharedLibrary;
-
     public bool IsRunnable => Kind is TargetKind.Executable or TargetKind.Test;
 
     public bool BuildsFor(Platform platform) => Constraints.Count == 0 || Constraints.Contains(platform);
@@ -422,12 +420,8 @@ internal sealed class Workspace
         return near is not null && Cli.Suggestions.Distance(near, label.Name) <= 2 ? $"; did you mean :{near}?" : "";
     }
 
-    private static string Describe(ProjectTarget target) => target.Kind switch
-    {
-        TargetKind.Executable => "executable",
-        TargetKind.Test => "test",
-        _ => target.Kind.ToString(),
-    };
+    /// <summary>What a program target is called in a message: only executables and tests are described.</summary>
+    private static string Describe(ProjectTarget target) => target.Kind == TargetKind.Test ? "test" : "executable";
 
     private void CheckCycles()
     {
