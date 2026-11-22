@@ -242,22 +242,13 @@ internal static class ActionResultMessage
             return true;
         }
 
-        public bool TrySkip(int wire)
+        /// <summary>Passes over a fixed-size field: 64-bit (wire 1) or 32-bit (wire 5); groups are refused.</summary>
+        public bool TrySkip(int wire) => wire switch
         {
-            switch (wire)
-            {
-                case WireVarint:
-                    return TryVarint(out _);
-                case WireLength:
-                    return TryLength(out _);
-                case 1:
-                    return Advance(8);
-                case 5:
-                    return Advance(4);
-                default:
-                    return false;
-            }
-        }
+            1 => Advance(8),
+            5 => Advance(4),
+            _ => false,
+        };
 
         private bool Advance(int count)
         {
