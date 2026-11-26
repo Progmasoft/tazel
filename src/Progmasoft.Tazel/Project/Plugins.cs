@@ -8,8 +8,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
-using MetadataReference = Microsoft.CodeAnalysis.MetadataReference;
-using Microsoft.CodeAnalysis.Scripting.Hosting;
 using NuGet.Versioning;
 using Progmasoft.Tazel.Archive;
 using Progmasoft.Tazel.Dsl.Build.Prelude;
@@ -90,7 +88,7 @@ internal static class Plugins
         return loaded;
     }
 
-    /// <summary>The references, imports and loader that let the BUILD.csx files of a module use its plugins.</summary>
+    /// <summary>The assemblies and imports that let the BUILD.csx files of a module use its plugins.</summary>
     public static ScriptEnvironment EnvironmentFor(IReadOnlyList<LoadedPlugin> plugins)
     {
         ArgumentNullException.ThrowIfNull(plugins);
@@ -99,15 +97,7 @@ internal static class Plugins
             return ScriptEnvironment.Default;
         }
 
-        var loader = new InteractiveAssemblyLoader();
-        var references = new List<MetadataReference>();
-        foreach (var assembly in plugins.SelectMany(plugin => plugin.Assemblies))
-        {
-            loader.RegisterDependency(assembly);
-            references.Add(MetadataReference.CreateFromFile(assembly.Location));
-        }
-
-        return ScriptEnvironment.Default.With(references, plugins.SelectMany(plugin => plugin.Imports), loader);
+        return ScriptEnvironment.With(plugins.SelectMany(plugin => plugin.Assemblies), plugins.SelectMany(plugin => plugin.Imports));
     }
 
     private static LoadedPlugin LoadOne(string mainRoot, LoadedModule module, PluginReference reference, string place)

@@ -104,7 +104,7 @@ internal sealed class Workspace
         string directory, BuildContext build, Version tazelVersion, Action<string>? status = null)
     {
         var root = ModuleFiles.FindRoot(directory);
-        var main = await LoadModuleAsync(root, null, tazelVersion).ConfigureAwait(false);
+        var main = await LoadModuleAsync(root, null, tazelVersion, root).ConfigureAwait(false);
         var workspace = new Workspace(main);
         await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
         await workspace.LoadPortalModulesAsync(tazelVersion, offline: false).ConfigureAwait(false);
@@ -119,10 +119,13 @@ internal sealed class Workspace
     }
 
     /// <summary>Runs only the MODULE.csx of the module <paramref name="directory"/> is in.</summary>
-    public static Task<LoadedModule> LoadMainModuleAsync(string directory, Version tazelVersion) =>
-        LoadModuleAsync(ModuleFiles.FindRoot(directory), null, tazelVersion);
+    public static Task<LoadedModule> LoadMainModuleAsync(string directory, Version tazelVersion)
+    {
+        var root = ModuleFiles.FindRoot(directory);
+        return LoadModuleAsync(root, null, tazelVersion, root);
+    }
 
-    private static async Task<LoadedModule> LoadModuleAsync(string root, string? repository, Version tazelVersion)
+    private static async Task<LoadedModule> LoadModuleAsync(string root, string? repository, Version tazelVersion, string mainRoot)
     {
         var file = Path.Combine(root, ModuleFiles.ModuleFile);
         var shown = repository is null ? ModuleFiles.ModuleFile : $"@{repository}//{ModuleFiles.ModuleFile}";
@@ -130,7 +133,7 @@ internal sealed class Workspace
         var environment = EnvironmentOf(root, repository);
         using (Dsl.Environment.EnvironmentValues.Enter(environment))
         {
-            await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals)
+            await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals, mainRoot)
                 .ConfigureAwait(false);
         }
 
@@ -211,7 +214,7 @@ internal sealed class Workspace
             }
 
             var unpacked = LocalModules.Unpack(Main.Root, module.Root, local, place);
-            var loaded = await LoadModuleAsync(unpacked, local.Name, tazelVersion).ConfigureAwait(false);
+            var loaded = await LoadModuleAsync(unpacked, local.Name, tazelVersion, Main.Root).ConfigureAwait(false);
             External[local.Name] = loaded;
             await LoadDependenciesAsync(loaded, tazelVersion).ConfigureAwait(false);
         }
@@ -243,7 +246,7 @@ internal sealed class Workspace
 
             var root = await PortalDependencies.FetchAsync(Main.Root, module, offline ? null : client,
                 System.Threading.CancellationToken.None).ConfigureAwait(false);
-            External[module.Repository] = await LoadModuleAsync(root, module.Repository, tazelVersion).ConfigureAwait(false);
+            External[module.Repository] = await LoadModuleAsync(root, module.Repository, tazelVersion, Main.Root).ConfigureAwait(false);
             PortalModules.Add(module);
         }
     }
@@ -281,7 +284,7 @@ internal sealed class Workspace
             using (Declarations.Enter(scope))
             using (Dsl.Environment.EnvironmentValues.Enter(module.Environment))
             {
-                await ScriptHost.RunAsync(code, shown, new BuildGlobals(build), environment).ConfigureAwait(false);
+                await ScriptHost.RunAsync(code, shown, new BuildGlobals(build), Main.Root, environment).ConfigureAwait(false);
             }
 
             return (Package: package, Scope: scope);
