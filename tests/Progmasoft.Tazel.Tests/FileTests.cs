@@ -151,4 +151,44 @@ public sealed class ActionCacheTests
             Outputs = ["x"],
         }.Key);
     }
+
+    [Fact]
+    public void AFileIsReadOnceInABuildUntilItIsWritten()
+    {
+        using var module = new TemporaryModule();
+        var file = Path.Combine(module.Root, "a.txt");
+        var digests = new Digests();
+        Assert.Null(digests.Of(file));
+        module.Write("a.txt", "one");
+        // What was asked is kept: a file the build did not write is taken as it was when first asked about.
+        Assert.Null(digests.Of(file));
+        digests.Forget(file);
+        var one = digests.Of(file);
+        Assert.Equal(Digests.Sha256("one"u8.ToArray()), one);
+        module.Write("a.txt", "two");
+        Assert.Equal(one, digests.Of(file));
+        digests.Forget(file);
+        Assert.Equal(Digests.Sha256("two"u8.ToArray()), digests.Of(file));
+    }
+
+    [Fact]
+    public void ForgettingAnActionForgetsWhatItsOutputsHeld()
+    {
+        using var module = new TemporaryModule();
+        module.Write("in.txt", "one");
+        var action = new BuildAction
+        {
+            Description = "copy",
+            Command = ["cp", "in.txt", "out.txt"],
+            Directory = module.Root,
+            Inputs = ["in.txt"],
+            Outputs = ["out.txt"],
+        };
+        var digests = new Digests();
+        module.Write("out.txt", "old");
+        var old = digests.Of(Path.Combine(module.Root, "out.txt"));
+        new ActionCache(digests).Forget(action);
+        module.Write("out.txt", "new");
+        Assert.NotEqual(old, digests.Of(Path.Combine(module.Root, "out.txt")));
+    }
 }
