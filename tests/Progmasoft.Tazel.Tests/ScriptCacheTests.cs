@@ -140,9 +140,21 @@ public sealed class ScriptCacheTests
         using var module = new TemporaryModule();
         var blocked = Path.Combine(module.Root, "file");
         File.WriteAllText(blocked, "");
-        ScriptCache.TryWrite(Path.Combine(blocked, "scripts"), "k", [1, 2, 3]);
-        Assert.Null(ScriptCache.TryRead(Path.Combine(blocked, "scripts"), "k"));
-        Assert.Null(ScriptCache.TryRead(module.Root, "missing"));
+        var key = new string('a', 64);
+        ScriptCache.TryWrite(Path.Combine(blocked, "scripts"), key, [1, 2, 3]);
+        Assert.Null(ScriptCache.TryRead(Path.Combine(blocked, "scripts"), key));
+        Assert.Null(ScriptCache.TryRead(module.Root, new string('b', 64)));
+    }
+
+    [Theory]
+    [InlineData("k")]
+    [InlineData("../../../../etc/passwd")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    public void OnlyAKeyNamesAFile(string key)
+    {
+        using var module = new TemporaryModule();
+        Assert.Throws<ArgumentException>(() => ScriptCache.IsKept(module.Root, key));
+        Assert.Throws<ArgumentException>(() => ScriptCache.TryWrite(module.Root, key, [1]));
     }
 
     /// <summary>The globals of the scripts above.</summary>

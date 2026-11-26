@@ -69,15 +69,26 @@ internal static class ScriptCache
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
+    // A file of the cache directory: a key is the hexadecimal SHA-256 that Key returns, so its name is never a path.
+    private static string FileOf(string directory, string key, string suffix)
+    {
+        if (key.Length != 64 || !key.All(char.IsAsciiHexDigitLower))
+        {
+            throw new ArgumentException($"'{key}' is not a key of the script cache", nameof(key));
+        }
+
+        return Path.Combine(directory, Path.GetFileName(key + suffix));
+    }
+
     /// <summary>Whether <paramref name="directory"/> keeps the compiled file named <paramref name="key"/>.</summary>
-    public static bool IsKept(string directory, string key) => File.Exists(Path.Combine(directory, key + ".dll"));
+    public static bool IsKept(string directory, string key) => File.Exists(FileOf(directory, key, ".dll"));
 
     /// <summary>The compiled file named <paramref name="key"/> in <paramref name="directory"/>, or null.</summary>
     public static byte[]? TryRead(string directory, string key)
     {
         try
         {
-            var file = Path.Combine(directory, key + ".dll");
+            var file = FileOf(directory, key, ".dll");
             return File.Exists(file) && new FileInfo(file).LinkTarget is null ? File.ReadAllBytes(file) : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -92,12 +103,12 @@ internal static class ScriptCache
     /// </summary>
     public static void TryWrite(string directory, string key, byte[] image)
     {
-        var partial = Path.Combine(directory, $"{key}.{Guid.NewGuid():N}.partial");
+        var partial = FileOf(directory, key, $".{Guid.NewGuid():N}.partial");
         try
         {
             System.IO.Directory.CreateDirectory(directory);
             File.WriteAllBytes(partial, image);
-            File.Move(partial, Path.Combine(directory, key + ".dll"), overwrite: true);
+            File.Move(partial, FileOf(directory, key, ".dll"), overwrite: true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
