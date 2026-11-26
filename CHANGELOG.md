@@ -5,6 +5,12 @@
 
 ## Unreleased
 
+- Project files are compiled once: the compiled `MODULE.csx` and `BUILD.csx` files are kept in `.tazel/scripts/`,
+  so a command whose project files did not change does not start the C# compiler (a build with nothing to do on a
+  module of a dozen packages: about 3 s before, under half a second now). `tazel clean` removes them. An exception a
+  project file throws names its line. The release archives are compiled ahead of time for their platform
+  (ReadyToRun), so commands start faster.
+
 - The last entry of `tazel_envs.txt`, `tazel_custom.txt` and `tazel_options.txt` may end the file without its `;`;
   between two entries the `;` is needed, and its absence is still `error[E0406]` and `error[E0305]`.
 
