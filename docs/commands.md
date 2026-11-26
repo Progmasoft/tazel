@@ -62,16 +62,17 @@ such as the labels of `tazel query`, is an `output` message.
 
 - `rich-stdio`: colours, tables and pictures of problems, drawn with Spectre.Console for a terminal.
 - `script-friendly-stdio`: plain lines for scripts and logs. A message is one line that starts with a fixed word,
-  and the lines it carries (a compiler's output, a test log) follow it indented by two spaces. No colours, boxes or
+  and the lines it carries (a compiler's output, a test log, and the `command:`, `help:` and `here:` lines of the
+  table below) follow it indented by two spaces. No colours, boxes or
   emoji, and nothing is wrapped. An `output` message is printed as it is; a table is tab-separated, its header first.
 
   | Message | Line |
   | --- | --- |
   | `status` | `INFO <text>` |
   | `action` | `DONE <description>` |
-  | `action-failed` | `FAILED <description>`, then `  command: <command line>` |
-  | `error` | `error[<code>]: <message>`, then `  help: <help>` |
-  | `diagnostic` | `error[<code>]: <file>:<line>:<column>: <message>`, then `  here: <label>` and `  help: <help>` |
+  | `action-failed` | `FAILED <description>`, then `command: <command line>` |
+  | `error` | `error[<code>]: <message>`, then `help: <help>` |
+  | `diagnostic` | `error[<code>]: <file>:<line>:<column>: <message>`, then `here: <label>` and `help: <help>` |
   | `warning` | `warning: <message>` |
   | `success` | `SUCCESS <message>` |
   | `test` | `PASSED`, `CACHED`, `FAILED`, `TIMED-OUT`, `FLAKY` or `NOT-BUILT`, then `<label> <seconds> s` |

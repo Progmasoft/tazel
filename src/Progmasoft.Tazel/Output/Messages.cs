@@ -72,69 +72,80 @@ internal abstract class MessageWriter(TextWriter output) : IDisposable
 /// a message indented by two spaces, no colours, boxes, emoji or light lines, never wrapped. The output of a command
 /// (<c>output</c>) is printed as it is.
 /// </summary>
-internal sealed class ScriptFriendlyWriter(TextWriter output) : MessageWriter(output)
+internal sealed class ScriptFriendlyWriter : MessageWriter
 {
-    public override void Write(Message message)
+    private readonly Dictionary<string, Action<Message>> _kinds;
+
+    public ScriptFriendlyWriter(TextWriter output)
+        : base(output)
     {
-        switch (message.Kind)
+        _kinds = new Dictionary<string, Action<Message>>(StringComparer.Ordinal)
         {
-            case "output":
-                Output.WriteLine(message.Text("text"));
-                break;
-            case "status":
-                Line("INFO", message.Text("text"));
-                break;
-            case "action":
+            ["output"] = message => Output.WriteLine(message.Text("text")),
+            ["status"] = message => Line("INFO", message.Text("text")),
+            ["action"] = message =>
+            {
                 Line("DONE", message.Text("description"));
                 Indented(message.Text("output"));
-                break;
-            case "action-failed":
+            },
+            ["action-failed"] = message =>
+            {
                 Line("FAILED", message.Text("description"));
                 Line("  command:", Reporter.Quote((IReadOnlyList<string>)message["command"]!));
                 Indented(message.Text("output"));
-                break;
-            case "error":
+            },
+            ["error"] = message =>
+            {
                 Line($"error[{message.Text("code")}]:", message.Text("message"));
                 Help(message);
-                break;
-            case "diagnostic":
+            },
+            ["diagnostic"] = message =>
+            {
                 Line($"error[{message.Text("code")}]:",
                     $"{message.Text("file")}:{message["line"]}:{message["column"]}: {message.Text("message")}");
                 Line("  here:", message.Text("label"));
                 Help(message);
-                break;
-            case "warning":
-                Line("warning:", message.Text("message"));
-                break;
-            case "success":
-                Line("SUCCESS", message.Text("message"));
-                break;
-            case "test":
-                Line(message.Text("status")!.ToUpperInvariant(), $"{message.Text("label")} {message["seconds"]:0.0} s");
-                break;
-            case "test-summary":
-                Line("TESTS", $"{message["passed"]} passed, {message["failed"]} failed, {message["total"]} in all");
-                break;
-            case "test-log":
+            },
+            ["warning"] = message => Line("warning:", message.Text("message")),
+            ["success"] = message => Line("SUCCESS", message.Text("message")),
+            ["test"] = message =>
+                Line(message.Text("status")!.ToUpperInvariant(), $"{message.Text("label")} {message["seconds"]:0.0} s"),
+            ["test-summary"] = message =>
+                Line("TESTS", $"{message["passed"]} passed, {message["failed"]} failed, {message["total"]} in all"),
+            ["test-log"] = message =>
+            {
                 Line("LOG", message.Text("label"));
                 Indented(message.Text("log"));
-                break;
-            case "table":
-                Output.WriteLine(string.Join('\t', (IReadOnlyList<string>)message["columns"]!));
-                foreach (var row in (IReadOnlyList<IReadOnlyList<string>>)message["rows"]!)
-                {
-                    Output.WriteLine(string.Join('\t', row));
-                }
-
-                break;
-            case "explanation":
+            },
+            ["table"] = Table,
+            ["explanation"] = message =>
+            {
                 Line(message.Text("code"), $"{message.Text("title")} ({message.Text("where")})");
                 Indented(message.Text("text"));
                 Indented(message.Text("wrong") is { } wrong ? "wrong:\n" + wrong : null);
                 Indented(message.Text("right") is { } right ? "right:\n" + right : null);
-                break;
-            default:
-                throw new ArgumentException($"no message kind {message.Kind}", nameof(message));
+            },
+        };
+    }
+
+    public override void Write(Message message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (!_kinds.TryGetValue(message.Kind, out var write))
+        {
+            throw new ArgumentException($"no message kind {message.Kind}", nameof(message));
+        }
+
+        write(message);
+    }
+
+    // A table: its header and then its rows, tab-separated.
+    private void Table(Message message)
+    {
+        Output.WriteLine(string.Join('\t', (IReadOnlyList<string>)message["columns"]!));
+        foreach (var row in (IReadOnlyList<IReadOnlyList<string>>)message["rows"]!)
+        {
+            Output.WriteLine(string.Join('\t', row));
         }
     }
 
@@ -203,13 +214,13 @@ internal sealed class JsonlWriter(TextWriter output) : MessageWriter(output)
                         json.WriteStartArray();
                         foreach (var row in rows)
                         {
-                            Strings(json, row);
+                            WriteList(json, row);
                         }
 
                         json.WriteEndArray();
                         break;
                     case IReadOnlyList<string> strings:
-                        Strings(json, strings);
+                        WriteList(json, strings);
                         break;
                     default:
                         throw new ArgumentException($"a field of type {field.Value!.GetType().Name}", nameof(message));
@@ -223,10 +234,10 @@ internal sealed class JsonlWriter(TextWriter output) : MessageWriter(output)
         Output.Flush();
     }
 
-    private static void Strings(Utf8JsonWriter json, IEnumerable<string> strings)
+    private static void WriteList(Utf8JsonWriter json, IEnumerable<string> items)
     {
         json.WriteStartArray();
-        foreach (var text in strings)
+        foreach (var text in items)
         {
             json.WriteStringValue(text);
         }
