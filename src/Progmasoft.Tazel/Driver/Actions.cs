@@ -69,52 +69,41 @@ internal sealed class BuildAction
 }
 
 /// <summary>
-/// The SHA-256 of files, kept while a file keeps its size and modification time, so a build reads a file once and a
-/// file that is touched but not changed costs one more read.
+/// The SHA-256 of files, each read once in a build: what a file holds is taken the first time an action asks, and kept
+/// until a build writes it (<see cref="Forget"/>). A file most compilations include, a header of the standard library,
+/// is read and looked at once, not once per compilation that names it.
 /// </summary>
 internal sealed class Digests
 {
-    private readonly ConcurrentDictionary<string, (long Size, DateTime Modified, string Digest)> _known = new(StringComparer.Ordinal);
+    // A digest, or null for a file that was not there or could not be read.
+    private readonly ConcurrentDictionary<string, string?> _known = new(StringComparer.Ordinal);
 
     /// <summary>The SHA-256 of <paramref name="bytes"/> as lower-case hexadecimal.</summary>
     public static string Sha256(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     /// <summary>The digest of <paramref name="file"/>, or null when it is not a readable regular file.</summary>
-    public string? Of(string file)
+    public string? Of(string file) => _known.GetOrAdd(file, Read);
+
+    /// <summary>Forgets <paramref name="file"/>, before or after a build writes it.</summary>
+    public void Forget(string file) => _known.TryRemove(file, out _);
+
+    private static string? Read(string file)
     {
-        var info = new FileInfo(file);
-        if (!info.Exists)
+        if (!File.Exists(file))
         {
             return null;
         }
 
-        var (size, modified) = (info.Length, info.LastWriteTimeUtc);
-        if (_known.TryGetValue(file, out var seen) && seen.Size == size && seen.Modified == modified)
-        {
-            return seen.Digest;
-        }
-
-        string digest;
         try
         {
             using var stream = File.OpenRead(file);
-            digest = Convert.ToHexStringLower(SHA256.HashData(stream));
+            return Convert.ToHexStringLower(SHA256.HashData(stream));
         }
-        catch (IOException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return null;
         }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
-
-        _known[file] = (size, modified, digest);
-        return digest;
     }
-
-    /// <summary>Forgets <paramref name="file"/>, after an action wrote it.</summary>
-    public void Forget(string file) => _known.TryRemove(file, out _);
 }
 
 /// <summary>
@@ -172,7 +161,14 @@ internal sealed class ActionCache(Digests digests, bool enabled = true)
     }
 
     /// <summary>Forgets <paramref name="action"/>, so that a failed or stopped run is redone.</summary>
-    public void Forget(BuildAction action) => File.Delete(RecordOf(action));
+    public void Forget(BuildAction action)
+    {
+        File.Delete(RecordOf(action));
+        foreach (var output in action.Outputs)
+        {
+            digests.Forget(action.Full(output));
+        }
+    }
 
     private static string RecordOf(BuildAction action) => action.Full(action.Outputs[0]) + ".action";
 
