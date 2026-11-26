@@ -33,7 +33,7 @@ public sealed class CommandLineException : Exception
 }
 
 /// <summary>How Tazel prints, for every command.</summary>
-internal sealed record OutputOptions(When Color, When Progress, bool Quiet);
+internal sealed record OutputOptions(When Color, When Progress, bool Quiet, MessageFormat Format = MessageFormat.RichStdio);
 
 /// <summary>What <c>build</c>, <c>run</c> and <c>test</c> take beyond their labels.</summary>
 internal sealed record BuildFlags
@@ -144,6 +144,7 @@ internal static class CommandLine
         new("color", Kind.Value, ["always", "auto", "never"]),
         new("progress", Kind.Value, ["always", "auto", "never"]),
         new("quiet", Kind.Flag, null),
+        new("message-format", Kind.Value, ["rich-stdio", "script-friendly-stdio", "jsonl", "xml"]),
         new("help", Kind.Flag, null),
         new("platform", Kind.Value, Platforms.Names, Building),
         new("mode", Kind.Value, ["debug", "release"], Building),
@@ -179,7 +180,8 @@ internal static class CommandLine
         var output = new OutputOptions(
             ParseWhen(Last(scanned.Seen, "color")) ?? When.Auto,
             ParseWhen(Last(scanned.Seen, "progress")) ?? When.Auto,
-            scanned.Has("quiet"));
+            scanned.Has("quiet"),
+            ParseFormat(Last(scanned.Seen, "message-format")) ?? MessageFormat.RichStdio);
         if (scanned.Has("help") && command != "help")
         {
             return new HelpCommand(output, command);
@@ -449,6 +451,37 @@ internal static class CommandLine
 
     private static IEnumerable<string> All(List<(Option Option, List<string> Values, string)> seen, string name) =>
         seen.Where(entry => entry.Option.Long == name).SelectMany(entry => entry.Values);
+
+    /// <summary>
+    /// The message format a command line asks for, read on its own for a command line that cannot be taken: the last
+    /// <c>--message-format</c> before <c>--</c> with a value Tazel knows, else rich-stdio.
+    /// </summary>
+    public static MessageFormat FormatOf(IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        var format = MessageFormat.RichStdio;
+        for (var i = 0; i < arguments.Count && arguments[i] != "--"; i++)
+        {
+            const string Name = "--message-format";
+            var argument = arguments[i];
+            string? value = argument == Name && i + 1 < arguments.Count ? arguments[i + 1]
+                : argument.StartsWith(Name, StringComparison.Ordinal) && argument.Length > Name.Length &&
+                    argument[Name.Length] is '=' or ':' ? argument[(Name.Length + 1)..]
+                : null;
+            format = ParseFormat(value) ?? format;
+        }
+
+        return format;
+    }
+
+    private static MessageFormat? ParseFormat(string? text) => text switch
+    {
+        "rich-stdio" => MessageFormat.RichStdio,
+        "script-friendly-stdio" => MessageFormat.ScriptFriendlyStdio,
+        "jsonl" => MessageFormat.Jsonl,
+        "xml" => MessageFormat.Xml,
+        _ => null,
+    };
 
     private static When? ParseWhen(string? text) => text switch
     {

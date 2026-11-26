@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `--message-format rich-stdio|script-friendly-stdio|jsonl|xml`: the rich terminal output as before, plain lines that
+  start with a fixed word for scripts and logs, one JSON object per message per line, or one XML document. Errors of
+  the command line come in the format it asks for.
+
 - Project files are compiled once: the compiled `MODULE.csx` and `BUILD.csx` files are kept in `.tazel/scripts/`,
   so a command whose project files did not change does not start the C# compiler (a build with nothing to do on a
   module of a dozen packages: about 3 s before, under half a second now). `tazel clean` removes them. An exception a
