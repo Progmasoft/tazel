@@ -125,7 +125,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         var state = Path.Combine(root, ModuleFiles.StateDirectory);
         var removed = expunge
             ? [state]
-            : new[] { "out", "testlogs", "coverage", "zig-cache", "package", "downloads" }.Select(name => Path.Combine(state, name)).ToArray();
+            : new[] { "out", "testlogs", "coverage", "zig-cache", "package", "downloads", Project.ScriptCache.Directory }.Select(name => Path.Combine(state, name)).ToArray();
         foreach (var directory in removed.Where(Directory.Exists))
         {
             Directory.Delete(directory, recursive: true);

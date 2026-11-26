@@ -147,8 +147,9 @@ internal static class Help
         ["clean"] = new("tazel clean [--expunge]: removes what builds made.", """
             tazel clean [--expunge]
 
-            Removes the outputs of every platform and mode, the test logs, the coverage report, zig's cache and the
-            archives of tazel package; --expunge removes all of .tazel, the unpacked dependencies and plugins too.
+            Removes the outputs of every platform and mode, the test logs, the coverage report, zig's cache, the
+            archives of tazel package and the compiled project files; --expunge removes all of .tazel, the unpacked
+            dependencies and plugins too.
             """),
         ["package"] = new("tazel package: writes the archive of the module.", """
             tazel package
