@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- Building for DragonFly BSD with zig says that zig brings no libc for it, instead of zig's own error, and what does
+  build for it. Tests build Zig, C and C++ for FreeBSD and OpenBSD with zig and check that the files are theirs.
+
 - A build reads each file once: a header that every compilation includes is looked at once, not once per
   compilation.
 
