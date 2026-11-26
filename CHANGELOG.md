@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- A build reads each file once: a header that every compilation includes is looked at once, not once per
+  compilation.
+
 - The last entry of `tazel_envs.txt`, `tazel_custom.txt` and `tazel_options.txt` may end the file without its `;`;
   between two entries the `;` is needed, and its absence is still `error[E0406]` and `error[E0305]`.
 
