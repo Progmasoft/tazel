@@ -65,13 +65,16 @@ jobs:
           version=$(dotnet msbuild src/Progmasoft.Tazel -getProperty:Version)
           test "tazel-$version" = "$TAG" || { echo "the tag $TAG is not tazel-$version" >&2; exit 1; }
 
-      # Framework-dependent: the archive runs on the .NET 10 runtime of the machine.
+      # Framework-dependent: the archive runs on the .NET 10 runtime of the machine. ReadyToRun: the assemblies carry
+      # machine code for the RID beside their IL, so a command does not wait for the JIT to compile Tazel and its
+      # libraries first; on another runtime the IL runs as it is.
       - name: Publish
         shell: bash
         env:
           RID: ${{ matrix.rid }}
         run: |
-          dotnet publish src/Progmasoft.Tazel -c Release -r "$RID" --self-contained false -o "artifacts/$TAG-$RID"
+          dotnet publish src/Progmasoft.Tazel -c Release -r "$RID" --self-contained false -p:PublishReadyToRun=true \
+            -o "artifacts/$TAG-$RID"
           cd artifacts
           if [[ "$RID" == win-* ]]; then
             zip -qr "$TAG-$RID.zip" "$TAG-$RID"
