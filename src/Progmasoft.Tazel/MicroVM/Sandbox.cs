@@ -66,10 +66,17 @@ internal sealed class Sandbox : IAsyncDisposable
         var runtime = Directory.CreateTempSubdirectory("tazel-microvm-").FullName;
         File.SetUnixFileMode(runtime, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var daemons = new List<Process>();
+        Process? started = null;
         try
         {
-            // The guest's /usr is the host's, read-only, and its /etc a few files of Tazel's.
-            var all = new List<SharedDirectory>(shares) { new("/usr", ReadOnly: true), new(WriteEtc(runtime), ReadOnly: true) };
+            // The guest's /usr is the host's, read-only, and its /etc a few files of Tazel's; /etc stays last.
+            var all = new List<SharedDirectory>(shares) { new("/usr", ReadOnly: true) };
+            if (CoverageDirectory() is { } coverage)
+            {
+                all.Add(new SharedDirectory(coverage, ReadOnly: false));
+            }
+
+            all.Add(new SharedDirectory(WriteEtc(runtime), ReadOnly: true));
             var command = new StringBuilder("console=hvc0 quiet panic=0 rdinit=/tazel/agent/ld-musl-x86_64.so.1");
             var arguments = new List<string>();
             for (var i = 0; i < all.Count; i++)
@@ -109,6 +116,7 @@ internal sealed class Sandbox : IAsyncDisposable
             }
 
             var monitor = Process.Start(start) ?? throw new MicroVMException($"{files.Monitor} could not be started");
+            started = monitor;
             monitor.StandardInput.Close();
             var sandbox = new Sandbox(runtime, monitor, vsock, console);
             sandbox._daemons.AddRange(daemons);
@@ -117,6 +125,13 @@ internal sealed class Sandbox : IAsyncDisposable
         }
         catch
         {
+            // A machine that did not become ready is stopped with what shares its directories.
+            if (started is not null)
+            {
+                Kill(started);
+                started.Dispose();
+            }
+
             foreach (var daemon in daemons)
             {
                 Kill(daemon);
@@ -203,6 +218,17 @@ internal sealed class Sandbox : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The directory named by <c>TAZEL_MICROVM_COVERAGE</c>, shared for writing at the same path: an agent built with
+    /// Coverlet's instrumentation writes the lines it ran there before it powers off, and the coverage job of Tazel's CI
+    /// reads them. Null when the variable is not set or names no directory.
+    /// </summary>
+    internal static string? CoverageDirectory() =>
+        System.Environment.GetEnvironmentVariable("TAZEL_MICROVM_COVERAGE") is { Length: > 0 } directory &&
+        Path.IsPathFullyQualified(directory) && Directory.Exists(directory)
+            ? Path.GetFullPath(directory)
+            : null;
+
     private static string WriteEtc(string runtime)
     {
         var etc = Path.Combine(runtime, "etc");
@@ -284,9 +310,10 @@ internal sealed class Sandbox : IAsyncDisposable
                     }
                 }
             }
-            catch (Exception error) when (error is MicroVMException or IOException or SocketException)
+            catch (Exception error) when (error is MicroVMException or IOException or SocketException ||
+                (error is OperationCanceledException && !cancel.IsCancellationRequested))
             {
-                // The agent is not listening yet.
+                // The agent is not listening yet, or a try took longer than its second.
             }
 
             await Task.Delay(100, cancel).ConfigureAwait(false);

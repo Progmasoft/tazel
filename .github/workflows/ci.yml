@@ -493,21 +493,11 @@ jobs:
           path: ${{ runner.temp }}/microvm-work/linux-*
           key: microvm-kernel-${{ hashFiles('microvm/kernel.config', 'microvm/build.cs') }}
 
-      - name: Build the MicroVM image
+      # The image is built from an agent Coverlet instruments, the MicroVM tests boot it, and the agent's lines are
+      # measured inside the guest beside the host's (microvm/guest-coverage.sh).
+      - name: Build the MicroVM image, boot it and run commands inside
         shell: bash
-        run: dotnet run microvm/build.cs -- "$RUNNER_TEMP/microvm-work" "$RUNNER_TEMP/microvm-image"
-
-      - name: Boot it and run commands inside
-        shell: bash
-        env:
-          TAZEL_MICROVM_IMAGE: ${{ runner.temp }}/microvm-image
-          TAZEL_REQUIRE_MICROVM: "1"
-        run: >-
-          dotnet test --solution Tazel.slnx -c Release
-          --filter-class 'Progmasoft.Tazel.Tests.MicroVMBootTests'
-          --filter-class 'Progmasoft.Tazel.Tests.MicroVMProtocolTests'
-          --filter-class 'Progmasoft.Tazel.Tests.MicroVMFilesTests'
-          --no-progress --coverlet --coverlet-output-format cobertura --results-directory artifacts/coverage
+        run: microvm/guest-coverage.sh "$RUNNER_TEMP/microvm-work" "$RUNNER_TEMP/microvm-image" artifacts/coverage/guest.cobertura.xml
 
       - name: Upload coverage
         if: always()

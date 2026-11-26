@@ -123,13 +123,35 @@ internal sealed class Agent(IReadOnlyList<Share> shares)
         off.Wait();
     }
 
-    /// <summary>Writes everything out and powers off; the monitor ends with the machine.</summary>
+    /// <summary>
+    /// Runs the process-exit handlers, writes everything out and powers off; the monitor ends with the machine. As the
+    /// first process the agent never exits, so the handlers a normal exit runs (among them those of Coverlet, which
+    /// write the lines the agent ran) run here.
+    /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
     public static void PowerOff()
     {
+        RunExitHandlers();
         Libc.Sync();
         _ = Libc.Reboot(Libc.RebootPowerOff);
         Thread.Sleep(Timeout.Infinite);
+    }
+
+    /// <summary>Raises <see cref="AppDomain.ProcessExit"/> as the runtime does when a process exits.</summary>
+    [System.Diagnostics.CodeAnalysis.DynamicDependency("OnProcessExit", typeof(AppContext))]
+    internal static void RunExitHandlers()
+    {
+        var onProcessExit = typeof(AppContext).GetMethod("OnProcessExit",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        try
+        {
+            onProcessExit?.Invoke(null, null);
+        }
+        catch (System.Reflection.TargetInvocationException error)
+        {
+            // A handler that fails does not keep the machine on.
+            Console.Error.WriteLine($"tazel-guest: an exit handler failed: {error.InnerException?.Message}");
+        }
     }
 
     /// <summary>The program <paramref name="name"/> names: itself when it has a slash, else the first on <paramref name="path"/>.</summary>
