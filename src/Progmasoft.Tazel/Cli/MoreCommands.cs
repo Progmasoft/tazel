@@ -131,6 +131,12 @@ internal sealed partial class Commands
     private void Explain(ExplainCommand command)
     {
         var entry = ErrorCodes.Find(command.Code)!;
+        if (!reporter.Rich)
+        {
+            reporter.Explanation(entry, command.Long, Related(entry));
+            return;
+        }
+
         var fancy = reporter.Console.Profile.Capabilities.Unicode;
         reporter.Console.MarkupLine(
             $"[red bold]{(fancy ? "✖ " : "")}{Markup.Escape(entry.Code)}[/]: [bold]{Markup.Escape(entry.Title)}[/]  [grey]({Markup.Escape(entry.Where)})[/]");
@@ -173,13 +179,16 @@ internal sealed partial class Commands
             });
         }
 
-        var related = ErrorCodes.Codes.Where(other => other.Where == entry.Where && other.Code != entry.Code).Select(other => other.Code).ToList();
+        var related = Related(entry);
         if (related.Count > 0)
         {
             console.WriteLine();
             console.MarkupLine($"[grey]The other errors of {Markup.Escape(entry.Where)}: {string.Join(", ", related)}[/]");
         }
     }
+
+    private static List<string> Related(ErrorCode entry) =>
+        ErrorCodes.Codes.Where(other => other.Where == entry.Where && other.Code != entry.Code).Select(other => other.Code).ToList();
 
     private static Panel Example(string text, string title, string mark, Color color, bool fancy) =>
         new Panel(new Text(text))
@@ -324,14 +333,9 @@ internal sealed partial class Commands
             return 1;
         }
 
-        var table = new Table().Border(TableBorder.Rounded).AddColumn("Module").AddColumn("Latest").AddColumn("Description");
-        foreach (var entry in found)
-        {
-            table.AddRow(Markup.Escape($"{entry.Group}:{entry.Module}"), Markup.Escape(entry.Latest ?? ""),
-                Markup.Escape(entry.Description ?? ""));
-        }
-
-        reporter.Console.Write(table);
+        reporter.Table(["Module", "Latest", "Description"],
+            found.Select(entry => (IReadOnlyList<string>)[$"{entry.Group}:{entry.Module}", entry.Latest ?? "", entry.Description ?? ""])
+                .ToList());
         return 0;
     }
 
@@ -352,16 +356,12 @@ internal sealed partial class Commands
     private void ShowModule(ModuleIndex index)
     {
         var highest = PortalModulesClient.Highest(index);
-        reporter.Console.MarkupLine($"[bold]{Markup.Escape($"{index.Group}:{index.Module}")}[/]" +
-            (highest is null ? "" : $"  latest {Markup.Escape(highest.Version)}"));
-        var versions = new Table().Border(TableBorder.Rounded).AddColumn("Version").AddColumn("Pushed").AddColumn("Dependencies");
-        foreach (var version in index.Versions.Reverse())
-        {
-            var dependencies = string.Join(", ", version.Dependencies.Select(d => $"{d.Group}:{d.Module} {d.Version}{(d.Test ? " (test)" : "")}"));
-            versions.AddRow(Markup.Escape(version.Version) + (version.Yanked ? " [red]yanked[/]" : ""),
-                version.Pushed.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Markup.Escape(dependencies));
-        }
-
-        reporter.Console.Write(versions);
+        reporter.Strong($"{index.Group}:{index.Module}" + (highest is null ? "" : $"  latest {highest.Version}"));
+        reporter.Table(["Version", "Pushed", "Dependencies"], index.Versions.Reverse().Select(version => (IReadOnlyList<string>)
+        [
+            version.Version + (version.Yanked ? " yanked" : ""),
+            version.Pushed.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            string.Join(", ", version.Dependencies.Select(d => $"{d.Group}:{d.Module} {d.Version}{(d.Test ? " (test)" : "")}")),
+        ]).ToList());
     }
 }
