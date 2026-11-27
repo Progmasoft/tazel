@@ -16,7 +16,7 @@ dotnet pack -c Release -o out
 ```
 
 ```xml
-<Project Sdk="Progmasoft.Tazel.PluginSdk/0.1.0">
+<Project Sdk="Progmasoft.Tazel.PluginSdk/0.2.0">
   <PropertyGroup>
     <TazelPluginGroup>com.example.tools</TazelPluginGroup>
     <TazelPluginName>greeter</TazelPluginName>
