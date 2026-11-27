@@ -212,6 +212,21 @@ internal static class Help
 
               --algorithm ed25519|rsa-4096|ml-dsa  the algorithm; default: ed25519. ml-dsa is ML-DSA-65 (FIPS 204).
             """),
+        ["tool"] = new("tazel tool launch|create-wrapper: runs tazel-<name> tools, or writes a wrapper for a program.", """
+            tazel tool launch <name> [arguments]
+            tazel tool create-wrapper <name> [-o <dir> | --output-dir <dir>]
+
+            launch runs the program TAZEL_TOOL_EXECUTABLE names, when it is set, with no search after it; otherwise
+            the first tazel-<name> of PATH this user may run, skipping empty entries, '.' and the current directory,
+            and searching nowhere else. Every argument after the name goes to the tool as written, -- and --help
+            too. The tool runs as a process of its own in this directory, with this environment and terminal, and
+            its exit status is Tazel's. With sandboxing-with-microvm it does not run. On Windows a batch file runs
+            through cmd.exe; an argument with ", % or a line break is refused, as cmd.exe would change it.
+
+            create-wrapper writes tazel-<name> (tazel-<name>.bat on Windows) into the directory, the current one by
+            default, which must exist; it runs <name> with the arguments it gets. An existing file is never
+            overwritten, and neither PATH nor the wrapper is touched after.
+            """),
         ["options"] = new("tazel options validate|get|what-is|update: the options of tazel_options.txt, layer by layer.", """
             tazel options validate [--user | --project | --local]
             tazel options get <setting> [--user | --project | --local]

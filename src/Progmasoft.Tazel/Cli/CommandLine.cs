@@ -139,7 +139,7 @@ internal static class CommandLine
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
         ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
-            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time", "options", "custom-cmds", "envs"];
+            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time", "options", "custom-cmds", "envs", "tool"];
 
     private enum Kind
     {
@@ -165,6 +165,7 @@ internal static class CommandLine
         new("project", Kind.Flag, null, "options", "custom-cmds", "envs"),
         new("local", Kind.Flag, null, "options", "custom-cmds", "envs"),
         new("create", Kind.Flag, null, "options"),
+        new("output-dir", Kind.Value, null, "tool"),
         new("message-format", Kind.Value, ["rich-stdio", "script-friendly-stdio", "jsonl", "xml"]),
         new("help", Kind.Flag, null),
         new("platform", Kind.Value, Platforms.Names, Building),
@@ -261,7 +262,7 @@ internal static class CommandLine
         }
         else
         {
-            ReadShort(argument, seen);
+            ReadShort(argument, arguments, ref index, seen);
         }
     }
 
@@ -275,9 +276,10 @@ internal static class CommandLine
         while (index < arguments.Count)
         {
             var argument = arguments[index++];
-            if (command == "custom")
+            if (command == "custom" || (command == "tool" && positional is ["launch", _, ..]))
             {
-                // Everything after `tazel custom` belongs to the custom command, its options too.
+                // Everything after `tazel custom`, and after the name of `tazel tool launch`, belongs to what runs,
+                // its options and -- too.
                 positional.Add(argument);
             }
             else if (argument == "--")
@@ -328,6 +330,7 @@ internal static class CommandLine
             : throw new CommandLineException("tazel limited-time takes one word, C#: tazel limited-time C#"),
         ["dotnet"] = MakeDaemon,
         ["options"] = MakeOptions,
+        ["tool"] = MakeTool,
         ["custom-cmds"] = (scanned, output) => MakeValidate(scanned, output, ConfigurationKind.Custom),
         ["envs"] = (scanned, output) => MakeValidate(scanned, output, ConfigurationKind.Envs),
         ["cache"] = MakeCache,
@@ -387,6 +390,26 @@ internal static class CommandLine
             _ => throw new CommandLineException(
                 "tazel options takes validate, get <setting>, what-is <setting> or update <setting> <value>" +
                 (positional.Count > 0 && Suggestions.Nearest(positional[0], ["validate", "get", "what-is", "update"]) is { } near ? $"; did you mean {near}?" : "")),
+        };
+    }
+
+    private static Command MakeTool(Scanned scanned, OutputOptions output)
+    {
+        var positional = scanned.Positional;
+        var directory = Last(scanned.Seen, "output-dir");
+        if (directory is not null && positional is not ["create-wrapper", ..])
+        {
+            throw new CommandLineException("-o and --output-dir are options of tazel tool create-wrapper");
+        }
+
+        return positional switch
+        {
+            ["launch", var name, .. var rest] => new ToolLaunchCommand(output, name, rest),
+            ["create-wrapper", var name] => new ToolWrapperCommand(output, name, directory),
+            ["launch"] or ["create-wrapper"] => throw new CommandLineException($"tazel tool {positional[0]} needs the name of a tool"),
+            ["create-wrapper", ..] => throw new CommandLineException("tazel tool create-wrapper takes one name"),
+            _ => throw new CommandLineException("tazel tool takes launch <name> [arguments] or create-wrapper <name> [-o dir]" +
+                (positional.Count > 0 && Suggestions.Nearest(positional[0], ["launch", "create-wrapper"]) is { } near ? $"; did you mean {near}?" : "")),
         };
     }
 
@@ -517,8 +540,16 @@ internal static class CommandLine
         seen.Add((option, values, $"--{name}"));
     }
 
-    private static void ReadShort(string argument, List<(Option, List<string>, string)> seen)
+    private static void ReadShort(
+        string argument, IReadOnlyList<string> arguments, ref int index, List<(Option, List<string>, string)> seen)
     {
+        if (argument == "-o")
+        {
+            var value = index < arguments.Count ? arguments[index++] : throw new CommandLineException("-o needs a directory");
+            seen.Add((Options.First(o => o.Long == "output-dir"), value.Length > 0 ? [value] : throw new CommandLineException("-o has an empty value"), "-o"));
+            return;
+        }
+
         if (argument == "-h")
         {
             seen.Add((Options.First(o => o.Long == "help"), [], "-h"));

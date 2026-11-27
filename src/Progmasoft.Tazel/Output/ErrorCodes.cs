@@ -86,6 +86,7 @@ internal static partial class ErrorCodes
     public const string MicroVM = "E0504";
     public const string CacheKey = "E0505";
     public const string DotnetSettingRefused = "E0506";
+    public const string Tool = "E0507";
     public const string Label = "E0600";
 
     private const string Lexer = "the text files: tazel_custom.txt, tazel_options.txt and tazel_envs.txt";
@@ -163,6 +164,14 @@ internal static partial class ErrorCodes
             "and in percent. Limits per object heap need both SOH and LOH; their percentages are each below 100, and so is " +
             "their sum. .NET itself may refuse a heap limit below what this process has committed, a latency mode its GC " +
             "cannot take, or thread counts it does not allow. Nothing of the command ran.", null, null, "tazel"),
+        new(Tool, "a tool Tazel cannot find, start or give its arguments",
+            "tazel tool launch <name> runs TAZEL_TOOL_EXECUTABLE when it is set, and nothing else then: it must be a " +
+            "program this user may run, its path absolute or from the working directory. Otherwise it runs the first " +
+            "tazel-<name> of PATH this user may run, skipping empty entries, '.' and the working directory, and searching " +
+            "nowhere else. A name is letters, digits, '.', '_' and '-'. On Windows a batch file runs through cmd.exe, which " +
+            "cannot be given an argument with \", % or a line break as written, so such an argument is refused. " +
+            "tazel tool create-wrapper writes tazel-<name> into a directory that exists and never overwrites a file.",
+            "TAZEL_TOOL_EXECUTABLE= tazel tool launch fmt", "TAZEL_TOOL_EXECUTABLE=./bin/fmt tazel tool launch fmt", "tazel"),
         new(CommandLine, "a command line Tazel cannot take",
             "The command, an option or a value is not one Tazel knows, or a command got arguments it does not take. Tazel " +
             "suggests the nearest spelling when there is one. tazel help lists the commands, and tazel help <command> --long " +

@@ -110,7 +110,7 @@ public sealed class BuildCommandTests
         module.Write("tazel_options.txt", "sandboxing-with-microvm: true;");
         var (status, output) = await module.TazelAsync(".", "build", "//...");
         Assert.Equal(1, status);
-        Assert.Contains("and not builds, tests or plugins, so nothing ran", output, StringComparison.Ordinal);
+        Assert.Contains("and not builds, tests, plugins or tools, so nothing ran", output, StringComparison.Ordinal);
     }
 
     [Fact]
