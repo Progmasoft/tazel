@@ -23,9 +23,9 @@ public sealed class QueryTests
     private const string Build = """
         using Progmasoft.Tazel.Dsl.Build.Prelude;
         var core = CC.StaticLibrary("core", new() { Sources = ["core.c"], Visibility = Visibility.Module });
-        var util = CC.StaticLibrary("util", new() { Sources = ["util.c"], Depends = [core], Visibility = Visibility.Module });
-        CC.Executable("app", new() { Sources = ["main.c"], Depends = [util] });
-        CC.Test("util_test", new() { Sources = ["test.c"], Depends = [util] });
+        var util = CC.StaticLibrary("util", new() { Sources = ["util.c"], Depends = ["//:core"], Visibility = Visibility.Module });
+        CC.Executable("app", new() { Sources = ["main.c"], Depends = ["//:util"] });
+        CC.Test("util_test", new() { Sources = ["test.c"], Depends = ["//:util"] });
         ObjectiveC.StaticLibrary("mac", new());
         """;
 

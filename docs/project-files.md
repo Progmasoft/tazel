@@ -8,8 +8,9 @@ a `MODULE.csx` of its own is another module and is not part of this one. Both fi
 the C# scripting of Roslyn; nothing else needs to be installed. Every project file sees `Progmasoft.Tazel.Dsl.Common`
 (platforms, `Glob`, `Visibility`, `TestSize`, sizes) without a `using`.
 
-A package's project file is the first of `BUILD.csx`, `BUILD.tzl`, `BUILD.tazel`, `BUILD` and `Tazel.build` that it
-has, looked up case-sensitively; all of them are C# scripts.
+A package's project file is `BUILD.csx`, looked up case-sensitively on every system; no other name is one. A
+directory whose project file has an earlier name (`BUILD.tzl`, `BUILD.tazel`, `BUILD` or `Tazel.build`) stops the build
+with a message; `tazel limited-time C#` renames them, until Tazel 1.0.0 (below).
 
 ## MODULE.csx
 
@@ -92,7 +93,7 @@ CC.SharedLibrary("greeter_shared", new()
 CC.Executable("greeter", new()
 {
     Sources = ["src/main.cpp"],
-    Depends = [math, ":greeter_shared"],
+    Depends = ["//:math", ":greeter_shared"],
     LinkerOptions = Build.Mode == BuildMode.Release ? ["-s"] : [],
     LinkingMode = LinkingMode.PreferStatic,    // PreferShared, FullyStatic
     RuntimeData = ["assets/messages.txt"],
@@ -104,7 +105,7 @@ CC.Executable("greeter", new()
 CC.Test("math_test", new()
 {
     Sources = ["tests/math_test.cpp"],
-    Depends = [math, "@catch3//:main"],
+    Depends = ["//:math", "@catch3//:main"],
     TestSize = TestSize.Small,                 // Small, Medium, Large, Enormous: 1, 5, 15, 60 minutes
     Timeout = TimeSpan.FromMinutes(2),
     Flaky = false,                             // true: a failure runs again, up to three times
@@ -256,3 +257,29 @@ Zig.Toolchain("zig", new()
   them names a compiler that targets them (zig cc does, wrapped in a script that adds `-target aarch64-freebsd`). zig
   has no libc for DragonFly BSD: for `DragonFlyBSDAmd64` it builds static libraries, and linking needs a CC toolchain
   whose compiler has a DragonFly sysroot.
+
+## From earlier project files
+
+Until Tazel 1.0.0, `tazel limited-time C#` moves a tree of modules to what Tazel reads now, and is removed in 1.0.0:
+
+- every project file named `BUILD.tzl`, `BUILD.tazel`, `BUILD` or `Tazel.build` below the working directory becomes
+  `BUILD.csx`;
+- in every `BUILD.csx`, a target that `Depends` names by its variable is written as its label, and the variable is left
+  out when nothing else uses it:
+
+```cs
+// before
+var mathematics = CC.StaticLibrary("math", new() { Sources = ["math.cpp"] });
+CC.Executable("app", new() { Sources = ["main.cpp"], Depends = [mathematics] });
+
+// after
+CC.StaticLibrary("math", new() { Sources = ["math.cpp"] });
+CC.Executable("app", new() { Sources = ["main.cpp"], Depends = ["//:math"] });
+```
+
+It reads the files with Roslyn and runs none of them, and it walks every directory below the working directory but
+hidden ones (`.tazel`, `.git`) and links, through nested modules too, each package labelled from its own module's
+root. It checks everything before it writes anything: two project files in one directory, or a target named in a way
+that is not a variable set by a declaration of the same file (a method's result, a variable of another kind), is
+reported and changes no file. Run again, it finds nothing to do; after an interrupted run, a `BUILD.csx` that already
+holds what the earlier file becomes is kept and the earlier file removed.

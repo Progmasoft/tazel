@@ -23,11 +23,11 @@ var math = CC.StaticLibrary("math", new()
 CC.Executable("greeter", new()
 {
     Sources = ["src/main.cpp"],
-    Depends = [math],
+    Depends = ["//:math"],
     RuntimeData = ["assets/messages.txt"]
 });
 
-CC.Test("math_test", new() { Sources = ["tests/math_test.cpp"], Depends = [math] });
+CC.Test("math_test", new() { Sources = ["tests/math_test.cpp"], Depends = ["//:math"] });
 ```
 
 ```text

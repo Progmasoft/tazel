@@ -23,7 +23,7 @@ public sealed class WorkspaceTests
         module.Write("MODULE.csx", TemporaryModule.ModuleFile)
             .Write("BUILD.csx", Prelude + """
                 var core = CC.StaticLibrary("core", new() { Sources = ["core.c"], Visibility = Visibility.Module });
-                CC.Executable("app", new() { Sources = ["main.c"], Depends = [core, "//lib:util"] });
+                CC.Executable("app", new() { Sources = ["main.c"], Depends = ["//:core", "//lib:util"] });
                 """)
             .Write("core.c", "").Write("main.c", "")
             .Write("lib/BUILD.csx", Prelude + """

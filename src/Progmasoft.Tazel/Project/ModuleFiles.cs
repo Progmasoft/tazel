@@ -17,9 +17,8 @@ internal static class ModuleFiles
     /// <summary>The directory below the root where Tazel keeps what it makes.</summary>
     public const string StateDirectory = ".tazel";
 
-    /// <summary>The names a package's project file may have, in the order they are looked for; the first wins.</summary>
-    public static IReadOnlyList<string> BuildFileNames { get; } =
-        ["BUILD.csx", "BUILD.tzl", "BUILD.tazel", "BUILD", "Tazel.build"];
+    /// <summary>The name of a package's project file, the only one: case-sensitive on every system.</summary>
+    public const string BuildFile = "BUILD.csx";
 
     /// <summary>The root of the module <paramref name="directory"/> is in: the nearest directory with a MODULE.csx.</summary>
     public static string FindRoot(string directory)
@@ -41,7 +40,20 @@ internal static class ModuleFiles
         // The lookup is case-sensitive on every system, so build.csx is not a project file anywhere.
         var names = new HashSet<string>(
             Directory.EnumerateFiles(directory).Select(Path.GetFileName).OfType<string>(), StringComparer.Ordinal);
-        return BuildFileNames.FirstOrDefault(names.Contains) is { } name ? Path.Combine(directory, name) : null;
+        if (names.Contains(BuildFile))
+        {
+            return Path.Combine(directory, BuildFile);
+        }
+
+        // A file of an earlier name would leave its targets out without a word; it is refused instead.
+        if (CsxMigration.LegacyNames.FirstOrDefault(names.Contains) is { } legacy)
+        {
+            throw new ProjectException(
+                $"{Path.Combine(directory, legacy)}: a project file is named BUILD.csx and nothing else; rename it, or let " +
+                "tazel limited-time C# rename it and write its Depends as labels");
+        }
+
+        return null;
     }
 
     /// <summary>

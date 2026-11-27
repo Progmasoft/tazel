@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- Breaking: a package's project file is `BUILD.csx` and nothing else; a directory with `BUILD.tzl`, `BUILD.tazel`,
+  `BUILD` or `Tazel.build` stops the build with a message. `Depends` takes labels only, such as `"//:math"`; the value a
+  declaration returns is no longer taken. `tazel limited-time C#`, until 1.0.0, renames those files and writes the
+  targets `Depends` named by their variables as labels, without running any project file.
+
 ## 0.2.0 - 2026-11-27
 
 - `IncludeDirectories = ["."]` names the package's own directory, as `includes = ["."]` does in Bazel; it was refused.

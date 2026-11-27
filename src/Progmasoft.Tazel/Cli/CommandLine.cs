@@ -98,6 +98,9 @@ internal sealed record FetchCommand(OutputOptions Output) : Command(Output);
 
 internal sealed record ExplainCommand(OutputOptions Output, string Code, bool Long) : Command(Output);
 
+/// <summary><c>tazel limited-time C#</c>: the migration to BUILD.csx and labels in Depends, until Tazel 1.0.0.</summary>
+internal sealed record MigrateCommand(OutputOptions Output) : Command(Output);
+
 internal sealed record VendorCommand(OutputOptions Output) : Command(Output);
 
 /// <summary>Searching Tazel Portal Modules, or the versions of one module.</summary>
@@ -126,7 +129,7 @@ internal static class CommandLine
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
         ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
-            "portal-modules", "cache", "explain", "version", "help", "dotnet"];
+            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time"];
 
     private enum Kind
     {
@@ -279,6 +282,10 @@ internal static class CommandLine
             ? throw new CommandLineException("tazel custom needs the name of a command of tazel_custom.txt")
             : new CustomCommandLine(output, scanned.Positional),
         ["version"] = (scanned, output) => Bare(scanned, new VersionCommand(output)),
+        // The one word after it is case-sensitive: C#, as the language is written.
+        ["limited-time"] = (scanned, output) => scanned.Positional is ["C#"]
+            ? new MigrateCommand(output)
+            : throw new CommandLineException("tazel limited-time takes one word, C#: tazel limited-time C#"),
         ["dotnet"] = MakeDaemon,
         ["cache"] = MakeCache,
     };

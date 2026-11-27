@@ -179,6 +179,14 @@ internal static class ScriptHost
                 .Append(diagnostic.GetMessage(System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
         }
 
+        // A target's variable in Depends, as earlier versions of Tazel took it: say what to write instead.
+        if (diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error &&
+                d.GetMessage(System.Globalization.CultureInfo.InvariantCulture).Contains("Common.Target' to", StringComparison.Ordinal)))
+        {
+            text.Append("Depends takes the labels of targets, such as \"//:math\", not their variables; ")
+                .Append("tazel limited-time C# writes them as labels\n");
+        }
+
         return text.ToString().TrimEnd('\n');
     }
 

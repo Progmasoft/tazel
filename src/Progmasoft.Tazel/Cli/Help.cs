@@ -165,6 +165,16 @@ internal static class Help
             the name, and what follows is arguments, which <1>, <2>... and <*> take. Everything after custom belongs to
             the command, its options too.
             """),
+        ["limited-time"] = new("tazel limited-time C#: moves project files to BUILD.csx and labels in Depends; removed in 1.0.0.", """
+            tazel limited-time C#
+
+            Until Tazel 1.0.0, and removed in 1.0.0. Below the working directory, renames every project file named
+            BUILD.tzl, BUILD.tazel, BUILD or Tazel.build to BUILD.csx, and in every BUILD.csx writes the targets that
+            Depends names by a variable as their labels: Depends = [math] becomes Depends = ["//:math"]. A variable
+            nothing else uses is left out, its declaration kept. The files are read, never run. Everything is checked
+            first: two project files in one directory, or a target Depends names in a way that is not a variable of a
+            declaration of the same file, changes nothing. "C#" is written as here, case and all.
+            """),
         ["explain"] = new("tazel explain <code> [--long]: what an error code means and how to fix it.", """
             tazel explain <code> [--long]
 
