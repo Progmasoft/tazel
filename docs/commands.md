@@ -199,6 +199,27 @@ tazel dotnet what-is CLI
   .NET, CLI (the Common Language Infrastructure), CIL, CLR, C++/CLI, C#, WorkstationGC, BackgroundGC, daemon, CTS,
   VES and ECMA-335, offline. Tazel has no daemon: `tazel dotnet start-daemon` and the like say so.
 
+## External tools
+
+```text
+tazel tool launch <name> [arguments]
+TAZEL_TOOL_EXECUTABLE=bin/formatter tazel tool launch formatter --check src/
+tazel tool create-wrapper <name> [-o <dir> | --output-dir <dir>]
+```
+
+`tazel tool launch` runs the program `TAZEL_TOOL_EXECUTABLE` names when it is set, absolute or from the current
+directory, and nothing else then: an empty value, a missing file or one this user may not run is an error. Otherwise
+it runs the first `tazel-<name>` of `PATH` this user may run (on Unix by `access(X_OK)`, on Windows by `PATHEXT`),
+skipping empty entries, `.`, relative entries and the current directory, and searching nowhere else. Every argument
+after the name reaches the tool as written, empty ones, `--` and `--help` too. The tool runs as a process of its own,
+in this directory, with this environment and terminal, and its exit status is Tazel's; with
+`sandboxing-with-microvm` it does not run. On Windows a batch file runs through `cmd.exe` with each argument quoted;
+an argument holding `"`, `%` or a line break is refused, since `cmd.exe` would change it.
+
+`tazel tool create-wrapper` writes `tazel-<name>` (`tazel-<name>.bat` on Windows) into an existing directory, the
+current one by default. It runs `<name>` with its arguments, `exec <name> "$@"` or `<name> %*`; Tazel never overwrites
+a file, runs the wrapper or changes `PATH`. A name is a letter or digit, then letters, digits, `.`, `_` and `-`.
+
 ## Directives of the text files
 
 `tazel_options.txt`, `tazel_custom.txt` and `tazel_envs.txt` share one grammar: besides their entries they take

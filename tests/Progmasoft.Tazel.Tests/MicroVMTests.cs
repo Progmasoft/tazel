@@ -122,7 +122,7 @@ public sealed class MicroVMFilesTests
             .Write("tazel_options.txt", "sandboxing-with-microvm: true;\n");
         var (status, output) = await module.TazelAsync(".", "build", "//...");
         Assert.Equal(1, status);
-        Assert.Contains("runs tazel custom inside its MicroVM, and not builds, tests or plugins", output, StringComparison.Ordinal);
+        Assert.Contains("runs tazel custom inside its MicroVM, and not builds, tests, plugins or tools", output, StringComparison.Ordinal);
     }
 }
 

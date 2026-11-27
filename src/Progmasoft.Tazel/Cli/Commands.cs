@@ -43,6 +43,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             PortalModulesCommand portal => PortalModulesAsync(portal, cancel),
             PackageCommand => PackageAsync(),
             CustomCommandLine custom => CustomAsync(custom, cancel),
+            ToolLaunchCommand tool => Task.FromResult(LaunchTool(tool)),
+            ToolWrapperCommand wrapper => Task.FromResult(CreateWrapper(wrapper)),
             OptionsCommand options => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Options(options)),
             ValidateCommand validate => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Validate(validate.Kind, validate.Scope)),
             _ => Task.FromResult(RunAtOnce(command)),
@@ -114,8 +116,24 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         {
             throw new ProjectException(
                 $"{file} asks for sandboxing-with-microvm; this Tazel runs tazel custom inside its MicroVM, and not " +
-                "builds, tests or plugins, so nothing ran; set it to false to run them without the sandbox");
+                "builds, tests, plugins or tools, so nothing ran; set it to false to run them without the sandbox");
         }
+    }
+
+    /// <summary>tazel tool launch: the tool as a process of its own, attached to this terminal; its status is ours.</summary>
+    private int LaunchTool(ToolLaunchCommand command)
+    {
+        RefuseWithoutSandbox();
+        var file = Tools.Find(command.Name, workingDirectory);
+        return Processes.RunAttached(Tools.Command(file, command.Arguments), workingDirectory, Processes.Inherited());
+    }
+
+    /// <summary>tazel tool create-wrapper: writes the wrapper, runs nothing and changes no PATH.</summary>
+    private int CreateWrapper(ToolWrapperCommand command)
+    {
+        var file = Tools.CreateWrapper(command.Name, command.OutputDirectory ?? workingDirectory, OperatingSystem.IsWindows());
+        reporter.Success($"wrote {file}; it runs {command.Name}, and tazel tool launch {command.Name} finds it once its directory is on PATH");
+        return 0;
     }
 
     /// <summary>Says which settings of MODULE.csx this Tazel reads but does not act on, so none is taken for granted.</summary>

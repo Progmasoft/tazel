@@ -76,6 +76,12 @@ internal static class Program
                 "A key with no name on it opens nothing, least of all a cache.");
             return 1;
         }
+        catch (ToolException error)
+        {
+            reporter.Error(ErrorCodes.Tool, error.Message, "tazel explain E0507 says where Tazel looks for tools",
+                "Tazel looked everywhere it promised to, and nowhere else.");
+            return 1;
+        }
         catch (MicroVM.MicroVMException error)
         {
             reporter.Error(ErrorCodes.MicroVM, error.Message, null,

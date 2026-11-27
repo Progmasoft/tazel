@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `tazel tool launch <name>` runs `TAZEL_TOOL_EXECUTABLE`, or the first `tazel-<name>` of `PATH` this user may run,
+  with its arguments as written, and passes its exit status on; `tazel tool create-wrapper <name> [-o dir]` writes a
+  `tazel-<name>` that runs `<name>`. Error `E0507`.
+
 - Configuration in layers: `$TAZEL_HOME/User/`, the directories above, `$TAZEL_HOME/Projects/<key>/` and the current
   directory, for `tazel_options.txt`, `tazel_custom.txt` and the main module's `tazel_envs.txt`. The project key is
   Agenceland's. New commands `tazel options validate|get|what-is|update`, `tazel custom-cmds validate` and
