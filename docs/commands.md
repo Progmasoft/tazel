@@ -17,6 +17,8 @@
 | `tazel portal-modules search\|info [-e] [--] <module\|group:module>` | searches Tazel Portal Modules, or shows one module |
 | `tazel clean [--expunge]` | removes the outputs, the test logs, zig's cache and the compiled project files; `--expunge` removes all of `.tazel` |
 | `tazel cache keygen [--algorithm ed25519\|rsa-4096\|ml-dsa]` | prints a key pair for signing the results of a remote cache ([Remote cache](remote-cache.md)) |
+| `tazel cache validate [--remote]` | checks the records of `.tazel`, and with `--remote` the remote cache and its keys; changes nothing |
+| `tazel cache repair [--remote]` | removes broken records; with `--remote`, stores again what the remote cache lacks |
 | `tazel package` | writes `.tazel/package/$group.$module-$version.tazel.tar.xz` and its `.sha256sums` |
 | `tazel custom <name> [arguments]` | runs a command of the `tazel_custom.txt` of the current directory |
 | `tazel version`, `tazel help [command] [--long]` | print the version, or what Tazel or one command does |
@@ -56,6 +58,21 @@ the compiler takes the last flag, and they are part of the key of each action.
 
 The platform comes from `--platform`, else from `tazel_options.txt`, else it is this machine's. `--jobs` and
 `--keep-going` win over `Execution` of `MODULE.csx`.
+
+## Checking the caches
+
+`tazel cache validate` sorts the action records of `.tazel` into valid, stale and broken. A stale record names an
+input that changed: that is how builds find what to run, not a fault. A broken one cannot be read, or the output it is
+kept beside is gone or changed while every input is as recorded, which means something touched the file behind
+Tazel's back. A test result without its log and a compiled project file whose metadata does not read are broken too;
+each is an `error[E0508]`, and the command exits 1. `tazel cache repair` removes what is broken and the files writes
+left half done, and the next build redoes them; it keeps stale records and outputs. Run it when no build runs.
+
+With `--remote` both read `MODULE.csx`. `validate` asks the remote cache for a key no action has: a 404 means it is
+reached and lets this machine in, an error or no answer exits 1. A `SigningKey` with a `PublicKey` must sign what the
+`PublicKey` verifies. `repair --remote`, for a cache that takes writes, plans `//...` for this machine's platform in
+debug and stores again every result whose local record is valid and that the cache lacks or holds without a signature
+the `PublicKey` takes; HTTP caches have no delete, so nothing is removed there.
 
 ## Recompile and no-cache
 

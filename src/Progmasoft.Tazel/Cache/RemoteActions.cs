@@ -118,6 +118,23 @@ internal sealed class RemoteActions(
         }
     }
 
+    /// <summary>
+    /// Whether the cache holds a result for <paramref name="action"/> that this reader would take: there, readable and
+    /// signed as the PublicKey wants; true for an action the cache has no place for.
+    /// </summary>
+    public async Task<bool> HoldsTrustedAsync(BuildAction action, CancellationToken cancel)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (action.Work is not null || KeyOf(action) is not { } key)
+        {
+            return true;
+        }
+
+        return await cache.GetActionAsync(key, cancel).ConfigureAwait(false) is { } message &&
+            ActionResultMessage.Decode(message) is { } files &&
+            await IsTrustedAsync(key, files, cancel).ConfigureAwait(false);
+    }
+
     /// <summary>Gives the cache the outputs of <paramref name="action"/>, which just succeeded here.</summary>
     public async Task StoreAsync(BuildAction action, CancellationToken cancel)
     {
