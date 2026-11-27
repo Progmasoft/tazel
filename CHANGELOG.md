@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- The same sources give the same objects and programs on Windows: clang compiles with
+  `-mno-incremental-linker-compatible` and links with `/Brepro` (MinGW: `--no-insert-timestamp`), and every action runs
+  with `SOURCE_DATE_EPOCH` (0 unless set). Before, each compilation stamped the time into the object, so the archive,
+  the program and its cached test ran again after any recompilation.
+
 - `--recompile` and `--no-cache` for `build`, `run`, `test` and `coverage`: every compilation runs, or every action and
   test runs with no cache read or written. zig compiles again with an empty cache of its own.
 
