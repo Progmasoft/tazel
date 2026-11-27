@@ -94,14 +94,15 @@ public sealed class PluginLoadingTests
 
     [Theory]
     [InlineData("""{"group":"com.example","name":"x","version":"1.0.0","pluginApi":"9.0.0","entryAssembly":"X.dll"}""", "was built against Progmasoft.Tazel.PluginApi 9.0.0")]
-    [InlineData("""{"group":"com.example","name":"x","version":"1.0","pluginApi":"0.1.0","entryAssembly":"X.dll"}""", "'1.0' is not a SemVer version")]
-    [InlineData("""{"group":"com..example","name":"x","version":"1.0.0","pluginApi":"0.1.0","entryAssembly":"X.dll"}""", "is not names joined by dots")]
-    [InlineData("""{"group":"com.example","name":"x","version":"1.0.0","pluginApi":"0.1.0","entryAssembly":"X.dll"}""", "names the entry assembly X.dll, which it does not hold")]
+    [InlineData("""{"group":"com.example","name":"x","version":"1.0","pluginApi":"@API@","entryAssembly":"X.dll"}""", "'1.0' is not a SemVer version")]
+    [InlineData("""{"group":"com..example","name":"x","version":"1.0.0","pluginApi":"@API@","entryAssembly":"X.dll"}""", "is not names joined by dots")]
+    [InlineData("""{"group":"com.example","name":"x","version":"1.0.0","pluginApi":"@API@","entryAssembly":"X.dll"}""", "names the entry assembly X.dll, which it does not hold")]
     [InlineData("""not json""", "cannot be read")]
     public async Task APluginArchiveIsChecked(string manifest, string message)
     {
         using var module = new TemporaryModule();
-        module.Write("plugin/tazel-plugin.json", manifest);
+        // @API@ is the plugin API of this Tazel, so only what the case is about is wrong.
+        module.Write("plugin/tazel-plugin.json", manifest.Replace("@API@", Plugins.ApiVersion.ToString(3), StringComparison.Ordinal));
         ModuleArchive.Write(Path.Combine(module.Root, "plugin"), "com.example.x-1.0.0",
             Path.Combine(module.Root, "plugins", "x.tazel.tar.xz"), ["tazel-plugin.json"]);
         module.Write("MODULE.csx", TemporaryModule.ModuleFile + "\nplugins = Plugins.Define(LocalPlugin.From(\"plugins/x.tazel.tar.xz\"));");
@@ -153,7 +154,7 @@ public sealed class PluginSdkTests
             </configuration>
             """);
         var hive = Path.Combine(work.Root, "hive");
-        await Run(work.Root, isolated, "new", "install", Path.Combine(feed, "Progmasoft.Tazel.PluginTemplates.0.1.0.nupkg"),
+        await Run(work.Root, isolated, "new", "install", Path.Combine(feed, $"Progmasoft.Tazel.PluginTemplates.{Plugins.ApiVersion.ToString(3)}.nupkg"),
             "--debug:custom-hive", hive);
         await Run(work.Root, isolated, "new", "tazel-plugin", "-n", "Greeter", "--group", "com.example.tools",
             "--pluginName", "greeter", "--debug:custom-hive", hive);
