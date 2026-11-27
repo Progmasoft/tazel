@@ -174,6 +174,23 @@ public sealed class DiagnosticTests
         Assert.Contains(message, error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(ErrorCodes.OptionsNoSemicolon, "options")]
+    [InlineData(ErrorCodes.CustomNoSemicolon, "custom")]
+    [InlineData(ErrorCodes.EnvsNoSemicolon, "envs")]
+    public void TheExamplesOfAMissingSemicolonAreWhatTheySay(string code, string reader)
+    {
+        var entry = ErrorCodes.Find(code)!;
+        Assert.Equal(code, DiagnosticOf(reader, entry.Wrong!)?.Code);
+        // The right text is read without a problem.
+        _ = reader switch
+        {
+            "envs" => TazelEnvsFile.Parse(entry.Right!).Count,
+            "custom" => CustomParser.Parse(entry.Right!).Count,
+            _ => TazelOptionsFile.Parse(entry.Right!).Platform is null ? 0 : 1,
+        };
+    }
+
     private static Diagnostic? DiagnosticOf(string reader, string text)
     {
         try

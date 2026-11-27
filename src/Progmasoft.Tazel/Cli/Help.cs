@@ -214,6 +214,8 @@ internal static class Help
           --color always|auto|never     colors; default: auto
           --progress always|auto|never  the [done/total] counter; default: auto
           --quiet                       only problems and the program's own output
+          --message-format rich-stdio|script-friendly-stdio|jsonl|xml
+                                        how messages are printed; default: rich-stdio
           --help, -h                    the help of the command
         """;
 

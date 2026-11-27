@@ -42,12 +42,13 @@ internal static class Program
         }
         catch (CommandLineException error)
         {
-            new Reporter(Reporter.CreateConsole(When.Auto, output), quiet: false, When.Never).Error(ErrorCodes.CommandLine,
-                error.Message, HelpFor(arguments), Jokes.ForCommandLine(error.Message));
+            using var early = new Reporter(CommandLine.FormatOf(arguments), output, When.Auto, quiet: false, When.Never);
+            early.Error(ErrorCodes.CommandLine, error.Message, HelpFor(arguments), Jokes.ForCommandLine(error.Message));
             return UsageError;
         }
 
-        var reporter = new Reporter(Reporter.CreateConsole(command.Output.Color, output), command.Output.Quiet, command.Output.Progress);
+        using var reporter = new Reporter(command.Output.Format, output, command.Output.Color, command.Output.Quiet,
+            command.Output.Progress);
         try
         {
             return await new Commands(reporter, directory).RunAsync(command, cancel).ConfigureAwait(false);

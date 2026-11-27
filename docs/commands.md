@@ -35,6 +35,7 @@ A misspelt command, option or value gets a hint that keeps how it was written: `
 | `--color always\|auto\|never` | all | colors |
 | `--progress always\|auto\|never` | all | the `[done/total]` counter of a build |
 | `--quiet` | all | only problems and the output of what was run |
+| `--message-format rich-stdio\|script-friendly-stdio\|jsonl\|xml` | all | how messages are printed; `rich-stdio` is the default |
 | `--help`, `-h` | all | the help of the command |
 | `--mode debug\|release` | build, run, test | `debug` is the default |
 | `--platform <name>` | build, run, test | the platform to build for |
@@ -52,6 +53,55 @@ the compiler takes the last flag, and they are part of the key of each action.
 
 The platform comes from `--platform`, else from `tazel_options.txt`, else it is this machine's. `--jobs` and
 `--keep-going` win over `Execution` of `MODULE.csx`.
+
+## Message formats
+
+`--message-format` chooses how Tazel prints its messages. `--color` and `--progress` change `rich-stdio` alone;
+`--quiet` leaves out the status lines (`status` and `success`) in every format. What a command prints as its result,
+such as the labels of `tazel query`, is an `output` message.
+
+- `rich-stdio`: colours, tables and pictures of problems, drawn with Spectre.Console for a terminal.
+- `script-friendly-stdio`: plain lines for scripts and logs. A message is one line that starts with a fixed word,
+  and the lines it carries (a compiler's output, a test log, and the `command:`, `help:` and `here:` lines of the
+  table below) follow it indented by two spaces. No colours, boxes or
+  emoji, and nothing is wrapped. An `output` message is printed as it is; a table is tab-separated, its header first.
+
+  | Message | Line |
+  | --- | --- |
+  | `status` | `INFO <text>` |
+  | `action` | `DONE <description>` |
+  | `action-failed` | `FAILED <description>`, then `command: <command line>` |
+  | `error` | `error[<code>]: <message>`, then `help: <help>` |
+  | `diagnostic` | `error[<code>]: <file>:<line>:<column>: <message>`, then `here: <label>` and `help: <help>` |
+  | `warning` | `warning: <message>` |
+  | `success` | `SUCCESS <message>` |
+  | `test` | `PASSED`, `CACHED`, `FAILED`, `TIMED-OUT`, `FLAKY` or `NOT-BUILT`, then `<label> <seconds> s` |
+  | `test-summary` | `TESTS <passed> passed, <failed> failed, <total> in all` |
+  | `test-log` | `LOG <label>` |
+  | `explanation` | `<code> <title> (<file>)` |
+
+- `jsonl`: one JSON object per message per line, its kind first: `{"kind":"error","code":"E0500","message":"..."}`.
+  A field without a value is left out; a command line is a list of strings, a table has `columns` and `rows`.
+- `xml`: one `<tazel>` document, written as the messages come and closed when the command ends. A message is an
+  element named by its kind with an element per field; the items of a list are `<item>`, the rows of a table
+  `<row>` of `<cell>`. A control character that XML cannot hold becomes U+FFFD.
+
+The fields of each kind:
+
+| Kind | Fields |
+| --- | --- |
+| `status` | `text` |
+| `action` | `done`, `total`, `description`, `output` |
+| `action-failed` | `description`, `command`, `output` |
+| `error` | `code`, `message`, `help`, `joke` |
+| `diagnostic` | `code`, `message`, `file`, `line`, `column`, `width`, `label`, `source`, `help`, `joke` |
+| `warning`, `success` | `message` |
+| `test` | `label`, `status` (`passed`, `cached`, `failed`, `timed-out`, `flaky`, `not-built`), `seconds` |
+| `test-summary` | `passed`, `failed`, `total` |
+| `test-log` | `label`, `log` |
+| `output` | `text` |
+| `table` | `columns`, `rows` |
+| `explanation` | `code`, `title`, `where`, `text`, `wrong`, `right`, `related` |
 
 ## Builds, tests and runs
 
