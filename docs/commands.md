@@ -138,8 +138,30 @@ platform: linux-amd64;
 dotnet-settings: [ "GCHeapHardLimit=512M" 'GCSettings.LatencyMode=Interactive' ];
 ```
 
-The nearest `tazel_options.txt` at or above the current directory holds, except that a sandbox asked for by any file
-above stays asked for. This Tazel has no MicroVM to start, so with `sandboxing-with-microvm: true` it refuses every
+Configuration comes in layers, lowest first: the user's (`$TAZEL_HOME/User/`), every directory above the current one,
+the farthest first, this machine's settings of the project (`$TAZEL_HOME/Projects/<key>/`, outside the module), and the
+current directory; the command line is above them all. Each option comes from the highest layer that sets it, an
+explicit `false` or `auto` as much as any value; `dotnet-settings` merge name by name; a sandbox asked for in any layer
+stays asked for. The project key is the module root's canonical path made readable (`-home-ada-src--app`) with the
+first 16 hexadecimal digits of its SHA-256 after it, so every directory of a module shares one, and `identity.txt` in
+its directory holds that root; a directory there of another root is refused.
+
+`tazel_custom.txt` takes the same layers, a command of a higher layer replacing the one of the same name.
+`tazel_envs.txt` too, for the main module only, around its root; a module it depends on takes its own file alone.
+
+```text
+tazel options validate [--user | --project | --local]
+tazel options get <setting> [--user | --project | --local]
+tazel options what-is <setting>
+tazel options update <setting> <value> [--user | --project] [--create]
+tazel custom-cmds validate [--user | --project | --local]
+tazel envs validate [--user | --project | --local]
+```
+
+`validate` reads each layer, or the one a flag names, and runs nothing. `get` prints the value that holds and the file
+it came from. `update` replaces the value where it stands, or adds the entry, and keeps the rest of the file,
+comments too; it writes beside the file and moves it into place under a lock, needs `--create` for a file that is not
+there, and leaves an option set inside `.if` or in an included file for you to edit. This Tazel has no MicroVM to start, so with `sandboxing-with-microvm: true` it refuses every
 command that would run what a project brings (`build`, `run`, `test`, `package`, `custom`) rather than run it on this
 machine.
 

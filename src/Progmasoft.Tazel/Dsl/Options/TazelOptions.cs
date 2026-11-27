@@ -50,6 +50,15 @@ public sealed record TazelOptions
     public IReadOnlyList<Runtime.DotnetSetting> DotnetSettings { get; init; } = [];
 }
 
+/// <summary>The options that hold in a directory, with the layer each came from and the layers read.</summary>
+/// <param name="Options">The options.</param>
+/// <param name="SandboxFile">The file of the layer that asked for the sandbox, or null.</param>
+/// <param name="Origins">For each option set somewhere, the layer that decided it.</param>
+/// <param name="Layers">The layers read, lowest first.</param>
+public sealed record LayeredOptions(
+    TazelOptions Options, string? SandboxFile, IReadOnlyDictionary<string, Configuration.Layer> Origins,
+    IReadOnlyList<Configuration.Layer> Layers);
+
 /// <summary>What is wrong with a <c>tazel_options.txt</c>, with where it is.</summary>
 public sealed class TazelOptionsException : Exception
 {
@@ -111,12 +120,14 @@ public static class TazelOptionsFile
     public static TazelOptions Parse(string text, string file, string? path, Platform? requested)
     {
         var machine = Configuration.ConfigurationContext.ForThisMachine();
-        var chosen = Read(text, file, path, machine);
+        var chosen = Read(text, file, path, machine).Options;
         var platform = requested ?? chosen.Platform ?? Driver.Host.Platform;
-        return Read(text, file, path, machine with { Target = Configuration.SystemFacts.Of(platform) });
+        return Read(text, file, path, machine with { Target = Configuration.SystemFacts.Of(platform) }).Options;
     }
 
-    private static TazelOptions Read(string text, string file, string? path, Configuration.ConfigurationContext context)
+    /// <summary>The options of one file and the names it sets, read for <paramref name="context"/>.</summary>
+    internal static (TazelOptions Options, IReadOnlySet<string> Keys) Read(
+        string text, string file, string? path, Configuration.ConfigurationContext context)
     {
         IReadOnlyList<Token> tokens;
         try
@@ -128,7 +139,8 @@ public static class TazelOptionsFile
             throw error.Diagnostic is { } diagnostic ? new TazelOptionsException(diagnostic) : new TazelOptionsException(error.Message, error);
         }
 
-        return new Reader(tokens, file, text).Options();
+        var reader = new Reader(tokens, file, text);
+        return (reader.Options(), reader.SetNames);
     }
 
     /// <summary>Every <c>tazel_options.txt</c> at or above <paramref name="directory"/>, the nearest first.</summary>
@@ -171,52 +183,108 @@ public static class TazelOptionsFile
     }
 
     /// <summary>
-    /// The options that hold in <paramref name="directory"/>: those of the nearest file, except that a sandbox asked
-    /// for in any file above stays asked for, so a project cannot turn off what a directory around it requires.
-    /// Default options, and no file, without any.
+    /// The options that hold in <paramref name="directory"/>, from the layers of
+    /// <see cref="Configuration.ConfigurationLayers"/>: each option from the highest layer that sets it, an explicit
+    /// <c>false</c> or <c>auto</c> as much as any value; <c>dotnet-settings</c> name by name. A sandbox asked for in any
+    /// layer stays asked for, so no layer above can turn off what one below requires. The platform is chosen first, from
+    /// the platform asked for or the highest layer that sets it outside conditions on <c>target_system</c>, and
+    /// every layer is then read for it.
     /// </summary>
     public static (TazelOptions Options, string? SandboxFile) Effective(string directory) => Effective(directory, null);
 
     /// <summary><see cref="Effective(string)"/>, for the platform <paramref name="requested"/> when it is not null.</summary>
     public static (TazelOptions Options, string? SandboxFile) Effective(string directory, Platform? requested)
     {
-        var files = Find(directory).Select(file => (File: file, Options: Read(file, requested))).ToList();
-        if (files.Count == 0)
-        {
-            return (new TazelOptions(), null);
-        }
-
-        var asking = files.FirstOrDefault(entry => entry.Options.SandboxingWithMicroVM).File;
-        return (files[0].Options with { SandboxingWithMicroVM = asking is not null }, asking);
+        var layered = Layered(directory, requested);
+        return (layered.Options, layered.SandboxFile);
     }
 
-    private static TazelOptions Read(string file, Platform? requested)
+    /// <summary><see cref="Effective(string)"/>, with the file each option came from.</summary>
+    public static LayeredOptions Layered(string directory) => Layered(directory, null);
+
+    /// <summary><see cref="Effective(string, Platform?)"/>, with the file each option came from.</summary>
+    public static LayeredOptions Layered(string directory, Platform? requested)
     {
-        string text;
+        IReadOnlyList<Configuration.Layer> layers;
         try
         {
-            text = File.ReadAllText(file);
+            layers = Configuration.ConfigurationLayers.For(TazelOptions.FileName, directory);
         }
-        catch (IOException problem)
+        catch (Configuration.ConfigurationHomeException error)
         {
-            throw new TazelOptionsException($"{file} could not be read: {problem.Message}", problem);
-        }
-        catch (UnauthorizedAccessException problem)
-        {
-            throw new TazelOptionsException($"{file} could not be read: {problem.Message}", problem);
+            throw new TazelOptionsException(error.Message, error);
         }
 
-        return Parse(text, file, file, requested);
+        var texts = layers.Select(layer => (Layer: layer, Text: ReadText(layer.File))).ToList();
+        var machine = Configuration.ConfigurationContext.ForThisMachine();
+        var platform = requested;
+        if (platform is null)
+        {
+            foreach (var (layer, text) in texts)
+            {
+                var (options, keys) = Read(text, layer.File, layer.File, machine);
+                platform = keys.Contains("platform") ? options.Platform : platform;
+            }
+        }
+
+        var context = machine with { Target = Configuration.SystemFacts.Of(platform ?? Driver.Host.Platform) };
+        var merged = new TazelOptions();
+        var origins = new Dictionary<string, Configuration.Layer>(StringComparer.Ordinal);
+        var settings = new List<Runtime.DotnetSetting>();
+        Configuration.Layer? sandbox = null;
+        foreach (var (layer, text) in texts)
+        {
+            var (options, keys) = Read(text, layer.File, layer.File, context);
+            foreach (var key in keys)
+            {
+                origins[key] = layer;
+                merged = key switch
+                {
+                    "sandboxing-with-microvm" => merged with { SandboxingWithMicroVM = merged.SandboxingWithMicroVM || options.SandboxingWithMicroVM },
+                    "microvm-network" => merged with { MicroVMNetwork = options.MicroVMNetwork },
+                    "microvm-memory" => merged with { MicroVMMemory = options.MicroVMMemory },
+                    "microvm-cpus" => merged with { MicroVMCpus = options.MicroVMCpus },
+                    "platform" => merged with { Platform = options.Platform },
+                    _ => merged,
+                };
+            }
+
+            settings.AddRange(options.DotnetSettings);
+            sandbox = options.SandboxingWithMicroVM ? layer : sandbox;
+        }
+
+        if (sandbox is not null)
+        {
+            // The layer that asked keeps the say, whatever a layer above wrote.
+            origins["sandboxing-with-microvm"] = sandbox;
+        }
+
+        return new LayeredOptions(merged with { DotnetSettings = settings }, sandbox?.File, origins, layers);
+    }
+
+    private static string ReadText(string file)
+    {
+        try
+        {
+            return File.ReadAllText(file);
+        }
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException)
+        {
+            throw new TazelOptionsException($"{file} could not be read: {problem.Message}", problem);
+        }
     }
 
     private sealed class Reader(IReadOnlyList<Token> tokens, string file, string text)
     {
         private int _position;
 
+        /// <summary>The names the file set, once <see cref="Options"/> has read it.</summary>
+        public HashSet<string> SetNames { get; } = new(StringComparer.Ordinal);
+
         public TazelOptions Options()
         {
             var options = new TazelOptions();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var seen = SetNames;
             while (_position < tokens.Count)
             {
                 var key = Take(TokenKind.Name, "the name of an option");
