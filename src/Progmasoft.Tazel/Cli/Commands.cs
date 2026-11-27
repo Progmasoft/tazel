@@ -43,8 +43,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             PortalModulesCommand portal => PortalModulesAsync(portal, cancel),
             PackageCommand => PackageAsync(),
             CustomCommandLine custom => CustomAsync(custom, cancel),
-            OptionsCommand options => Task.FromResult(Options(options)),
-            ValidateCommand validate => Task.FromResult(Validate(validate.Kind, validate.Scope)),
+            OptionsCommand options => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Options(options)),
+            ValidateCommand validate => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Validate(validate.Kind, validate.Scope)),
             _ => Task.FromResult(RunAtOnce(command)),
         };
     }
@@ -199,11 +199,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     }
 
     // A file of a layer as messages show it: from the working directory when it is below it.
-    private string Shown(string file)
-    {
-        var relative = Path.GetRelativePath(workingDirectory, file);
-        return relative.StartsWith("..", StringComparison.Ordinal) ? file : relative.Replace('\\', '/');
-    }
+    private string Shown(string file) => ConfigurationCommands.ShownFrom(workingDirectory, file);
 
     /// <summary>tazel dotnet what-is: a term of .NET explained, offline.</summary>
     private int WhatIs(string term)

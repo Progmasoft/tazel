@@ -278,7 +278,7 @@ public sealed class ConfigurationLayersTests
     [Fact]
     public async Task ValidateChecksEveryLayerOrOne()
     {
-        var (tree, home, here) = Tree();
+        var (tree, home, _) = Tree();
         using (tree)
         using (home)
         {

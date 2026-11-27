@@ -15,10 +15,10 @@ namespace Progmasoft.Tazel.Dsl.Configuration;
 public static class ProjectKey
 {
     /// <summary>The most characters of the readable part; with the hash the key stays well below 255 bytes.</summary>
-    public const int MaxReadableLength = 200;
+    public static int MaxReadableLength { get; } = 200;
 
     /// <summary>The name of the file that keeps the canonical root of a project's directory.</summary>
-    public const string IdentityFile = "identity.txt";
+    public static string IdentityFile { get; } = "identity.txt";
 
     /// <summary>
     /// The key of <paramref name="canonicalPath"/>: each UTF-16 unit outside A-Z, a-z and 0-9 becomes <c>-</c>; on

@@ -14,6 +14,7 @@ using Progmasoft.Tazel.Dsl.Custom.Lexer;
 using Progmasoft.Tazel.Dsl.Custom.Parser;
 using Progmasoft.Tazel.Dsl.Envs;
 using Progmasoft.Tazel.Dsl.Options;
+using Progmasoft.Tazel.Output;
 
 namespace Progmasoft.Tazel.Cli;
 
@@ -36,8 +37,17 @@ internal sealed record ValidateCommand(OutputOptions Output, ConfigurationKind K
 internal sealed record OptionSchema(string Name, string Type, string Default, string Meaning);
 
 /// <summary>The commands that read and write the text files: what each layer holds, and checking them.</summary>
-internal sealed partial class Commands
+internal sealed class ConfigurationCommands(Reporter reporter, string workingDirectory)
 {
+    /// <summary>A file as messages show it: from <paramref name="directory"/> when it is below it.</summary>
+    internal static string ShownFrom(string directory, string file)
+    {
+        var relative = Path.GetRelativePath(directory, file);
+        return relative.StartsWith("..", StringComparison.Ordinal) ? file : relative.Replace('\\', '/');
+    }
+
+    private string Shown(string file) => ShownFrom(workingDirectory, file);
+
     /// <summary>The options of tazel_options.txt, as tazel options what-is explains them.</summary>
     internal static IReadOnlyList<OptionSchema> Schema { get; } =
     [
@@ -55,7 +65,7 @@ internal sealed partial class Commands
             "--dotnet-settings. tazel help dotnet --long lists the thirteen."),
     ];
 
-    private int Options(OptionsCommand command) => command.Action switch
+    public int Options(OptionsCommand command) => command.Action switch
     {
         "validate" => Validate(ConfigurationKind.Options, command.Scope),
         "get" => OptionGet(command.Name!, command.Scope),
@@ -94,7 +104,7 @@ internal sealed partial class Commands
     /// Reads every layer of a kind as the command that uses it would, includes and conditions resolved, and says
     /// which it checked. Nothing runs: no shell line of tazel_envs.txt, no program, no project file.
     /// </summary>
-    private int Validate(ConfigurationKind kind, LayerKind? scope)
+    public int Validate(ConfigurationKind kind, LayerKind? scope)
     {
         var layers = Layers(kind, scope);
         if (layers.Count == 0)
@@ -224,9 +234,27 @@ internal sealed partial class Commands
     }
 
     // The text with the entry of name set to written: replaced where it stands, or added at the end.
+    // The text with the entry of name set to written: replaced where it stands, or added at the end.
     private string Edited(string text, string file, string name, string written)
     {
         var tokens = new CustomLexer(text, Shown(file)).Tokens();
+        var found = Entries(tokens, name);
+        if (found.Exists(entry => entry.Depth > 0))
+        {
+            throw new CommandLineException($"{Shown(file)} sets {name} inside .if; edit it there by hand");
+        }
+
+        return found.Count switch
+        {
+            0 => Appended(text, file, tokens, name, written),
+            1 => Replaced(text, file, tokens, found[0].Index, name, written),
+            _ => throw new CommandLineException($"{Shown(file)} sets {name} {found.Count} times; keep one by hand first"),
+        };
+    }
+
+    // Where entries named name start, with how deep in .if each stands.
+    private static List<(int Index, int Depth)> Entries(IReadOnlyList<Token> tokens, string name)
+    {
         var depth = 0;
         var found = new List<(int Index, int Depth)>();
         for (var i = 0; i < tokens.Count; i++)
@@ -234,52 +262,49 @@ internal sealed partial class Commands
             var token = tokens[i];
             if (token.Kind == TokenKind.Directive)
             {
-                depth += token.Text == "if" ? 1 : token.Text == "end" ? -1 : 0;
-                continue;
+                depth += token.Text switch { "if" => 1, "end" => -1, _ => 0 };
             }
-
-            var startsEntry = i == 0 || tokens[i - 1].Kind is TokenKind.Semicolon or TokenKind.Directive;
-            if (startsEntry && token is { Kind: TokenKind.Name } && token.Text == name && i + 1 < tokens.Count && tokens[i + 1].Kind == TokenKind.Colon)
+            else if (StartsEntry(tokens, i) && token.Kind == TokenKind.Name && token.Text == name &&
+                     i + 1 < tokens.Count && tokens[i + 1].Kind == TokenKind.Colon)
             {
                 found.Add((i, depth));
             }
         }
 
-        if (found.Any(entry => entry.Depth > 0))
+        return found;
+    }
+
+    private static bool StartsEntry(IReadOnlyList<Token> tokens, int i) =>
+        i == 0 || tokens[i - 1].Kind is TokenKind.Semicolon or TokenKind.Directive;
+
+    // The entry added at the end, after a ';' the last entry may have left out.
+    private string Appended(string text, string file, IReadOnlyList<Token> tokens, string name, string written)
+    {
+        var (_, keys) = TazelOptionsFile.Read(text, Shown(file), file, ConfigurationContext.ForThisMachine().ForItself());
+        if (keys.Contains(name))
         {
-            throw new CommandLineException($"{Shown(file)} sets {name} inside .if; edit it there by hand");
+            throw new CommandLineException($"{name} is set in a file that {Shown(file)} includes; edit that file");
         }
 
-        if (found.Count > 1)
-        {
-            throw new CommandLineException($"{Shown(file)} sets {name} {found.Count} times; keep one by hand first");
-        }
+        var last = tokens.LastOrDefault(token => token.Kind != TokenKind.Directive);
+        var trimmed = text.TrimEnd();
+        var needsSemicolon = last is { Kind: not TokenKind.Semicolon } && !trimmed.EndsWith(';');
+        var join = trimmed.Length == 0 ? "" : needsSemicolon ? ";\n" : "\n";
+        return trimmed + join + $"{name}: {written};\n";
+    }
 
-        if (found.Count == 0)
-        {
-            var (_, keys) = TazelOptionsFile.Read(text, Shown(file), file, ConfigurationContext.ForThisMachine().ForItself());
-            if (keys.Contains(name))
-            {
-                throw new CommandLineException($"{name} is set in a file that {Shown(file)} includes; edit that file");
-            }
-
-            // Added at the end, after a ';' the last entry may have left out.
-            var last = tokens.LastOrDefault(token => token.Kind != TokenKind.Directive);
-            var trimmed = text.TrimEnd();
-            var join = trimmed.Length == 0 ? "" : last is { Kind: not TokenKind.Semicolon } && !trimmed.EndsWith(';') ? ";\n" : "\n";
-            return trimmed + join + $"{name}: {written};\n";
-        }
-
-        // The value runs from after the ':' to the ';', or to the end of the file for its last entry.
-        var first = found[0].Index + 2;
+    // The value of the entry at index replaced: from after the ':' to the ';', or the end of the file for the last.
+    private string Replaced(string text, string file, IReadOnlyList<Token> tokens, int index, string name, string written)
+    {
+        var first = index + 2;
         if (first >= tokens.Count || tokens[first].Kind == TokenKind.Semicolon)
         {
             throw new CommandLineException($"{Shown(file)} sets {name} with no value; give it one by hand first");
         }
 
-        var semicolon = tokens.Skip(first).TakeWhile(token => token.Kind != TokenKind.Semicolon).Count();
+        var count = tokens.Skip(first).TakeWhile(token => token.Kind != TokenKind.Semicolon).Count();
         var start = Offset(text, tokens[first]);
-        var endToken = tokens[first + semicolon - 1];
+        var endToken = tokens[first + count - 1];
         var end = Offset(text, endToken) + endToken.Text.Length + (endToken.Kind == TokenKind.String ? 2 : 0);
         return text[..start] + written + text[end..];
     }
@@ -305,16 +330,20 @@ internal sealed partial class Commands
         Directory.CreateDirectory(locks);
         var name = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(file))))[..16];
         var path = Path.Combine(locks, $"options-{name}.lock");
-        for (var attempt = 0; ; attempt++)
+        // Another Tazel holds it: wait for it, five seconds at most, then say so.
+        const int Attempts = 100;
+        for (var attempt = 1; attempt < Attempts; attempt++)
         {
             try
             {
                 return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             }
-            catch (IOException) when (attempt < 100)
+            catch (IOException)
             {
                 System.Threading.Thread.Sleep(50);
             }
         }
+
+        return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
     }
 }
