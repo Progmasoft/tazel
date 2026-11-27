@@ -51,6 +51,7 @@ internal static partial class ErrorCodes
     public const string OptionsOutOfRange = "E0210";
     public const string OptionsNotAPlatform = "E0211";
     public const string OptionsUnreadable = "E0212";
+    public const string OptionsDotnetSetting = "E0213";
 
     public const string CustomNameEnd = "E0301";
     public const string CustomNameTooLong = "E0302";
@@ -84,6 +85,7 @@ internal static partial class ErrorCodes
     public const string Stopped = "E0503";
     public const string MicroVM = "E0504";
     public const string CacheKey = "E0505";
+    public const string DotnetSettingRefused = "E0506";
     public const string Label = "E0600";
 
     private const string Lexer = "the text files: tazel_custom.txt, tazel_options.txt and tazel_envs.txt";
@@ -150,6 +152,17 @@ internal static partial class ErrorCodes
             "target_system, or in a file such a branch includes, would choose the platform from itself, so it is an error.",
             ".if target_system.os == \"linux\"\nplatform: windows-x64;\n.end", ".if host_system.os == \"linux\"\nplatform: windows-x64;\n.end",
             Options),
+        new(OptionsDotnetSetting, "a .NET setting Tazel does not take",
+            "dotnet-settings: [ ... ]; holds strings of Name=Value, one per setting, without commas between them. The names " +
+            "are the thirteen of tazel help dotnet --long; sizes take B, K, M, G or T, percentages and thread counts whole " +
+            "numbers. A name given twice keeps its last value.",
+            "dotnet-settings: GCHeapHardLimit=512M;", "dotnet-settings: [\"GCHeapHardLimit=512M\"];", Options),
+        new(DotnetSettingRefused, "a .NET setting that cannot hold, or that .NET refused",
+            "Some settings are two ways of saying one thing, and Tazel takes neither of them: GCHeapHardLimit with " +
+            "GCHeapHardLimitPercent, a limit for the whole heap with limits per object heap, or object heap limits in bytes " +
+            "and in percent. Limits per object heap need both SOH and LOH; their percentages are each below 100, and so is " +
+            "their sum. .NET itself may refuse a heap limit below what this process has committed, a latency mode its GC " +
+            "cannot take, or thread counts it does not allow. Nothing of the command ran.", null, null, "tazel"),
         new(CommandLine, "a command line Tazel cannot take",
             "The command, an option or a value is not one Tazel knows, or a command got arguments it does not take. Tazel " +
             "suggests the nearest spelling when there is one. tazel help lists the commands, and tazel help <command> --long " +

@@ -36,6 +36,7 @@ A misspelt command, option or value gets a hint that keeps how it was written: `
 | `--progress always\|auto\|never` | all | the `[done/total]` counter of a build |
 | `--quiet` | all | only problems and the output of what was run |
 | `--message-format rich-stdio\|script-friendly-stdio\|jsonl\|xml` | all | how messages are printed; `rich-stdio` is the default |
+| `--dotnet-settings Name=Value[,...]` | all | the .NET runtime of this Tazel process ([below](#the-net-runtime-of-tazel)) |
 | `--help`, `-h` | all | the help of the command |
 | `--mode debug\|release` | build, run, test | `debug` is the default |
 | `--platform <name>` | build, run, test | the platform to build for |
@@ -134,12 +135,47 @@ microvm-network: false;
 microvm-memory: 2048;     # MiB, or "auto"
 microvm-cpus: "auto";
 platform: linux-amd64;
+dotnet-settings: [ "GCHeapHardLimit=512M" 'GCSettings.LatencyMode=Interactive' ];
 ```
 
 The nearest `tazel_options.txt` at or above the current directory holds, except that a sandbox asked for by any file
 above stays asked for. This Tazel has no MicroVM to start, so with `sandboxing-with-microvm: true` it refuses every
 command that would run what a project brings (`build`, `run`, `test`, `package`, `custom`) rather than run it on this
 machine.
+
+## The .NET runtime of Tazel
+
+`--dotnet-settings` and `dotnet-settings: [ ... ];` of `tazel_options.txt` set the .NET runtime of the Tazel process
+that runs the command, and nothing else: not what it builds, tests or starts, and not `--jobs`. A setting not given
+is left to .NET; nothing is kept for a later command.
+
+```text
+tazel build //... --dotnet-settings=GCHeapHardLimit=512M,GCSettings.LatencyMode=Interactive
+tazel build //... --dotnet-settings GCHeapHardLimit=512M --dotnet-settings:ThreadPool.MinWorkerThreads=8
+tazel dotnet get GCHeapHardLimit
+tazel dotnet what-is CLI
+```
+
+| Setting | Value |
+| --- | --- |
+| `GCHeapHardLimit`, `GCHeapHardLimitSOH`, `GCHeapHardLimitLOH`, `GCHeapHardLimitPOH` | bytes, with `B`, `K`, `M`, `G` or `T` (KiB and up) |
+| `GCHeapHardLimitPercent`, `GCHeapHardLimitSOHPercent`, `GCHeapHardLimitLOHPercent`, `GCHeapHardLimitPOHPercent` | a whole percentage |
+| `GCSettings.LatencyMode` | `Batch`, `Interactive`, `LowLatency` or `SustainedLowLatency` |
+| `ThreadPool.MinWorkerThreads`, `ThreadPool.MaxWorkerThreads`, `ThreadPool.MinCompletionPortThreads`, `ThreadPool.MaxCompletionPortThreads` | a whole number |
+
+- An entry is split at its first `=`. The option takes `=`, `:` or a space before its value, a comma-separated list
+  in each form, and repeats; `\,` is a comma of a value. The file's settings come first and the command line's after
+  them, and the last of a name wins.
+- The whole set is checked before any of it is applied. Two ways of saying one limit are refused rather than one of
+  them ignored: `GCHeapHardLimit` with `GCHeapHardLimitPercent`, a limit of the whole heap with limits per object heap,
+  or limits per object heap in bytes and in percent. Limits per object heap need SOH and LOH (POH may be left out);
+  their percentages are each below 100, and so is their sum. A minimum of threads is at most their maximum.
+- Heap limits go to `AppContext.SetData`, then `GC.RefreshMemoryLimit()` once; a limit below what the process has
+  committed is refused by .NET, and that is `error[E0506]`, as is a latency mode or thread count .NET does not take.
+- `tazel dotnet get <setting>` prints what the process has: the GC's own report, or `default` where it reports none,
+  and for heap limits the memory available to the GC. `tazel dotnet what-is <term>` explains GCHeapHardLimit, RyuJIT,
+  .NET, CLI (the Common Language Infrastructure), CIL, CLR, C++/CLI, C#, WorkstationGC, BackgroundGC, daemon, CTS,
+  VES and ECMA-335, offline. Tazel has no daemon: `tazel dotnet start-daemon` and the like say so.
 
 ## Directives of the text files
 

@@ -51,7 +51,14 @@ internal static class Program
             command.Output.Progress);
         try
         {
+            ApplyDotnetSettings(command, directory);
             return await new Commands(reporter, directory).RunAsync(command, cancel).ConfigureAwait(false);
+        }
+        catch (Runtime.DotnetSettingsException error)
+        {
+            reporter.Error(ErrorCodes.DotnetSettingRefused, error.Message, "tazel help dotnet --long says what each setting takes",
+                "The runtime had the last word, and the word was no.");
+            return 1;
         }
         catch (CommandLineException error)
         {
@@ -91,6 +98,25 @@ internal static class Program
         {
             reporter.Error(ErrorCodes.Stopped, "stopped", null, "Tazel put its tools down mid-sentence.");
             return 130;
+        }
+    }
+
+    /// <summary>
+    /// Applies the .NET settings of tazel_options.txt and of --dotnet-settings to this process, before the command:
+    /// the file's first, the command line's after, the whole set checked before any is applied. Help, explain,
+    /// version and dotnet what-is read no file and change nothing.
+    /// </summary>
+    private static void ApplyDotnetSettings(Command command, string directory)
+    {
+        if (command is HelpCommand or ExplainCommand or VersionCommand or DotnetWhatIsCommand)
+        {
+            return;
+        }
+
+        var fromFile = TazelOptionsFile.Effective(directory).Options.DotnetSettings;
+        if (fromFile.Count + command.DotnetSettings.Count > 0)
+        {
+            Runtime.DotnetSettings.Apply(Runtime.DotnetSettings.Effective(fromFile, command.DotnetSettings));
         }
     }
 

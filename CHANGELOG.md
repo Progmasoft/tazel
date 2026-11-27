@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- `--dotnet-settings Name=Value[,...]` and `dotnet-settings: [ ... ];` in `tazel_options.txt` set the .NET runtime of
+  the Tazel process: the GC heap hard limits (in bytes or percent, whole or per object heap), the GC latency mode, and
+  the thread pool's minimum and maximum threads. `tazel dotnet get <setting>` reads them; `tazel dotnet what-is <term>`
+  explains fourteen terms of .NET offline. Errors `E0213` and `E0506`.
+
 - `tazel_options.txt`, `tazel_custom.txt` and `tazel_envs.txt` take directives: `.include "file"` and
   `.include <file>` (below `$TAZEL_HOME/Include/`), `.import`, `.pragma once`, and `.if`, `.elif`, `.else`, `.end` on
   conditions over `host_system`, `target_system`, `defined("NAME")` and `env("NAME")`. `tazel_options.txt` chooses the

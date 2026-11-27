@@ -62,7 +62,11 @@ internal sealed record BuildFlags
 }
 
 /// <summary>A command line, read into what it asks for; later stages do not look at its text again.</summary>
-internal abstract record Command(OutputOptions Output);
+internal abstract record Command(OutputOptions Output)
+{
+    /// <summary>The settings of --dotnet-settings, Name=Value each, checked; for this Tazel process alone.</summary>
+    public IReadOnlyList<Runtime.DotnetSetting> DotnetSettings { get; init; } = [];
+}
 
 internal sealed record BuildCommand(OutputOptions Output, IReadOnlyList<string> Labels, BuildFlags Flags) : Command(Output);
 
@@ -97,6 +101,12 @@ internal sealed record QueryCommand(OutputOptions Output, QueryKind Kind, string
 internal sealed record FetchCommand(OutputOptions Output) : Command(Output);
 
 internal sealed record ExplainCommand(OutputOptions Output, string Code, bool Long) : Command(Output);
+
+/// <summary><c>tazel dotnet get &lt;setting&gt;</c>: what this process has for a .NET setting.</summary>
+internal sealed record DotnetGetCommand(OutputOptions Output, string Setting) : Command(Output);
+
+/// <summary><c>tazel dotnet what-is &lt;term&gt;</c>: what a term of .NET means.</summary>
+internal sealed record DotnetWhatIsCommand(OutputOptions Output, string Term) : Command(Output);
 
 /// <summary><c>tazel limited-time C#</c>: the migration to BUILD.csx and labels in Depends, until Tazel 1.0.0.</summary>
 internal sealed record MigrateCommand(OutputOptions Output) : Command(Output);
@@ -136,6 +146,9 @@ internal static class CommandLine
         Flag,
         Value,
         List,
+
+        // A list after whitespace too: --dotnet-settings A=1,B=2.
+        ListAlways,
     }
 
     private sealed record Option(string Long, Kind Kind, IReadOnlyList<string>? Values, params string[] Scope);
@@ -147,6 +160,7 @@ internal static class CommandLine
         new("color", Kind.Value, ["always", "auto", "never"]),
         new("progress", Kind.Value, ["always", "auto", "never"]),
         new("quiet", Kind.Flag, null),
+        new("dotnet-settings", Kind.ListAlways, null),
         new("message-format", Kind.Value, ["rich-stdio", "script-friendly-stdio", "jsonl", "xml"]),
         new("help", Kind.Flag, null),
         new("platform", Kind.Value, Platforms.Names, Building),
@@ -172,6 +186,26 @@ internal static class CommandLine
     {
         ArgumentNullException.ThrowIfNull(arguments);
         var scanned = Scan(arguments);
+        // Every --dotnet-settings, in order, each entry checked here; on a name given twice the last wins later.
+        var settings = scanned.Seen.Where(entry => entry.Option.Long == "dotnet-settings")
+            .SelectMany(entry => entry.Values)
+            .Select(entry =>
+            {
+                try
+                {
+                    return Runtime.DotnetSettings.Parse(entry, "--dotnet-settings");
+                }
+                catch (Runtime.DotnetSettingsException error)
+                {
+                    throw new CommandLineException(error.Message, error);
+                }
+            })
+            .ToList();
+        return Make(scanned) with { DotnetSettings = settings };
+    }
+
+    private static Command Make(Scanned scanned)
+    {
         var command = scanned.Command;
         var unscoped = scanned.Seen.FirstOrDefault(entry =>
             entry.Option.Scope.Length > 0 && !entry.Option.Scope.Contains(command, StringComparer.Ordinal));
@@ -312,8 +346,23 @@ internal static class CommandLine
 
     private static Command MakeDaemon(Scanned scanned, OutputOptions output)
     {
-        var actions = new[] { "start-daemon", "restart-daemon", "stop-daemon" };
+        var actions = new[] { "start-daemon", "restart-daemon", "stop-daemon", "get", "what-is" };
         var positional = scanned.Positional;
+        if (positional is ["get", var setting])
+        {
+            return new DotnetGetCommand(output, setting);
+        }
+
+        if (positional is ["what-is", var term])
+        {
+            return new DotnetWhatIsCommand(output, term);
+        }
+
+        if (positional is ["get" or "what-is", ..])
+        {
+            throw new CommandLineException($"tazel dotnet {positional[0]} takes one {(positional[0] == "get" ? "setting" : "term")}");
+        }
+
         if (positional.Count == 1 && actions.Contains(positional[0], StringComparer.Ordinal))
         {
             return new DaemonCommand(output, positional[0]);
@@ -321,7 +370,7 @@ internal static class CommandLine
 
         var near = positional.Count == 1 ? Suggestions.Nearest(positional[0], actions) : null;
         throw new CommandLineException(
-            $"tazel dotnet takes start-daemon, restart-daemon or stop-daemon{(near is null ? "" : $"; did you mean {near}?")}");
+            $"tazel dotnet takes get, what-is, start-daemon, restart-daemon or stop-daemon{(near is null ? "" : $"; did you mean {near}?")}");
     }
 
     private static Command MakeCache(Scanned scanned, OutputOptions output)
@@ -399,13 +448,14 @@ internal static class CommandLine
         else if (separator >= 0)
         {
             var text = body[(separator + 1)..];
-            values = option.Kind == Kind.List ? [.. SplitList(text)] : [text];
+            values = option.Kind is Kind.List or Kind.ListAlways ? [.. SplitList(text)] : [text];
             Check(option, values, $"--{name}{body[separator]}");
         }
         else
         {
             // Whitespace gives one value, whatever it holds.
-            values = index < arguments.Count ? [arguments[index++]] : throw new CommandLineException($"--{name} needs a value");
+            values = index >= arguments.Count ? throw new CommandLineException($"--{name} needs a value")
+                : option.Kind == Kind.ListAlways ? [.. SplitList(arguments[index++])] : [arguments[index++]];
             Check(option, values, $"--{name} ");
         }
 

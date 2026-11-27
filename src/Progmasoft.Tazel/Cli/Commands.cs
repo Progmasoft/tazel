@@ -63,6 +63,15 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
                 return 0;
             case MigrateCommand:
                 return Migrate();
+            case DotnetGetCommand get:
+                foreach (var line in Runtime.DotnetSettings.Get(get.Setting))
+                {
+                    reporter.Plain(line);
+                }
+
+                return 0;
+            case DotnetWhatIsCommand whatIs:
+                return WhatIs(whatIs.Term);
             case CleanCommand clean:
                 return Clean(clean.Expunge);
             case CacheKeygenCommand keygen:
@@ -148,6 +157,21 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         reporter.Success(result.Renamed.Count + result.Rewritten.Count == 0
             ? "nothing to change: every project file is BUILD.csx and names its dependencies by label"
             : $"changed {result.Renamed.Count + result.Rewritten.Count} project file{(result.Renamed.Count + result.Rewritten.Count == 1 ? "" : "s")}");
+        return 0;
+    }
+
+    /// <summary>tazel dotnet what-is: a term of .NET explained, offline.</summary>
+    private int WhatIs(string term)
+    {
+        if (Runtime.DotnetGlossary.Find(term) is not { } entry)
+        {
+            var near = Runtime.DotnetGlossary.Nearest(term);
+            throw new CommandLineException(
+                $"'{term}' is not a term tazel dotnet what-is knows{(near is null ? "" : $"; did you mean {near}?")}");
+        }
+
+        reporter.Strong(entry.Title is null ? entry.Term : $"{entry.Term} — {entry.Title}");
+        reporter.Plain(entry.Text);
         return 0;
     }
 

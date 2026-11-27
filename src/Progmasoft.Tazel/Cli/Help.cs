@@ -212,10 +212,28 @@ internal static class Help
 
               --algorithm ed25519|rsa-4096|ml-dsa  the algorithm; default: ed25519. ml-dsa is ML-DSA-65 (FIPS 204).
             """),
-        ["dotnet"] = new("tazel dotnet start-daemon|restart-daemon|stop-daemon: the daemon of Tazel.", """
+        ["dotnet"] = new("tazel dotnet get|what-is: the .NET runtime of this Tazel process and terms of .NET.", """
+            tazel dotnet get <setting>
+            tazel dotnet what-is <term>
             tazel dotnet start-daemon|restart-daemon|stop-daemon
 
-            The daemon that keeps the .NET runtime of Tazel warm between commands.
+            get prints what this process has for one of the settings below, as .NET reports it, and default where it
+            reports none; --dotnet-settings of another command does not reach a later one. what-is explains a term of
+            .NET, offline: GCHeapHardLimit, RyuJIT, .NET, CLI (the Common Language Infrastructure, never a command
+            line), CIL, CLR, C++/CLI, C#, WorkstationGC, BackgroundGC, daemon, CTS, VES, ECMA-335. This Tazel has no
+            daemon: start-daemon, restart-daemon and stop-daemon say so.
+
+            --dotnet-settings Name=Value[,Name=Value] sets, for the .NET runtime of this Tazel process alone, any of:
+              GCHeapHardLimit, GCHeapHardLimitSOH, GCHeapHardLimitLOH, GCHeapHardLimitPOH   bytes: 512M, 2G, 1048576
+              GCHeapHardLimitPercent, GCHeapHardLimitSOHPercent, GCHeapHardLimitLOHPercent,
+              GCHeapHardLimitPOHPercent                                                     whole percentages
+              GCSettings.LatencyMode            Batch, Interactive, LowLatency, SustainedLowLatency
+              ThreadPool.MinWorkerThreads, ThreadPool.MaxWorkerThreads,
+              ThreadPool.MinCompletionPortThreads, ThreadPool.MaxCompletionPortThreads      whole numbers
+            Sizes take B, K, M, G or T (KiB and up). The option may repeat and mix =, : and a space; \, is a comma of
+            a value; a name given twice keeps its last value. dotnet-settings: [ "Name=Value" ... ]; in
+            tazel_options.txt comes first and the command line after it. A setting not given is left to .NET. Nothing
+            reaches what Tazel builds or starts, and --jobs is untouched.
             """),
     };
 
@@ -224,6 +242,7 @@ internal static class Help
           --color always|auto|never     colors; default: auto
           --progress always|auto|never  the [done/total] counter; default: auto
           --quiet                       only problems and the program's own output
+          --dotnet-settings Name=Value  the .NET runtime of this process (tazel help dotnet --long)
           --message-format rich-stdio|script-friendly-stdio|jsonl|xml
                                         how messages are printed; default: rich-stdio
           --help, -h                    the help of the command
