@@ -57,10 +57,10 @@ public sealed record ConfigurationContext(SystemFacts Host, SystemFacts? Target,
 public static class ConfigurationResolver
 {
     /// <summary>The most files one configuration reads.</summary>
-    public const int MaxFiles = 4096;
+    public static int MaxFiles { get; } = 4096;
 
     /// <summary>The most tokens one configuration holds.</summary>
-    public const int MaxTokens = 1_000_000;
+    public static int MaxTokens { get; } = 1_000_000;
 
     /// <summary>
     /// The tokens of <paramref name="text"/>, the file at <paramref name="path"/> that messages call
@@ -110,7 +110,7 @@ public static class ConfigurationResolver
 
             _chain.Add((canonical, shown));
             var first = _output.Count;
-            Nodes(document.Nodes, Path.GetDirectoryName(canonical)!, shown, text, origin, onTarget);
+            Emit(document.Nodes, Path.GetDirectoryName(canonical)!, shown, text, origin, onTarget);
             _chain.RemoveAt(_chain.Count - 1);
 
             // The last entry of a file may leave out its ';': it is put back, so the next file starts afresh.
@@ -121,7 +121,7 @@ public static class ConfigurationResolver
             }
         }
 
-        private void Nodes(IReadOnlyList<Node> nodes, string directory, string shown, string text, Source? origin, bool onTarget)
+        private void Emit(IReadOnlyList<Node> nodes, string directory, string shown, string text, Source? origin, bool onTarget)
         {
             foreach (var node in nodes)
             {
@@ -146,6 +146,8 @@ public static class ConfigurationResolver
                     case IfNode chain:
                         If(chain, directory, shown, text, origin, onTarget);
                         break;
+                    default:
+                        throw new ArgumentException($"no node {node.GetType().Name}", nameof(nodes));
                 }
             }
         }
@@ -177,7 +179,7 @@ public static class ConfigurationResolver
 
                 if (holds == true)
                 {
-                    Nodes(branch.Body, directory, shown, text, origin, dependent);
+                    Emit(branch.Body, directory, shown, text, origin, dependent);
                     return;
                 }
             }
@@ -212,8 +214,9 @@ public static class ConfigurationResolver
             }
         }
 
-        private void Include(IncludeNode include, string directory, string shown, string text, Source? origin, bool onTarget)
+        private void Include(IncludeNode node, string directory, string shown, string text, Source? origin, bool onTarget)
         {
+            var include = node;
             var at = origin is null ? include.At : include.At with { Origin = origin };
             var target = Target(include, directory, at, shown, text);
             var canonical = Canonical(target);
@@ -256,38 +259,50 @@ public static class ConfigurationResolver
         private string Target(IncludeNode include, string directory, Token at, string shown, string text)
         {
             var path = include.Path;
-            CustomCommandsException Refused(string why) => Failure(ErrorCodes.IncludePathRefused, (at, shown, text),
-                $"'{path}' {why}", null);
-            if (path.IndexOfAny(['*', '?', '[', ']']) >= 0)
+            var refusal = Refusal(path, include.Global);
+            if (refusal is not null)
             {
-                throw Refused("has a wildcard; name one file");
-            }
-
-            if (path.Contains("://", StringComparison.Ordinal))
-            {
-                throw Refused("is a URL; Tazel includes files of this machine only");
-            }
-
-            if (Path.IsPathRooted(path) || (path.Length >= 2 && path[1] == ':'))
-            {
-                throw Refused(include.Global ? "is absolute; a path in <> is below the Include directory" : "is absolute; a path in quotes is relative to this file");
+                throw Failure(ErrorCodes.IncludePathRefused, (at, shown, text), $"'{path}' {refusal}", null);
             }
 
             if (!include.Global)
             {
                 var full = Path.GetFullPath(Path.Combine(directory, path));
-                if (!File.Exists(full))
-                {
-                    throw Failure(ErrorCodes.IncludeMissing, (at, shown, text), $"{path} is not a file beside {shown}", null);
-                }
-
-                return full;
+                return File.Exists(full) ? full
+                    : throw Failure(ErrorCodes.IncludeMissing, (at, shown, text), $"{path} is not a file beside {shown}", null);
             }
 
-            if (path.Replace('\\', '/').Split('/').Any(part => part is ".." or "."))
+            return Global(path, at, shown, text);
+        }
+
+        // Why a path is not taken as written, or null when it is.
+        private static string? Refusal(string path, bool global)
+        {
+            if (path.IndexOfAny(['*', '?', '[', ']']) >= 0)
             {
-                throw Refused("has . or .. parts; a path in <> stays below the Include directory");
+                return "has a wildcard; name one file";
             }
+
+            if (path.Contains("://", StringComparison.Ordinal))
+            {
+                return "is a URL; Tazel includes files of this machine only";
+            }
+
+            if (Path.IsPathRooted(path) || (path.Length >= 2 && path[1] == ':'))
+            {
+                return global ? "is absolute; a path in <> is below the Include directory" : "is absolute; a path in quotes is relative to this file";
+            }
+
+            return global && path.Replace('\\', '/').Split('/').Any(part => part is ".." or ".")
+                ? "has . or .. parts; a path in <> stays below the Include directory"
+                : null;
+        }
+
+        // A file below the family's Include directory of TAZEL_HOME, which no link may leave.
+        private string Global(string path, Token at, string shown, string text)
+        {
+            CustomCommandsException Refused(string why) => Failure(ErrorCodes.IncludePathRefused, (at, shown, text),
+                $"'{path}' {why}", null);
 
             string root;
             try

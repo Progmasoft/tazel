@@ -17,10 +17,16 @@ public static class CustomParser
 
     /// <summary>
     /// The commands of <paramref name="text"/>; <paramref name="file"/> names it in messages. Its directives are
-    /// resolved for <paramref name="context"/> (this machine, built for itself, by default), and a quoted include is
-    /// found beside <paramref name="path"/> (<paramref name="file"/> from the working directory by default).
+    /// resolved for <c>context</c> (this machine, built for itself, by default), and a quoted include is
+    /// found beside <c>path</c> (<paramref name="file"/> from the working directory by default).
     /// </summary>
-    public static IReadOnlyList<CustomCommand> Parse(string text, string file, string? path = null, Configuration.ConfigurationContext? context = null) =>
+    public static IReadOnlyList<CustomCommand> Parse(string text, string file) => Parse(text, file, null, null);
+
+    /// <summary><see cref="Parse(string, string)"/>, with includes found beside <paramref name="path"/>.</summary>
+    public static IReadOnlyList<CustomCommand> Parse(string text, string file, string? path) => Parse(text, file, path, null);
+
+    /// <summary><see cref="Parse(string, string, string)"/>, resolved for <paramref name="context"/> when it is not null.</summary>
+    public static IReadOnlyList<CustomCommand> Parse(string text, string file, string? path, Configuration.ConfigurationContext? context) =>
         new Reader(Configuration.ConfigurationResolver.Resolve(path ?? file, file, text, Configuration.ConfigurationFamily.Custom,
             context ?? Configuration.ConfigurationContext.ForThisMachine().ForItself()), file, text).Commands();
 
