@@ -91,8 +91,11 @@ internal sealed partial class Planner
             .Concat(FileSets.Resolve(settings.TextualHeaders, target.PackageDirectory, Layout.MainRoot, target.Place))
             .ToList();
         products.PublicIncludes.Add(FileSets.ToRoot(target.Module.Root, Layout.MainRoot));
+        // "." is the package's own directory, as Bazel's includes = ["."]; every other entry is a path below it.
         products.PublicIncludes.AddRange(settings.IncludeDirectories
-            .Select(directory => FileSets.PathIn(directory, target.PackageDirectory, Layout.MainRoot, target.Place, mustExist: true)));
+            .Select(directory => directory == "."
+                ? FileSets.ToRoot(target.PackageDirectory, Layout.MainRoot)
+                : FileSets.PathIn(directory, target.PackageDirectory, Layout.MainRoot, target.Place, mustExist: true)));
         products.PublicDefines.AddRange(settings.PreprocessorDefinitions);
         products.PublicHeaders.AddRange(headers);
         var includes = new List<string>(products.PublicIncludes);
