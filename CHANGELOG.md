@@ -5,6 +5,8 @@
 
 ## Unreleased
 
+- `IncludeDirectories = ["."]` names the package's own directory, as `includes = ["."]` does in Bazel; it was refused.
+
 - `--message-format rich-stdio|script-friendly-stdio|jsonl|xml`: the rich terminal output as before, plain lines that
   start with a fixed word for scripts and logs, one JSON object per message per line, or one XML document. Errors of
   the command line come in the format it asks for.
