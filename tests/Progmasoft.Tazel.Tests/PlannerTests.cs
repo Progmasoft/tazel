@@ -161,6 +161,52 @@ public sealed class PlannerTests
         Assert.Contains($"builds for {other.Name()}", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("clang", "-Wl,/Brepro")]
+    [InlineData("x86_64-w64-mingw32-clang", "-Wl,--no-insert-timestamp")]
+    public async Task WindowsObjectsAndProgramsCarryNoTime(string compiler, string linkFlag)
+    {
+        using var module = new TemporaryModule();
+        module.Write("MODULE.csx", TemporaryModule.ModuleFile + """
+
+                toolchains = Toolchains.Define("//toolchains:windows");
+                """)
+            .Write("toolchains/BUILD.csx", $$"""
+                using Progmasoft.Tazel.Dsl.Build.Toolchain.Prelude;
+                CC.Toolchain("windows", new()
+                {
+                    ExecutionPlatform = Platform.{{Host.Platform}},
+                    TargetPlatform = Platform.WindowsX64,
+                    Tools = new()
+                    {
+                        CCompiler = @"{{Path.Combine(module.Root, "tools", compiler)}}",
+                        CppCompiler = @"{{Path.Combine(module.Root, "tools", compiler + "++")}}",
+                        Archiver = @"{{Path.Combine(module.Root, "tools", "llvm-ar")}}",
+                    },
+                });
+                """)
+            .Write("BUILD.csx", """
+                using Progmasoft.Tazel.Dsl.Build.Prelude;
+                CC.Executable("app", new() { Sources = ["main.c"] });
+                """)
+            .Write("main.c", "")
+            .Write($"tools/{compiler}", "").Write($"tools/{compiler}++", "").Write("tools/llvm-ar", "");
+        var workspace = await Workspace.LoadAsync(module.Root, new BuildContext(BuildMode.Debug, Platform.WindowsX64),
+            new Version(0, 1, 0));
+        var planner = new Planner(workspace, new BuildOptions { Platform = Platform.WindowsX64 },
+            new ToolchainChooser(workspace, Platform.WindowsX64));
+        var actions = new List<BuildAction>();
+        Collect(planner.Plan(workspace.Targets[new TargetLabel(PackageId.Root, "app")]).Main!, actions);
+
+        var compile = actions.Single(action => action.Description.StartsWith("Compiling", StringComparison.Ordinal));
+        var link = actions.Single(action => action.Description.StartsWith("Linking", StringComparison.Ordinal));
+        Assert.Contains("-mno-incremental-linker-compatible", compile.Command);
+        Assert.Contains(linkFlag, link.Command);
+        // A date the user set is kept; otherwise the epoch.
+        Assert.Equal(Environment.GetEnvironmentVariable("SOURCE_DATE_EPOCH") ?? "0",
+            compile.Environment["SOURCE_DATE_EPOCH"]);
+    }
+
     private static void Collect(BuildAction action, List<BuildAction> into)
     {
         if (into.Contains(action))

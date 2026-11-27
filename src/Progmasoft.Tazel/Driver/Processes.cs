@@ -210,6 +210,10 @@ internal static class Processes
             environment["ZERO_AR_DATE"] = "1";
         }
 
+        // Compilers, assemblers and linkers that would stamp the time into an output (GCC's __DATE__, binutils' PE and
+        // COFF headers) take it from here instead, so that the same inputs give the same bytes. A value the user set is
+        // kept: it is how a reproducible release names its own date.
+        environment["SOURCE_DATE_EPOCH"] = System.Environment.GetEnvironmentVariable("SOURCE_DATE_EPOCH") ?? "0";
         return environment;
     }
 
