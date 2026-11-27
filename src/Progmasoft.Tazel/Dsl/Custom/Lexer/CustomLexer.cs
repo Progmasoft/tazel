@@ -30,18 +30,38 @@ public enum TokenKind
 
     /// <summary><c>)</c>.</summary>
     Close,
+
+    /// <summary><c>[</c>.</summary>
+    BracketOpen,
+
+    /// <summary><c>]</c>.</summary>
+    BracketClose,
+
+    /// <summary>
+    /// A line that starts with <c>.</c> and a letter: <c>.include</c>, <c>.import</c>, <c>.pragma</c>, <c>.if</c>,
+    /// <c>.elif</c>, <c>.else</c>, <c>.end</c>. Its text is the word after the dot, its argument the rest of the line.
+    /// </summary>
+    Directive,
 }
+
+/// <summary>The file a token was read from and its text, for a token of a file another one includes.</summary>
+/// <param name="File">The file, as messages show it.</param>
+/// <param name="Text">All of its text.</param>
+public sealed record Source(string File, string Text);
 
 /// <summary>One word of the file, with where it starts.</summary>
 /// <param name="Kind">What it is.</param>
 /// <param name="Text">Its text; for a string, what stands between the quotes.</param>
 /// <param name="Line">Its line, from 1.</param>
 /// <param name="Column">Its column, from 1.</param>
-public sealed record Token(TokenKind Kind, string Text, int Line, int Column);
+/// <param name="Argument">For a directive, the rest of its line, trimmed; null otherwise.</param>
+/// <param name="Origin">The file the token comes from when it is not the one being read, else null.</param>
+public sealed record Token(TokenKind Kind, string Text, int Line, int Column, string? Argument = null, Source? Origin = null);
 
 /// <summary>
-/// Splits the text of <c>tazel_custom.txt</c> or <c>tazel_options.txt</c>: comments go, and whitespace of any kind
-/// only separates. <c>#</c> starts a comment to the end of the line, <c>&lt;# ... #&gt;</c> a comment of any length.
+/// Splits the text of <c>tazel_options.txt</c>, <c>tazel_custom.txt</c> or <c>tazel_envs.txt</c>: comments go, and
+/// whitespace of any kind only separates. <c>#</c> starts a comment to the end of the line, <c>&lt;# ... #&gt;</c> a
+/// comment of any length. A line whose first character, after spaces, is <c>.</c> and a letter is a directive.
 /// </summary>
 /// <param name="text">The text.</param>
 /// <param name="file">The file, for messages.</param>
@@ -50,6 +70,9 @@ public sealed class CustomLexer(string text, string file)
     private int _position;
     private int _line = 1;
     private int _column = 1;
+
+    // Whether only whitespace stands between the start of the line and here: a directive starts a line.
+    private bool _lineStart = true;
 
     /// <summary>Every token of the text, in order; a character that starts no token is an error.</summary>
     public IReadOnlyList<Token> Tokens()
@@ -61,6 +84,10 @@ public sealed class CustomLexer(string text, string file)
             if (char.IsWhiteSpace(letter))
             {
                 Advance();
+            }
+            else if (letter == '.' && _lineStart && _position + 1 < text.Length && char.IsAsciiLetter(text[_position + 1]))
+            {
+                tokens.Add(Directive());
             }
             else if (At("<#"))
             {
@@ -93,8 +120,10 @@ public sealed class CustomLexer(string text, string file)
                     ';' => TokenKind.Semicolon,
                     '(' => TokenKind.Open,
                     ')' => TokenKind.Close,
+                    '[' => TokenKind.BracketOpen,
+                    ']' => TokenKind.BracketClose,
                     _ => throw Fail(Output.ErrorCodes.CharacterHasNoMeaning, $"'{letter}' has no meaning here", _line, _column, 1, "this one",
-                        "this file knows names, strings in ' \" or `, ( ) : ; and <N>; put other text in quotes",
+                        "this file knows names, strings in ' \" or `, ( ) [ ] : ; <N> and directives such as .include; put other text in quotes",
                         $"Tazel squinted at '{letter}' for a long time. It squinted back."),
                 };
                 tokens.Add(new Token(kind, letter.ToString(), _line, _column));
@@ -120,13 +149,57 @@ public sealed class CustomLexer(string text, string file)
         {
             _line++;
             _column = 1;
+            _lineStart = true;
         }
         else
         {
             _column++;
+            _lineStart &= char.IsWhiteSpace(letter);
         }
 
         return letter;
+    }
+
+    // .word and the rest of the line, up to a # comment; a directive takes no other token after it.
+    private Token Directive()
+    {
+        var (line, column) = (_line, _column);
+        Advance();
+        var begin = _position;
+        while (_position < text.Length && char.IsAsciiLetter(text[_position]))
+        {
+            Advance();
+        }
+
+        var word = text[begin.._position];
+        var rest = _position;
+        while (_position < text.Length && text[_position] != '\n')
+        {
+            Advance();
+        }
+
+        var argument = text[rest.._position];
+        // A # outside a string ends the line's text, as everywhere in these files.
+        var inside = '\0';
+        for (var i = 0; i < argument.Length; i++)
+        {
+            var c = argument[i];
+            if (inside != '\0')
+            {
+                inside = c == inside ? '\0' : inside;
+            }
+            else if (c is '"' or '\'' or '`')
+            {
+                inside = c;
+            }
+            else if (c == '#')
+            {
+                argument = argument[..i];
+                break;
+            }
+        }
+
+        return new Token(TokenKind.Directive, word, line, column, argument.Trim());
     }
 
     private void SkipBlockComment()

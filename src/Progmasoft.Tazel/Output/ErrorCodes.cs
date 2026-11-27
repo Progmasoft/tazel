@@ -29,6 +29,13 @@ internal static partial class ErrorCodes
     public const string StringNotClosed = "E0003";
     public const string PlaceholderNotClosed = "E0004";
     public const string PlaceholderOutOfRange = "E0005";
+    public const string DirectiveUnknown = "E0006";
+    public const string ConditionalUnbalanced = "E0007";
+    public const string ConditionInvalid = "E0008";
+    public const string IncludePathRefused = "E0009";
+    public const string IncludeMissing = "E0010";
+    public const string IncludeTooDeep = "E0011";
+    public const string PlatformDependsOnTarget = "E0012";
 
     public const string CommandLine = "E0100";
 
@@ -107,6 +114,42 @@ internal static partial class ErrorCodes
             "A placeholder counts from 1, like a person: <1> to <9>, with no zero in front. <*> stands for every argument.",
             "say: (\"echo\" <0>);", "say: (\"echo\" <1>);", Lexer),
 
+        new(DirectiveUnknown, "a directive Tazel does not know, or one written wrongly",
+            "A line that starts with a dot and a letter is a directive: .include, .import, .pragma once, .if, .elif, .else " +
+            "or .end. Directives take no ';'. .pragma once stands first in its file, before anything but comments, and once " +
+            "is the only pragma. A name that starts with a dot at the start of a line is read as a directive, so it goes in " +
+            "quotes.",
+            ".pragma once;", ".pragma once", Lexer),
+        new(ConditionalUnbalanced, "an .if without its .end, or a branch out of place",
+            "An .if opens a block that .end closes; between them come any .elif and at most one .else, last. An .elif, .else " +
+            "or .end with no .if open, a second .else, an .elif after .else, an .if left open at the end of the file, and " +
+            "blocks nested deeper than 64 are errors. .else and .end take nothing after them.",
+            ".if host_system.os == \"linux\"\nmicrovm-cpus: 4;", ".if host_system.os == \"linux\"\nmicrovm-cpus: 4;\n.end", Lexer),
+        new(ConditionInvalid, "a condition Tazel cannot read",
+            "A condition of .if and .elif is made of true and false, strings in quotes, host_system.os, .arch, .abi and " +
+            ".platform, the same four of target_system, defined(\"NAME\") and env(\"NAME\") for the environment, ==, !=, !, && and " +
+            "|| with the usual precedence, and parentheses. == and != compare two strings or two booleans; !, && and || take " +
+            "booleans, and the whole condition is one. Any other name or operator is an error; a condition runs nothing.",
+            ".if host_system.os = \"linux\"", ".if host_system.os == \"linux\"", Lexer),
+        new(IncludePathRefused, "an include or import path Tazel does not take",
+            "A path in quotes is a file relative to the directory of the file that names it; one in angle brackets, " +
+            "<file>, is below the Include directory of TAZEL_HOME for the kind of file (Options, Custom or Envs) and may not " +
+            "leave it, not through .. or a link either. Paths are taken as written: no wildcards, no URLs, no environment " +
+            "variables, and a quoted path is not absolute.",
+            ".include \"https://example.com/build.options.txt\"", ".include \"config/build.options.txt\"", Lexer),
+        new(IncludeMissing, "a file to include that is not there or cannot be read",
+            "The file a .include or .import names must exist and be readable. Nothing is included from a branch of .if that " +
+            "is not taken, so only a file the configuration reaches has to exist.", null, null, Lexer),
+        new(IncludeTooDeep, "includes that go round, nest too deep or grow too large",
+            "A file that includes itself, directly or through others, is an error unless it says .pragma once or is " +
+            "imported: then it is read once. Includes may nest 64 deep, and one configuration reads at most 4,096 files and " +
+            "1,000,000 tokens. The message shows the chain of includes.", null, null, Lexer),
+        new(PlatformDependsOnTarget, "a platform chosen by a condition on target_system",
+            "Tazel chooses the platform first, from the command line and the platform entries that do not depend on " +
+            "target_system, and then reads everything else for that platform. A platform set inside an .if or .elif on " +
+            "target_system, or in a file such a branch includes, would choose the platform from itself, so it is an error.",
+            ".if target_system.os == \"linux\"\nplatform: windows-x64;\n.end", ".if host_system.os == \"linux\"\nplatform: windows-x64;\n.end",
+            Options),
         new(CommandLine, "a command line Tazel cannot take",
             "The command, an option or a value is not one Tazel knows, or a command got arguments it does not take. Tazel " +
             "suggests the nearest spelling when there is one. tazel help lists the commands, and tazel help <command> --long " +

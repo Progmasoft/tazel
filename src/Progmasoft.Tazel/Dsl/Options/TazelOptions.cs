@@ -90,13 +90,26 @@ public static class TazelOptionsFile
     /// </summary>
     public static TazelOptions Parse(string text) => Parse(text, TazelOptions.FileName);
 
-    /// <summary>The options of <paramref name="text"/>; <paramref name="file"/> names it in messages.</summary>
-    public static TazelOptions Parse(string text, string file)
+    /// <summary>
+    /// The options of <paramref name="text"/>; <paramref name="file"/> names it in messages and a quoted include is
+    /// found beside <paramref name="path"/>. It is read twice: first without what depends on <c>target_system</c>, which
+    /// chooses the platform (<paramref name="requested"/>, else the file's, else this machine's), then for that
+    /// platform. A platform chosen inside a condition on <c>target_system</c> is an error.
+    /// </summary>
+    public static TazelOptions Parse(string text, string file, string? path = null, Platform? requested = null)
+    {
+        var machine = Configuration.ConfigurationContext.ForThisMachine();
+        var chosen = Read(text, file, path, machine);
+        var platform = requested ?? chosen.Platform ?? Driver.Host.Platform;
+        return Read(text, file, path, machine with { Target = Configuration.SystemFacts.Of(platform) });
+    }
+
+    private static TazelOptions Read(string text, string file, string? path, Configuration.ConfigurationContext context)
     {
         IReadOnlyList<Token> tokens;
         try
         {
-            tokens = new CustomLexer(text, file).Tokens();
+            tokens = Configuration.ConfigurationResolver.Resolve(path ?? file, file, text, Configuration.ConfigurationFamily.Options, context);
         }
         catch (CustomCommandsException error)
         {
@@ -150,9 +163,9 @@ public static class TazelOptionsFile
     /// for in any file above stays asked for, so a project cannot turn off what a directory around it requires.
     /// Default options, and no file, without any.
     /// </summary>
-    public static (TazelOptions Options, string? SandboxFile) Effective(string directory)
+    public static (TazelOptions Options, string? SandboxFile) Effective(string directory, Platform? requested = null)
     {
-        var files = Find(directory).Select(file => (File: file, Options: Read(file))).ToList();
+        var files = Find(directory).Select(file => (File: file, Options: Read(file, requested))).ToList();
         if (files.Count == 0)
         {
             return (new TazelOptions(), null);
@@ -162,7 +175,7 @@ public static class TazelOptionsFile
         return (files[0].Options with { SandboxingWithMicroVM = asking is not null }, asking);
     }
 
-    private static TazelOptions Read(string file)
+    private static TazelOptions Read(string file, Platform? requested)
     {
         string text;
         try
@@ -178,7 +191,7 @@ public static class TazelOptionsFile
             throw new TazelOptionsException($"{file} could not be read: {problem.Message}", problem);
         }
 
-        return Parse(text, file);
+        return Parse(text, file, file, requested);
     }
 
     private sealed class Reader(IReadOnlyList<Token> tokens, string file, string text)

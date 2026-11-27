@@ -202,7 +202,13 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             throw new CustomCommandsException($"there is no {CustomCommandFiles.FileName} in {workingDirectory}");
         }
 
-        var commands = CustomParser.Parse(File.ReadAllText(file));
+        // Its conditions see the platform tazel_options.txt chooses, else this machine's.
+        var (options, _) = TazelOptionsFile.Effective(workingDirectory);
+        var context = Dsl.Configuration.ConfigurationContext.ForThisMachine() with
+        {
+            Target = Dsl.Configuration.SystemFacts.Of(options.Platform ?? Driver.Host.Platform),
+        };
+        var commands = CustomParser.Parse(File.ReadAllText(file), CustomCommandFiles.FileName, file, context);
         if (words.Count > CustomCommandFiles.MaxArguments)
         {
             throw new CommandLineException($"tazel custom takes at most {CustomCommandFiles.MaxArguments} words");

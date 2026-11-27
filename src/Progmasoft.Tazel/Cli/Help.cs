@@ -181,7 +181,7 @@ internal static class Help
             Every error of Tazel has a code, E and four digits, as in error[E0406]. tazel explain prints what the code
             means and a fixed example; --long says why, and shows the wrong text and the right one side by side.
             The first two digits say where an error comes from:
-              00  the text files (their comments, strings and placeholders)
+              00  the text files (their comments, strings, placeholders and directives)
               01  the command line
               02  tazel_options.txt
               03  tazel_custom.txt

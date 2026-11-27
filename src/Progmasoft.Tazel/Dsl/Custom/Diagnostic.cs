@@ -46,6 +46,7 @@ public sealed record Diagnostic(
         string code, string text, string file, Token token, string message, string label, string? help, string? joke)
     {
         ArgumentNullException.ThrowIfNull(token);
+        (text, file) = token.Origin is { } origin ? (origin.Text, origin.File) : (text, file);
         var width = token.Kind switch
         {
             TokenKind.String => token.Text.Length + 2,
@@ -60,6 +61,7 @@ public sealed record Diagnostic(
         string code, string text, string file, Token token, string message, string label, string? help, string? joke)
     {
         ArgumentNullException.ThrowIfNull(token);
+        (text, file) = token.Origin is { } origin ? (origin.Text, origin.File) : (text, file);
         var marked = AtToken(code, text, file, token, message, label, help, joke);
         // A string may span lines; then the mark goes to the end of the line it starts on.
         var column = Math.Min(token.Column + marked.Width, marked.SourceLine.Length + 1);
