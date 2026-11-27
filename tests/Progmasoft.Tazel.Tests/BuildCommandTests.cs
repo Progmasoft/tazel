@@ -23,12 +23,12 @@ public sealed class BuildCommandTests
         CC.Executable("app", new()
         {
             Sources = ["main.cpp", "half.c"],
-            Depends = [math],
+            Depends = ["//:math"],
             CCompilerOptions = ["-DONLY_C"],
             CppCompilerOptions = ["-DONLY_CXX"],
             RuntimeData = ["data.txt"],
         });
-        CC.Test("math_test", new() { Sources = ["math_test.cpp"], Depends = [math], ShardCount = 2 });
+        CC.Test("math_test", new() { Sources = ["math_test.cpp"], Depends = ["//:math"], ShardCount = 2 });
         CC.Test("failing", new() { Sources = ["failing.cpp"], Tags = ["manual"] });
         """;
 

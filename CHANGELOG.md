@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- Breaking: a package's project file is `BUILD.csx` and nothing else; a directory with `BUILD.tzl`, `BUILD.tazel`,
+  `BUILD` or `Tazel.build` stops the build with a message. `Depends` takes labels only, such as `"//:math"`; the value a
+  declaration returns is no longer taken. `tazel limited-time C#`, until 1.0.0, renames those files and writes the
+  targets `Depends` named by their variables as labels, without running any project file.
+
 - Building for DragonFly BSD with zig says that zig brings no libc for it, instead of zig's own error, and what does
   build for it. Tests build Zig, C and C++ for FreeBSD and OpenBSD with zig and check that the files are theirs.
 

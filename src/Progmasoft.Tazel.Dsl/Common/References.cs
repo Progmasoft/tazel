@@ -37,7 +37,7 @@ public enum TestSize
     Enormous,
 }
 
-/// <summary>A target a project file declared; <c>Depends</c> takes it as well as its label.</summary>
+/// <summary>A target a project file declared. <c>Depends</c> takes its label, not this value.</summary>
 public sealed class Target
 {
     internal Target(string label) => Label = label;
@@ -49,7 +49,7 @@ public sealed class Target
     public override string ToString() => Label;
 }
 
-/// <summary>A target that another depends on: its label, or the value its declaration returned.</summary>
+/// <summary>A target that another depends on, by its label.</summary>
 public sealed class TargetReference
 {
     private TargetReference(string label) => Label = label;
@@ -60,9 +60,6 @@ public sealed class TargetReference
     /// <summary>A label.</summary>
     public static implicit operator TargetReference(string label) => FromLabel(label);
 
-    /// <summary>A declared target.</summary>
-    public static implicit operator TargetReference(Target target) => FromTarget(target);
-
     /// <summary>A label.</summary>
     public static TargetReference FromLabel(string label)
     {
@@ -70,18 +67,11 @@ public sealed class TargetReference
         return new TargetReference(label);
     }
 
-    /// <summary>A declared target.</summary>
-    public static TargetReference FromTarget(Target target)
-    {
-        ArgumentNullException.ThrowIfNull(target);
-        return new TargetReference(target.Label);
-    }
-
     /// <inheritdoc/>
     public override string ToString() => Label;
 }
 
-/// <summary>The targets a target depends on: <c>["//:math", math]</c>.</summary>
+/// <summary>The targets a target depends on, by their labels: <c>["//:math", ":util", "@dep//:x"]</c>.</summary>
 [CollectionBuilder(typeof(TargetReferences), nameof(Create))]
 public sealed class TargetReferences : IEnumerable<TargetReference>
 {

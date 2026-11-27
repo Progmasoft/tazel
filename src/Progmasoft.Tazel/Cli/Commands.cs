@@ -61,6 +61,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             case ExplainCommand explain:
                 Explain(explain);
                 return 0;
+            case MigrateCommand:
+                return Migrate();
             case CleanCommand clean:
                 return Clean(clean.Expunge);
             case CacheKeygenCommand keygen:
@@ -117,6 +119,36 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         {
             reporter.Warning("MODULE.csx sets Execution.Memory; this Tazel limits the actions by Jobs only");
         }
+    }
+
+    /// <summary>
+    /// tazel limited-time C#: renames the project files of earlier names below the working directory to BUILD.csx and
+    /// writes the targets Depends names by their variables as labels; nothing is written when anything is wrong.
+    /// </summary>
+    private int Migrate()
+    {
+        var result = Project.CsxMigration.Run(workingDirectory);
+        if (result.Problems.Count > 0)
+        {
+            reporter.Error(ErrorCodes.Project, $"nothing was changed:\n{string.Join('\n', result.Problems)}",
+                "fix these and run tazel limited-time C# again", "Measure twice, cut once; Tazel measured and put the saw down.");
+            return 1;
+        }
+
+        foreach (var renamed in result.Renamed)
+        {
+            reporter.Plain($"renamed {renamed}");
+        }
+
+        foreach (var rewritten in result.Rewritten)
+        {
+            reporter.Plain($"wrote the Depends of {rewritten} as labels");
+        }
+
+        reporter.Success(result.Renamed.Count + result.Rewritten.Count == 0
+            ? "nothing to change: every project file is BUILD.csx and names its dependencies by label"
+            : $"changed {result.Renamed.Count + result.Rewritten.Count} project file{(result.Renamed.Count + result.Rewritten.Count == 1 ? "" : "s")}");
+        return 0;
     }
 
     private int Clean(bool expunge)

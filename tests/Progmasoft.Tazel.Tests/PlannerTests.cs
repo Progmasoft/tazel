@@ -72,7 +72,7 @@ public sealed class PlannerTests
         CC.SharedLibrary("shared", new()
         {
             Sources = ["src/shared.c"],
-            Depends = [math],
+            Depends = ["//:math"],
             CCompilerOptions = ["-std=c17"],
             LibraryVersion = new Version(1, 2, 0),
             Features = [CC.Enable("lto"), CC.Disable("warnings")],
@@ -80,7 +80,7 @@ public sealed class PlannerTests
         CC.Executable("app", new()
         {
             Sources = ["src/main.cc"],
-            Depends = [":shared", math],
+            Depends = [":shared", "//:math"],
             LinkingMode = LinkingMode.PreferStatic,
         });
         Zig.Module("core", new() { RootSourceFile = "zig/core.zig" });
@@ -88,7 +88,7 @@ public sealed class PlannerTests
         {
             RootSourceFile = "zig/main.zig",
             ModuleImports = new Dictionary<string, string> { ["core"] = ":core" },
-            Depends = [math],
+            Depends = ["//:math"],
             CSources = ["zig/shim.c"],
             CCompilerOptions = ["-std=c17"],
             LinkCStandardLibrary = true,
