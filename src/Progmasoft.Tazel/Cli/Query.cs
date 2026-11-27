@@ -211,7 +211,8 @@ internal sealed class Query(Workspace workspace, PackageId current)
             TargetLabel label => workspace.Targets.TryGetValue(label, out var target)
                 ? [target]
                 : throw new ProjectException($"{label} is not a target"),
-            PackagePattern pattern => workspace.Targets.Values.Where(target => pattern.Covers(target.Label.Package)).ToHashSet(),
+            PackagePattern pattern => workspace.Targets.Values
+                .Where(target => pattern.Covers(target.Label.Package) && !workspace.IgnoredPackages.Contains(target.Label.Package)).ToHashSet(),
             _ => [],
         };
     }

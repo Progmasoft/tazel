@@ -76,6 +76,12 @@ internal static class Program
                 "A key with no name on it opens nothing, least of all a cache.");
             return 1;
         }
+        catch (Project.Ignore.IgnoreException error)
+        {
+            reporter.Error(ErrorCodes.IgnoreInvalid, error.Message, "tazel explain E0013 says what a .tazelignore takes",
+                "Tazel ignores many things, but not a file it cannot read.");
+            return 1;
+        }
         catch (ToolException error)
         {
             reporter.Error(ErrorCodes.Tool, error.Message, "tazel explain E0507 says where Tazel looks for tools",
@@ -139,6 +145,11 @@ internal static class Program
             if (error is TazelOptionsException { Diagnostic: { } options })
             {
                 return options;
+            }
+
+            if (error is Project.Ignore.IgnoreException { Diagnostic: { } ignore })
+            {
+                return ignore;
             }
         }
 

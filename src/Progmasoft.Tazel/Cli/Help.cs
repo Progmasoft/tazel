@@ -214,6 +214,24 @@ internal static class Help
 
               --algorithm ed25519|rsa-4096|ml-dsa  the algorithm; default: ed25519. ml-dsa is ML-DSA-65 (FIPS 204).
             """),
+        ["ignore"] = new("tazel ignore create-from|validate|add|delete: the .tazelignore of this directory.", """
+            tazel ignore create-from <path>
+            tazel ignore validate
+            tazel ignore add <pattern>
+            tazel ignore delete|del <pattern>
+
+            A .tazelignore holds gitignore rules, and regex:EXPRESSION or !regex:EXPRESSION for a .NET regular
+            expression over the path relative to its directory; pragma:once, import:<file>, import:"file",
+            include:<file> and include:"file" read other files in place. It applies to its directory and below, to
+            package discovery, //..., source globs and the archives of modules; a path or label named explicitly is
+            never ignored. A .gitignore is not read.
+
+            create-from writes ./.tazelignore from a gitignore file, never over one, and leaves the source as it was; a
+            line that starts with a word above takes a backslash, so it means what it meant for git. validate reads every
+            .tazelignore of the module, those of ignored directories too, and runs nothing. add appends a rule to
+            ./.tazelignore, which must exist, unless it is there already; delete and del remove every line that is the
+            pattern as written.
+            """),
         ["tool"] = new("tazel tool launch|create-wrapper: runs tazel-<name> tools, or writes a wrapper for a program.", """
             tazel tool launch <name> [arguments]
             tazel tool create-wrapper <name> [-o <dir> | --output-dir <dir>]

@@ -96,12 +96,26 @@ internal sealed class Workspace
     /// <summary>The packages of every module.</summary>
     public List<PackageId> Packages { get; } = [];
 
+    /// <summary>
+    /// The packages a .tazelignore leaves out of discovery that a label named, so they were loaded: patterns such as
+    /// <c>//...</c> do not cover them.
+    /// </summary>
+    public HashSet<PackageId> IgnoredPackages { get; } = [];
+
     /// <summary>The toolchains the main module registers, in its order.</summary>
     public List<ProjectToolchain> Registered { get; } = [];
 
     /// <summary>Loads the module that <paramref name="directory"/> is in, with the modules it depends on.</summary>
+    public static Task<Workspace> LoadAsync(
+        string directory, BuildContext build, Version tazelVersion, Action<string>? status = null) =>
+        LoadAsync(directory, build, tazelVersion, status, []);
+
+    /// <summary>
+    /// <see cref="LoadAsync(string, BuildContext, Version, Action{string})"/>, with the labels of the command line, so a
+    /// package they name loads even where a .tazelignore leaves it out of discovery.
+    /// </summary>
     public static async Task<Workspace> LoadAsync(
-        string directory, BuildContext build, Version tazelVersion, Action<string>? status = null)
+        string directory, BuildContext build, Version tazelVersion, Action<string>? status, IReadOnlyList<string> labels)
     {
         var root = ModuleFiles.FindRoot(directory);
         var main = await LoadModuleAsync(root, null, tazelVersion, root, build.Platform).ConfigureAwait(false);
@@ -114,6 +128,8 @@ internal sealed class Workspace
             await workspace.LoadPackagesAsync(module, build, status ?? (_ => { })).ConfigureAwait(false);
         }
 
+        var here = Path.GetRelativePath(root, Path.GetFullPath(directory)).Replace('\\', '/');
+        await workspace.LoadNamedPackagesAsync(build, labels, new PackageId(null, here == "." ? "" : here)).ConfigureAwait(false);
         workspace.Resolve();
         return workspace;
     }
@@ -278,8 +294,77 @@ internal sealed class Workspace
     {
         var plugins = Plugins.LoadAll(Main.Root, module, build, status);
         PluginsOf[module.Repository ?? ""] = plugins;
-        var environment = Plugins.EnvironmentFor(plugins);
-        var packages = ModuleFiles.Packages(module.Root);
+        await LoadPackageListAsync(module, ModuleFiles.Packages(module.Root), build).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Loads the packages that labels name directly and discovery left out because a .tazelignore ignores them: those
+    /// of Depends, of ModuleImports, of the registered toolchains and of the command line, until none is missing. No
+    /// ignored directory is searched; only the named package's own directory is looked at.
+    /// </summary>
+    private async Task LoadNamedPackagesAsync(BuildContext build, IReadOnlyList<string> labels, PackageId here)
+    {
+        while (true)
+        {
+            var wanted = new HashSet<PackageId>();
+            foreach (var target in Targets.Values)
+            {
+                var texts = target.Settings.Depends.Items.Select(reference => reference.Label)
+                    .Concat(target.Settings is ZigModuleSettings zig ? zig.ModuleImports.Values : []);
+                foreach (var text in texts)
+                {
+                    AddPackage(wanted, text, target.Label.Package, target.Module.Repository);
+                }
+            }
+
+            foreach (var text in (Main.Globals.toolchains?.Labels ?? []).Concat(labels))
+            {
+                AddPackage(wanted, text, here, null);
+            }
+
+            var missing = wanted.Where(id => !Packages.Contains(id))
+                .Select(id => (Id: id, Module: id.Repository is null ? Main : External.GetValueOrDefault(id.Repository)))
+                .Where(entry => entry.Module is not null)
+                .Select(entry => (entry.Module!, Package: ModuleFiles.PackageAt(entry.Module!.Root, entry.Id.Path)))
+                .Where(entry => entry.Package is not null)
+                .GroupBy(entry => entry.Item1)
+                .ToList();
+            if (missing.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var group in missing)
+            {
+                foreach (var entry in group)
+                {
+                    IgnoredPackages.Add(new PackageId(group.Key.Repository, entry.Package!.Value.Path));
+                }
+
+                await LoadPackageListAsync(group.Key, group.Select(entry => entry.Package!.Value).ToList(), build).ConfigureAwait(false);
+            }
+        }
+    }
+
+    // The package of a label, when it is a label of one target; patterns and malformed text are left to the selector.
+    private static void AddPackage(HashSet<PackageId> wanted, string text, PackageId from, string? repository)
+    {
+        try
+        {
+            var label = Labels.Target(text, from);
+            wanted.Add(label.Package.Repository is null && repository is not null
+                ? label.Package with { Repository = repository }
+                : label.Package);
+        }
+        catch (LabelException)
+        {
+            // Not one target's label: //..., :all and the like select from what discovery found.
+        }
+    }
+
+    private async Task LoadPackageListAsync(LoadedModule module, IReadOnlyList<(string Path, string File)> packages, BuildContext build)
+    {
+        var environment = Plugins.EnvironmentFor(PluginsOf[module.Repository ?? ""]);
         var scopes = await Task.WhenAll(packages.Select(package => Task.Run(async () =>
         {
             var shown = module.Shown(FileSets.ToRoot(package.File, module.Root));

@@ -63,12 +63,13 @@ internal sealed class Selector(Workspace workspace, Platform platform)
             }
             else if (selection is PackagePattern pattern)
             {
-                if (!workspace.Packages.Any(pattern.Covers))
+                bool Covers(PackageId package) => pattern.Covers(package) && !workspace.IgnoredPackages.Contains(package);
+                if (!workspace.Packages.Any(Covers))
                 {
                     throw new ProjectException($"{pattern} names no package");
                 }
 
-                AddPattern(selected, target => pattern.Covers(target.Label.Package), wanted);
+                AddPattern(selected, target => Covers(target.Label.Package), wanted);
             }
         }
 

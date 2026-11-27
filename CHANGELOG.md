@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `.tazelignore`: gitignore rules, `regex:` and `!regex:`, `pragma:once`, `import:` and `include:`, nested per
+  directory, for package discovery, patterns, source globs and module archives; explicit paths and labels are never
+  ignored. `tazel ignore create-from|validate|add|delete|del`. Error `E0013`.
+
 - `--recompile` and `--no-cache` for `build`, `run`, `test` and `coverage`: every compilation runs, or every action and
   test runs with no cache read or written. zig compiles again with an empty cache of its own.
 
