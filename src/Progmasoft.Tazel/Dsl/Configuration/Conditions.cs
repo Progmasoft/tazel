@@ -380,16 +380,16 @@ public static class ConditionEvaluator
         };
 
         // && and ||: the first side decides when it can; an unknown first side decides only with the second.
-        private bool? Logical(BinaryCondition logical)
+        private bool? Logical(BinaryCondition binary)
         {
-            var decides = logical.Operator == "||";
-            var left = Value(logical.Left) as bool?;
+            var decides = binary.Operator == "||";
+            var left = Value(binary.Left) as bool?;
             if (left == decides)
             {
                 return decides;
             }
 
-            var right = Value(logical.Right) as bool?;
+            var right = Value(binary.Right) as bool?;
             return left is null ? (right == decides ? decides : null) : right;
         }
 
