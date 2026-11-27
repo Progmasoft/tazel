@@ -18,17 +18,20 @@ internal sealed record ToolLaunchCommand(OutputOptions Output, string Name, IRea
 internal sealed record ToolWrapperCommand(OutputOptions Output, string Name, string? OutputDirectory) : Command(Output);
 
 /// <summary>A tool Tazel cannot find or start, or an argument it cannot pass on as written.</summary>
-internal sealed class ToolException : Exception
+public sealed class ToolException : Exception
 {
+    /// <summary>What is wrong.</summary>
     public ToolException(string message)
         : base(message)
     {
     }
 
+    /// <summary>Nothing to say.</summary>
     public ToolException()
     {
     }
 
+    /// <summary>What is wrong, and why.</summary>
     public ToolException(string message, Exception inner)
         : base(message, inner)
     {
@@ -104,8 +107,9 @@ internal static class Tools
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     // TAZEL_TOOL_EXECUTABLE: a path, absolute or from the working directory; anything wrong with it is an error.
-    private static string Chosen(string chosen, string workingDirectory)
+    private static string Chosen(string value, string workingDirectory)
     {
+        var chosen = value;
         if (chosen.Trim().Length == 0)
         {
             throw new ToolException($"{ExecutableVariable} is set but empty; name an executable, or unset it to search PATH");
@@ -177,10 +181,14 @@ internal static class Tools
     /// word at <c>"</c> whatever stands around them, so an argument with either, or with a line break or NUL, is
     /// refused rather than changed.
     /// </summary>
-    public static IReadOnlyList<string> Command(string file, IReadOnlyList<string> arguments)
+    public static IReadOnlyList<string> Command(string file, IReadOnlyList<string> arguments) =>
+        Command(file, arguments, OperatingSystem.IsWindows());
+
+    /// <summary><see cref="Command(string, IReadOnlyList{string})"/>, as on Windows when <paramref name="windows"/>.</summary>
+    internal static IReadOnlyList<string> Command(string file, IReadOnlyList<string> arguments, bool windows)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        if (!IsBatch(file))
+        if (!(windows && IsBatch(file)))
         {
             return [file, .. arguments];
         }
@@ -210,8 +218,7 @@ internal static class Tools
         return [cmd, "/d", "/s", "/c", line.ToString()];
     }
 
-    private static bool IsBatch(string file) =>
-        OperatingSystem.IsWindows() && Path.GetExtension(file).ToLowerInvariant() is ".bat" or ".cmd";
+    private static bool IsBatch(string file) => Path.GetExtension(file).ToLowerInvariant() is ".bat" or ".cmd";
 
     internal static bool IsBatchSafe(string text) => text.IndexOfAny(['"', '%', '\r', '\n', '\0']) < 0;
 

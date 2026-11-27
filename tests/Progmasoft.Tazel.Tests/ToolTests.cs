@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Progmasoft.Tazel.Cli;
 using Xunit;
@@ -43,7 +44,7 @@ public sealed class ToolTests
     }
 
     // A tool that prints each argument in brackets and leaves with status 7.
-    private static string Tool(string directory, string name, bool executable = true)
+    private static void Tool(string directory, string name, bool executable = true)
     {
         var file = Path.Combine(directory, name);
         File.WriteAllText(file, "#!/bin/sh\nfor a in \"$@\"; do printf '[%s]' \"$a\"; done; echo; exit 7\n");
@@ -51,7 +52,6 @@ public sealed class ToolTests
         {
             File.SetUnixFileMode(file, executable ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute : UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
-        return file;
     }
 
     private static string WithPath(params string[] directories) =>
@@ -85,6 +85,21 @@ public sealed class ToolTests
     [InlineData("100%", false)]
     [InlineData("a\nb", false)]
     public void KnowsWhatABatchFileCanBeGiven(string argument, bool safe) => Assert.Equal(safe, Tools.IsBatchSafe(argument));
+
+    [Fact]
+    public void ABatchFileRunsThroughCmdWithEveryArgumentQuoted()
+    {
+        var command = Tools.Command(@"C:\Tools (x86)\tazel-fmt.bat", ["", "a b", "x&y", "--"], windows: true);
+        Assert.Equal("cmd.exe", Path.GetFileName(command[0]));
+        Assert.Equal(["/d", "/s", "/c"], command.Skip(1).Take(3));
+        Assert.Equal("\"\"C:\\Tools (x86)\\tazel-fmt.bat\" \"\" \"a b\" \"x&y\" \"--\"\"", command[4]);
+        Assert.Contains("argument 2", Assert.Throws<ToolException>(() => Tools.Command("t.cmd", ["ok", "50%"], windows: true)).Message,
+            StringComparison.Ordinal);
+        Assert.Throws<ToolException>(() => Tools.Command("t.bat", ["say \"hi\""], windows: true));
+        Assert.Throws<ToolException>(() => Tools.Command("C:\\100%\\t.bat", [], windows: true));
+        Assert.Equal(["t.exe", "50%"], Tools.Command("t.exe", ["50%"], windows: true));
+        Assert.Equal(["t.bat", "50%"], Tools.Command("t.bat", ["50%"], windows: false));
+    }
 
     [Fact]
     public void ANativeToolGetsItsArgumentsAsWritten() =>
