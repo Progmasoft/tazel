@@ -66,7 +66,10 @@ public abstract class CCSettings : TargetSettings
     /// <summary>Headers that are included but never compiled alone.</summary>
     public Files TextualHeaders { get; init; } = Files.None;
 
-    /// <summary>Directories of this target's headers, for it and its dependents.</summary>
+    /// <summary>
+    /// Directories of this target's headers, for it and its dependents: paths below the package, or <c>"."</c> for
+    /// the package's own directory.
+    /// </summary>
     public IReadOnlyList<string> IncludeDirectories { get; init; } = [];
 
     /// <summary>Options for every file.</summary>
