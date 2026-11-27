@@ -61,9 +61,12 @@ public static class ProjectKey
     /// <summary>
     /// <c>$TAZEL_HOME/Projects/&lt;key&gt;/</c> of the module rooted at <paramref name="moduleRoot"/>. A directory there that
     /// keeps another root in its identity file belongs to another project whose key is the same, and is refused; so is
-    /// one with no identity file. With <paramref name="create"/>, a missing directory is made with its identity.
+    /// one with no identity file.
     /// </summary>
-    public static string Directory(string moduleRoot, bool create = false)
+    public static string Directory(string moduleRoot) => Directory(moduleRoot, false);
+
+    /// <summary><see cref="Directory(string)"/>; with <paramref name="create"/>, a missing directory is made with its identity.</summary>
+    public static string Directory(string moduleRoot, bool create)
     {
         var canonical = ConfigurationResolver.Canonical(moduleRoot);
         var directory = Path.Combine(TazelHome.Directory(), "Projects", Of(canonical, OperatingSystem.IsWindows()));

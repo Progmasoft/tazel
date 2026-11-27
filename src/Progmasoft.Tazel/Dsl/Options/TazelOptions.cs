@@ -107,11 +107,17 @@ public static class TazelOptionsFile
 
     /// <summary>
     /// The options of <paramref name="text"/>; <paramref name="file"/> names it in messages and a quoted include is
-    /// found beside <paramref name="path"/>. It is read twice: first without what depends on <c>target_system</c>, which
-    /// chooses the platform (<paramref name="requested"/>, else the file's, else this machine's), then for that
+    /// found beside <c>path</c>. It is read twice: first without what depends on <c>target_system</c>, which
+    /// chooses the platform (<c>requested</c>, else the file's, else this machine's), then for that
     /// platform. A platform chosen inside a condition on <c>target_system</c> is an error.
     /// </summary>
-    public static TazelOptions Parse(string text, string file, string? path = null, Platform? requested = null)
+    public static TazelOptions Parse(string text, string file) => Parse(text, file, null, null);
+
+    /// <summary><see cref="Parse(string, string)"/>, with includes found beside <paramref name="path"/>.</summary>
+    public static TazelOptions Parse(string text, string file, string? path) => Parse(text, file, path, null);
+
+    /// <summary><see cref="Parse(string, string, string)"/>, for the platform <paramref name="requested"/> when it is not null.</summary>
+    public static TazelOptions Parse(string text, string file, string? path, Platform? requested)
     {
         var machine = Configuration.ConfigurationContext.ForThisMachine();
         var chosen = Read(text, file, path, machine).Options;
@@ -181,17 +187,23 @@ public static class TazelOptionsFile
     /// <see cref="Configuration.ConfigurationLayers"/>: each option from the highest layer that sets it, an explicit
     /// <c>false</c> or <c>auto</c> as much as any value; <c>dotnet-settings</c> name by name. A sandbox asked for in any
     /// layer stays asked for, so no layer above can turn off what one below requires. The platform is chosen first, from
-    /// <paramref name="requested"/> or the highest layer that sets it outside conditions on <c>target_system</c>, and
+    /// the platform asked for or the highest layer that sets it outside conditions on <c>target_system</c>, and
     /// every layer is then read for it.
     /// </summary>
-    public static (TazelOptions Options, string? SandboxFile) Effective(string directory, Platform? requested = null)
+    public static (TazelOptions Options, string? SandboxFile) Effective(string directory) => Effective(directory, null);
+
+    /// <summary><see cref="Effective(string)"/>, for the platform <paramref name="requested"/> when it is not null.</summary>
+    public static (TazelOptions Options, string? SandboxFile) Effective(string directory, Platform? requested)
     {
         var layered = Layered(directory, requested);
         return (layered.Options, layered.SandboxFile);
     }
 
-    /// <summary><see cref="Effective"/>, with the file each option came from.</summary>
-    public static LayeredOptions Layered(string directory, Platform? requested = null)
+    /// <summary><see cref="Effective(string)"/>, with the file each option came from.</summary>
+    public static LayeredOptions Layered(string directory) => Layered(directory, null);
+
+    /// <summary><see cref="Effective(string, Platform?)"/>, with the file each option came from.</summary>
+    public static LayeredOptions Layered(string directory, Platform? requested)
     {
         IReadOnlyList<Configuration.Layer> layers;
         try

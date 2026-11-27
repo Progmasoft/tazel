@@ -48,7 +48,7 @@ public sealed record Layer(LayerKind Kind, string File)
 public static class ConfigurationLayers
 {
     /// <summary>The files named <paramref name="fileName"/> that apply in <paramref name="directory"/>, lowest first.</summary>
-    public static IReadOnlyList<Layer> For(string fileName, string directory, bool withProject = true)
+    public static IReadOnlyList<Layer> For(string fileName, string directory)
     {
         var full = Path.GetFullPath(directory);
         var candidates = new List<Layer> { new(LayerKind.User, Path.Combine(TazelHome.Directory(), "User", fileName)) };
@@ -59,7 +59,7 @@ public static class ConfigurationLayers
         }
 
         candidates.AddRange(above.AsEnumerable().Reverse().Select(file => new Layer(LayerKind.Parent, file)));
-        if (withProject && ModuleRoot(full) is { } root)
+        if (ModuleRoot(full) is { } root)
         {
             candidates.Add(new Layer(LayerKind.Project, Path.Combine(ProjectKey.Directory(root), fileName)));
         }
@@ -82,7 +82,10 @@ public static class ConfigurationLayers
     }
 
     /// <summary>The file of one layer for <paramref name="directory"/>, whether it exists or not.</summary>
-    public static string FileOf(LayerKind kind, string fileName, string directory, bool create = false) => kind switch
+    public static string FileOf(LayerKind kind, string fileName, string directory) => FileOf(kind, fileName, directory, false);
+
+    /// <summary><see cref="FileOf(LayerKind, string, string)"/>; with <paramref name="create"/>, a missing project directory is made.</summary>
+    public static string FileOf(LayerKind kind, string fileName, string directory, bool create) => kind switch
     {
         LayerKind.User => Path.Combine(TazelHome.Directory(), "User", fileName),
         LayerKind.Project => Path.Combine(

@@ -50,10 +50,16 @@ public static class TazelEnvsFile
 
     /// <summary>
     /// The entries of <paramref name="text"/>; <paramref name="file"/> names it in messages. Its directives are
-    /// resolved for <paramref name="context"/> (this machine, built for itself, by default), and a quoted include is
-    /// found beside <paramref name="path"/>.
+    /// resolved for <c>context</c> (this machine, built for itself, by default), and a quoted include is
+    /// found beside <c>path</c>.
     /// </summary>
-    public static IReadOnlyList<EnvEntry> Parse(string text, string file, string? path = null, Configuration.ConfigurationContext? context = null)
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file) => Parse(text, file, null, null);
+
+    /// <summary><see cref="Parse(string, string)"/>, with includes found beside <paramref name="path"/>.</summary>
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file, string? path) => Parse(text, file, path, null);
+
+    /// <summary><see cref="Parse(string, string, string)"/>, resolved for <paramref name="context"/> when it is not null.</summary>
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file, string? path, Configuration.ConfigurationContext? context)
     {
         ArgumentNullException.ThrowIfNull(text);
         var tokens = Configuration.ConfigurationResolver.Resolve(path ?? file, file, text, Configuration.ConfigurationFamily.Envs,
@@ -221,9 +227,18 @@ internal sealed class ModuleEnvironment : IEnvironmentValues
 
     /// <summary>
     /// The values of the module at <paramref name="root"/>, or null when it has no <c>tazel_envs.txt</c>; its
-    /// conditions see <paramref name="target"/> as the platform built for (this machine's when null).
+    /// conditions see <c>target</c> as the platform built for (this machine's when null).
     /// </summary>
-    public static ModuleEnvironment? Load(string root, string shown, Common.Platform? target = null, bool inherit = false)
+    public static ModuleEnvironment? Load(string root, string shown) => Load(root, shown, null, false);
+
+    /// <summary><see cref="Load(string, string)"/>, its conditions read for <paramref name="target"/>, else this machine.</summary>
+    public static ModuleEnvironment? Load(string root, string shown, Common.Platform? target) => Load(root, shown, target, false);
+
+    /// <summary>
+    /// <see cref="Load(string, string, Common.Platform?)"/>; with <paramref name="inherit"/>, for the main module, the
+    /// layers of tazel_envs.txt around the root too.
+    /// </summary>
+    public static ModuleEnvironment? Load(string root, string shown, Common.Platform? target, bool inherit)
     {
         var context = Configuration.ConfigurationContext.ForThisMachine();
         context = context with { Target = Configuration.SystemFacts.Of(target ?? Driver.Host.Platform) };
@@ -245,7 +260,7 @@ internal sealed class ModuleEnvironment : IEnvironmentValues
         }
         else
         {
-            var own = Path.Combine(root, TazelEnvsFile.FileName);
+            var own = Path.Join(root, TazelEnvsFile.FileName);
             files = File.Exists(own) ? [own] : [];
         }
 
@@ -254,7 +269,7 @@ internal sealed class ModuleEnvironment : IEnvironmentValues
         foreach (var file in files)
         {
             any = true;
-            var name = file == Path.Combine(root, TazelEnvsFile.FileName) ? shown : file;
+            var name = file == Path.Join(root, TazelEnvsFile.FileName) ? shown : file;
             foreach (var entry in TazelEnvsFile.Parse(File.ReadAllText(file), name, file, context))
             {
                 entries[entry.Name] = entry;

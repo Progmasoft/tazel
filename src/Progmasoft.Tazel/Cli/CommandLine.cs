@@ -218,11 +218,7 @@ internal static class CommandLine
             throw new CommandLineException($"{unscoped.Written} is not an option of tazel {command}");
         }
 
-        var output = new OutputOptions(
-            ParseWhen(Last(scanned.Seen, "color")) ?? When.Auto,
-            ParseWhen(Last(scanned.Seen, "progress")) ?? When.Auto,
-            scanned.Has("quiet"),
-            ParseFormat(Last(scanned.Seen, "message-format")) ?? MessageFormat.RichStdio);
+        var output = OutputOf(scanned);
         if (scanned.Has("help") && command != "help")
         {
             return new HelpCommand(output, command);
@@ -242,6 +238,12 @@ internal static class CommandLine
 
         return Makers.TryGetValue(command, out var make) ? make(scanned, output) : MakeHelp(scanned, output);
     }
+
+    private static OutputOptions OutputOf(Scanned scanned) => new(
+        ParseWhen(Last(scanned.Seen, "color")) ?? When.Auto,
+        ParseWhen(Last(scanned.Seen, "progress")) ?? When.Auto,
+        scanned.Has("quiet"),
+        ParseFormat(Last(scanned.Seen, "message-format")) ?? MessageFormat.RichStdio);
 
     /// <summary>The words of a command line, read: the command, the words that are not options, and the options.</summary>
     private sealed record Scanned(
@@ -496,7 +498,7 @@ internal static class CommandLine
         else if (separator >= 0)
         {
             var text = body[(separator + 1)..];
-            values = option.Kind is Kind.List or Kind.ListAlways ? [.. SplitList(text)] : [text];
+            values = option.Kind is Kind.List or Kind.ListAlways ? new List<string>(SplitList(text)) : new List<string> { text };
             Check(option, values, $"--{name}{body[separator]}");
         }
         else

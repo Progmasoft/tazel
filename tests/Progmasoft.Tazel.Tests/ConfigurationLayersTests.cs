@@ -199,10 +199,10 @@ public sealed class ConfigurationLayersTests
             tree.Write("home/User/tazel_envs.txt", "who: 'user'; color: 'blue';")
                 .Write("outer/mod/tazel_envs.txt", "who: 'module';");
             var root = Path.Combine(tree.Root, "outer", "mod");
-            var main = ModuleEnvironment.Load(root, "tazel_envs.txt", inherit: true)!;
+            var main = ModuleEnvironment.Load(root, "tazel_envs.txt", null, inherit: true)!;
             Assert.Equal("module", main.Get("who"));
             Assert.Equal("blue", main.Get("color"));
-            var dependency = ModuleEnvironment.Load(root, "@dep//tazel_envs.txt", inherit: false)!;
+            var dependency = ModuleEnvironment.Load(root, "@dep//tazel_envs.txt", null, inherit: false)!;
             Assert.Null(dependency.Get("color"));
         }
     }
