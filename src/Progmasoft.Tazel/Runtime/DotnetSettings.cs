@@ -106,7 +106,7 @@ internal static class DotnetSettings
         return new DotnetSetting(name, kind switch
         {
             SettingKind.Bytes => Bytes(value) ?? throw Bad(source, name, value, "a size in bytes, with B, K, M, G or T after it if you like"),
-            SettingKind.Percent => Whole(value) is { } percent and >= 1 and <= 100 ? (ulong)percent
+            SettingKind.Percent => Whole(value) is { } percent and >= 1 and <= 100 ? percent
                 : throw Bad(source, name, value, "a whole percentage from 1 to 100"),
             SettingKind.Threads => Whole(value) is { } threads and >= 1 and <= int.MaxValue ? (int)threads
                 : throw Bad(source, name, value, "a whole number of threads, 1 or more"),
@@ -170,76 +170,95 @@ internal static class DotnetSettings
         return settings;
     }
 
+    private static readonly string[] PerHeap = ["GCHeapHardLimitSOH", "GCHeapHardLimitLOH", "GCHeapHardLimitPOH"];
+
+    private static readonly string[] PerHeapPercent = ["GCHeapHardLimitSOHPercent", "GCHeapHardLimitLOHPercent", "GCHeapHardLimitPOHPercent"];
+
     private static void Check(Dictionary<string, DotnetSetting> settings)
     {
-        bool Has(string name) => settings.ContainsKey(name);
-        string Where(params string[] names) => string.Join(", ", names.Where(Has).Select(name => $"{name} ({settings[name].Source})"));
-        string[] perHeap = ["GCHeapHardLimitSOH", "GCHeapHardLimitLOH", "GCHeapHardLimitPOH"];
-        string[] perHeapPercent = ["GCHeapHardLimitSOHPercent", "GCHeapHardLimitLOHPercent", "GCHeapHardLimitPOHPercent"];
-        var aggregate = Has("GCHeapHardLimit") || Has("GCHeapHardLimitPercent");
-        var heaps = perHeap.Any(Has);
-        var heapPercents = perHeapPercent.Any(Has);
+        CheckHeapKinds(settings);
+        CheckPerHeap(settings, PerHeap, "in bytes");
+        CheckPerHeap(settings, PerHeapPercent, "as percentages");
+        CheckThreads(Bounds(settings), settings);
+    }
 
-        // .NET would take one and leave the other unsaid; Tazel takes neither and says so.
-        if (Has("GCHeapHardLimit") && Has("GCHeapHardLimitPercent"))
+    // The settings of names that are given, with where each was written, for messages.
+    private static string Where(Dictionary<string, DotnetSetting> settings, params string[] names) =>
+        string.Join(", ", names.Where(settings.ContainsKey).Select(name => $"{name} ({settings[name].Source})"));
+
+    // Two ways of saying one limit: .NET would take one and leave the other unsaid; Tazel takes neither and says so.
+    private static void CheckHeapKinds(Dictionary<string, DotnetSetting> settings)
+    {
+        var (bytes, percent) = (settings.ContainsKey("GCHeapHardLimit"), settings.ContainsKey("GCHeapHardLimitPercent"));
+        var heaps = PerHeap.Any(settings.ContainsKey);
+        var heapPercents = PerHeapPercent.Any(settings.ContainsKey);
+        string? problem = (bytes, percent, heaps, heapPercents) switch
         {
-            throw new DotnetSettingsException($"{Where("GCHeapHardLimit", "GCHeapHardLimitPercent")}: give the limit in bytes or as a percentage, not both");
-        }
-
-        if (aggregate && (heaps || heapPercents))
-        {
-            throw new DotnetSettingsException(
-                $"{Where([.. perHeap, .. perHeapPercent, "GCHeapHardLimit", "GCHeapHardLimitPercent"])}: a limit for the whole heap and limits per object heap " +
-                "are two ways to say one thing; give one");
-        }
-
-        if (heaps && heapPercents)
-        {
-            throw new DotnetSettingsException($"{Where([.. perHeap, .. perHeapPercent])}: give the object heaps' limits in bytes or as percentages, not both");
-        }
-
-        foreach (var (names, kind) in new[] { (perHeap, "in bytes"), (perHeapPercent, "as percentages") })
-        {
-            if (names.Any(Has) && !(Has(names[0]) && Has(names[1])))
-            {
-                throw new DotnetSettingsException(
-                    $"{Where(names)}: limits per object heap {kind} need both {names[0]} and {names[1]}; {names[2]} may be left out");
-            }
-        }
-
-        if (heapPercents)
-        {
-            var percents = perHeapPercent.Where(Has).Select(name => (ulong)settings[name].Value).ToList();
-            if (percents.Any(percent => percent >= 100) || percents.Aggregate(0UL, (sum, percent) => sum + percent) >= 100)
-            {
-                throw new DotnetSettingsException($"{Where(perHeapPercent)}: each percentage is below 100, and so is their sum");
-            }
-        }
-
-        var minWorker = settings.GetValueOrDefault("ThreadPool.MinWorkerThreads");
-        var maxWorker = settings.GetValueOrDefault("ThreadPool.MaxWorkerThreads");
-        var minPort = settings.GetValueOrDefault("ThreadPool.MinCompletionPortThreads");
-        var maxPort = settings.GetValueOrDefault("ThreadPool.MaxCompletionPortThreads");
-        ThreadPool.GetMinThreads(out var currentMinWorker, out var currentMinPort);
-        ThreadPool.GetMaxThreads(out var currentMaxWorker, out var currentMaxPort);
-        var (worker, port) = ((int?)minWorker?.Value ?? currentMinWorker, (int?)minPort?.Value ?? currentMinPort);
-        var (workerMax, portMax) = ((int?)maxWorker?.Value ?? currentMaxWorker, (int?)maxPort?.Value ?? currentMaxPort);
-        if (worker > workerMax)
+            (true, true, _, _) => "give the limit in bytes or as a percentage, not both",
+            (true, _, true, _) or (true, _, _, true) or (_, true, true, _) or (_, true, _, true) =>
+                "a limit for the whole heap and limits per object heap are two ways to say one thing; give one",
+            (_, _, true, true) => "give the object heaps' limits in bytes or as percentages, not both",
+            _ => null,
+        };
+        if (problem is not null)
         {
             throw new DotnetSettingsException(
-                $"the worker threads' minimum {worker} is above their maximum {workerMax} ({Where("ThreadPool.MinWorkerThreads", "ThreadPool.MaxWorkerThreads")})");
+                $"{Where(settings, ["GCHeapHardLimit", "GCHeapHardLimitPercent", .. PerHeap, .. PerHeapPercent])}: {problem}");
+        }
+    }
+
+    // Limits per object heap need SOH and LOH; their percentages are each below 100, and so is their sum.
+    private static void CheckPerHeap(Dictionary<string, DotnetSetting> settings, string[] names, string kind)
+    {
+        if (!names.Any(settings.ContainsKey))
+        {
+            return;
         }
 
-        if (port > portMax)
+        if (!settings.ContainsKey(names[0]) || !settings.ContainsKey(names[1]))
         {
             throw new DotnetSettingsException(
-                $"the completion port threads' minimum {port} is above their maximum {portMax} ({Where("ThreadPool.MinCompletionPortThreads", "ThreadPool.MaxCompletionPortThreads")})");
+                $"{Where(settings, names)}: limits per object heap {kind} need both {names[0]} and {names[1]}; {names[2]} may be left out");
         }
 
-        if (workerMax < Environment.ProcessorCount || portMax < Environment.ProcessorCount)
+        var percents = names == PerHeapPercent ? names.Where(settings.ContainsKey).Select(name => (ulong)settings[name].Value).ToList() : [];
+        if (percents.Exists(value => value >= 100) || percents.Aggregate(0UL, (sum, value) => sum + value) >= 100)
+        {
+            throw new DotnetSettingsException($"{Where(settings, names)}: each percentage is below 100, and so is their sum");
+        }
+    }
+
+    // The thread pool's bounds once the settings hold: each one given, else what the pool has now.
+    private sealed record ThreadBounds(int Min, int MinPort, int Max, int MaxPort);
+
+    private static ThreadBounds Bounds(IReadOnlyDictionary<string, DotnetSetting> settings)
+    {
+        int? Value(string name) => settings.TryGetValue(name, out var setting) ? (int)setting.Value : null;
+        ThreadPool.GetMinThreads(out var min, out var minPort);
+        ThreadPool.GetMaxThreads(out var max, out var maxPort);
+        return new ThreadBounds(
+            Value("ThreadPool.MinWorkerThreads") ?? min, Value("ThreadPool.MinCompletionPortThreads") ?? minPort,
+            Value("ThreadPool.MaxWorkerThreads") ?? max, Value("ThreadPool.MaxCompletionPortThreads") ?? maxPort);
+    }
+
+    private static void CheckThreads(ThreadBounds bounds, Dictionary<string, DotnetSetting> settings)
+    {
+        if (bounds.Min > bounds.Max)
         {
             throw new DotnetSettingsException(
-                $"a maximum of threads below the {Environment.ProcessorCount} processors of this machine is refused by .NET ({Where("ThreadPool.MaxWorkerThreads", "ThreadPool.MaxCompletionPortThreads")})");
+                $"the worker threads' minimum {bounds.Min} is above their maximum {bounds.Max} ({Where(settings, "ThreadPool.MinWorkerThreads", "ThreadPool.MaxWorkerThreads")})");
+        }
+
+        if (bounds.MinPort > bounds.MaxPort)
+        {
+            throw new DotnetSettingsException(
+                $"the completion port threads' minimum {bounds.MinPort} is above their maximum {bounds.MaxPort} ({Where(settings, "ThreadPool.MinCompletionPortThreads", "ThreadPool.MaxCompletionPortThreads")})");
+        }
+
+        if (Math.Min(bounds.Max, bounds.MaxPort) < Environment.ProcessorCount)
+        {
+            throw new DotnetSettingsException(
+                $"a maximum of threads below the {Environment.ProcessorCount} processors of this machine is refused by .NET ({Where(settings, "ThreadPool.MaxWorkerThreads", "ThreadPool.MaxCompletionPortThreads")})");
         }
     }
 
@@ -282,32 +301,34 @@ internal static class DotnetSettings
 
     private static void ApplyThreads(IReadOnlyDictionary<string, DotnetSetting> settings)
     {
-        int? Value(string name) => settings.TryGetValue(name, out var setting) ? (int)setting.Value : null;
-        var (minWorker, maxWorker) = (Value("ThreadPool.MinWorkerThreads"), Value("ThreadPool.MaxWorkerThreads"));
-        var (minPort, maxPort) = (Value("ThreadPool.MinCompletionPortThreads"), Value("ThreadPool.MaxCompletionPortThreads"));
-        if (minWorker is null && maxWorker is null && minPort is null && maxPort is null)
+        if (!settings.Keys.Any(name => name.StartsWith("ThreadPool.", StringComparison.Ordinal)))
         {
             return;
         }
 
-        ThreadPool.GetMinThreads(out var currentMinWorker, out var currentMinPort);
-        ThreadPool.GetMaxThreads(out var currentMaxWorker, out var currentMaxPort);
-        var (newMin, newMinPort) = (minWorker ?? currentMinWorker, minPort ?? currentMinPort);
-        var (newMax, newMaxPort) = (maxWorker ?? currentMaxWorker, maxPort ?? currentMaxPort);
+        var bounds = Bounds(settings);
+        ThreadPool.GetMinThreads(out var nowMin, out var nowMinPort);
 
         // A maximum may not fall below the minimum of the moment, nor a minimum rise above the maximum: whichever
         // order keeps both true at every step.
-        var maxFirst = newMax >= currentMinWorker && newMaxPort >= currentMinPort;
-        var steps = maxFirst
-            ? new (string What, Func<bool> Set)[] { ("maximum", () => ThreadPool.SetMaxThreads(newMax, newMaxPort)), ("minimum", () => ThreadPool.SetMinThreads(newMin, newMinPort)) }
-            : [("minimum", () => ThreadPool.SetMinThreads(newMin, newMinPort)), ("maximum", () => ThreadPool.SetMaxThreads(newMax, newMaxPort))];
-        foreach (var (what, set) in steps)
+        if (bounds.Max >= nowMin && bounds.MaxPort >= nowMinPort)
         {
-            if (!set())
-            {
-                throw new DotnetSettingsException(
-                    $"the thread pool of this process took no new {what} (workers {newMin} to {newMax}, completion ports {newMinPort} to {newMaxPort})");
-            }
+            Took(ThreadPool.SetMaxThreads(bounds.Max, bounds.MaxPort), "maximum", bounds);
+            Took(ThreadPool.SetMinThreads(bounds.Min, bounds.MinPort), "minimum", bounds);
+        }
+        else
+        {
+            Took(ThreadPool.SetMinThreads(bounds.Min, bounds.MinPort), "minimum", bounds);
+            Took(ThreadPool.SetMaxThreads(bounds.Max, bounds.MaxPort), "maximum", bounds);
+        }
+    }
+
+    private static void Took(bool taken, string what, ThreadBounds bounds)
+    {
+        if (!taken)
+        {
+            throw new DotnetSettingsException(
+                $"the thread pool of this process took no new {what} (workers {bounds.Min} to {bounds.Max}, completion ports {bounds.MinPort} to {bounds.MaxPort})");
         }
     }
 
