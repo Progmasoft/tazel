@@ -15,8 +15,49 @@ namespace Progmasoft.Tazel.Driver;
 /// One action of a build: a command line with its environment, the files it reads and the files it writes, all relative
 /// to the directory it runs in. Inputs the command finds by itself, such as headers, come from its depfile.
 /// </summary>
+/// <summary>What an action does, which decides what <c>--recompile</c> forces.</summary>
+internal enum ActionKind
+{
+    /// <summary>A step of a plugin or a custom build action.</summary>
+    Step,
+
+    /// <summary>Compiling one source file to an object file.</summary>
+    Compile,
+
+    /// <summary>Compiling and linking in one command, as zig does.</summary>
+    CompileAndLink,
+
+    /// <summary>Linking objects and libraries into a program or a shared library.</summary>
+    Link,
+
+    /// <summary>Archiving objects into a static library.</summary>
+    Archive,
+}
+
+/// <summary>What a build may take from its caches: everything, nothing for compilations, or nothing at all.</summary>
+internal enum CachePolicy
+{
+    /// <summary>The caches as configured.</summary>
+    Normal,
+
+    /// <summary><c>--recompile</c>: compilations run, and other actions follow from what they wrote.</summary>
+    Recompile,
+
+    /// <summary><c>--no-cache</c>: every action runs, and no cache is read or written.</summary>
+    NoCache,
+}
+
 internal sealed class BuildAction
 {
+    /// <summary>What the action does; a step unless a planner says otherwise.</summary>
+    public ActionKind Kind { get; init; } = ActionKind.Step;
+
+    /// <summary>
+    /// The command with the compiler's own cache moved to the directory it is given, for a run that must really compile;
+    /// null when the compiler keeps no cache of its own that Tazel knows of. The key stays that of <see cref="Command"/>.
+    /// </summary>
+    public Func<string, IReadOnlyList<string>>? WithCompilerCache { get; init; }
+
     public required string Description { get; init; }
 
     public required IReadOnlyList<string> Command { get; init; }
@@ -158,6 +199,18 @@ internal sealed class ActionCache(Digests digests, bool enabled = true)
         }
 
         File.WriteAllText(RecordOf(action), text.ToString());
+    }
+
+    /// <summary>
+    /// Forgets what this process knows of the outputs of <paramref name="action"/> and keeps its record, which a later
+    /// build checks against the files before it trusts it.
+    /// </summary>
+    public void ForgetOutputs(BuildAction action)
+    {
+        foreach (var output in action.Outputs)
+        {
+            digests.Forget(action.Full(output));
+        }
     }
 
     /// <summary>Forgets <paramref name="action"/>, so that a failed or stopped run is redone.</summary>

@@ -36,6 +36,9 @@ internal sealed record BuildOptions
 
     /// <summary>Whether C-family code is built with LLVM source-based coverage, for <c>tazel coverage</c>.</summary>
     public bool Coverage { get; init; }
+
+    /// <summary>What the build may take from its caches: <c>--recompile</c> and <c>--no-cache</c>.</summary>
+    public CachePolicy CachePolicy { get; init; } = CachePolicy.Normal;
 }
 
 /// <summary>Where a build writes, below the state directory of the main module.</summary>

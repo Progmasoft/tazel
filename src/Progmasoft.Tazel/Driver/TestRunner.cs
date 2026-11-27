@@ -59,7 +59,7 @@ internal static class Runfiles
 }
 
 /// <summary>Runs tests: each with a small environment, its own temporary directory, a timeout, and retries when flaky.</summary>
-internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporter, bool coverage = false)
+internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporter, bool coverage = false, bool noCache = false)
 {
     /// <summary>The timeout of a size, as in Bazel.</summary>
     public static TimeSpan TimeoutOf(TestSize size) => size switch
@@ -120,8 +120,8 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
         var settings = (ITestSettings)target.Settings;
         var runfiles = Runfiles.Prepare(target, products, layout);
         var name = Sanitize(target.Label.ToString());
-        // Coverage needs the run itself, and a test tagged no-cache runs every time.
-        var key = coverage || target.Settings.Tags.Contains("no-cache", StringComparer.Ordinal)
+        // Coverage needs the run itself, a test tagged no-cache runs every time, and so does every test of --no-cache.
+        var key = coverage || noCache || target.Settings.Tags.Contains("no-cache", StringComparer.Ordinal)
             ? null
             : CacheKey(target, settings, products, runfiles);
         var run = new TestRun(target, settings, products, runfiles, layout.Full($"{layout.TestLogs}/{name}"),
@@ -131,7 +131,8 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
             return cached;
         }
 
-        Forget(run);
+        // --no-cache keeps an earlier pass; only a failure below makes it untrue.
+        Forget(run, keepPass: noCache);
         var attempts = settings.Flaky ? 3 : 1;
         var watch = Stopwatch.StartNew();
         var log = new StringBuilder();
@@ -153,13 +154,18 @@ internal sealed class TestRunner(OutputLayout layout, int jobs, Reporter reporte
             }
         }
 
+        if (File.Exists(run.Passed))
+        {
+            File.Delete(run.Passed);
+        }
+
         return new TestOutcome(run.Label, timedOut ? TestStatus.TimedOut : TestStatus.Failed, watch.Elapsed, log.ToString());
     }
 
-    /// <summary>Clears what an earlier run left: its pass and its logs.</summary>
-    private static void Forget(TestRun run)
+    /// <summary>Clears what an earlier run left: its logs, and its pass unless <paramref name="keepPass"/>.</summary>
+    private static void Forget(TestRun run, bool keepPass)
     {
-        if (File.Exists(run.Passed))
+        if (!keepPass && File.Exists(run.Passed))
         {
             File.Delete(run.Passed);
         }

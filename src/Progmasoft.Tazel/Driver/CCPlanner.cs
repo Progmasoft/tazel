@@ -170,6 +170,7 @@ internal sealed partial class Planner
         command.AddRange(["-MD", "-MF", objectFile + ".d", "-c", source, "-o", objectFile]);
         var compile = new BuildAction
         {
+            Kind = ActionKind.Compile,
             Description = $"Compiling {target.Label} {relative}",
             Command = command,
             Directory = Layout.MainRoot,
@@ -262,6 +263,7 @@ internal sealed partial class Planner
         command.AddRange(objects);
         var archive = new BuildAction
         {
+            Kind = ActionKind.Archive,
             Description = $"Archiving {target.Label}",
             Command = command,
             Directory = Layout.MainRoot,
@@ -354,6 +356,7 @@ internal sealed partial class Planner
         command.AddRange(Options.LinkerOptions);
         var link = new BuildAction
         {
+            Kind = ActionKind.Link,
             Description = $"Linking {target.Label}",
             Command = command,
             Directory = Layout.MainRoot,

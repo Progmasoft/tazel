@@ -188,8 +188,17 @@ internal sealed partial class Planner
 
         var inputs = AddModules(target, settings, defaultOptimization, includeDirectories, command);
 
+        // zig keeps what it compiled in its cache: a forced run gets a cache of its own, so it compiles again.
+        var cacheAt = command.IndexOf("--cache-dir") + 1;
         var action = new BuildAction
         {
+            Kind = ActionKind.CompileAndLink,
+            WithCompilerCache = fresh =>
+            {
+                var forced = command.ToList();
+                forced[cacheAt] = fresh;
+                return forced;
+            },
             Description = $"{(target.Kind == TargetKind.Test ? "Building test" : "Compiling")} {target.Label}",
             Command = command,
             Directory = Layout.MainRoot,

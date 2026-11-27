@@ -46,6 +46,12 @@ internal sealed record BuildFlags
 
     public bool KeepGoing { get; init; }
 
+    /// <summary><c>--recompile</c>: every compilation runs.</summary>
+    public bool Recompile { get; init; }
+
+    /// <summary><c>--no-cache</c>: every action and test runs, and no cache is read or written.</summary>
+    public bool NoCache { get; init; }
+
     public List<string> FeaturesOn { get; } = [];
 
     public List<string> FeaturesOff { get; } = [];
@@ -172,6 +178,8 @@ internal static class CommandLine
         new("mode", Kind.Value, ["debug", "release"], Building),
         new("jobs", Kind.Value, null, Building),
         new("keep-going", Kind.Flag, null, Building),
+        new("recompile", Kind.Flag, null, "build", "run", "test", "coverage"),
+        new("no-cache", Kind.Flag, null, "build", "run", "test", "coverage"),
         new("feature", Kind.List, null, Building),
         new("no-feature", Kind.List, null, Building),
         new("compiler-options", Kind.List, null, Building),
@@ -651,6 +659,8 @@ internal static class CommandLine
             Platform = platform,
             Jobs = jobs,
             KeepGoing = seen.Any(entry => entry.Option.Long == "keep-going"),
+            Recompile = seen.Any(entry => entry.Option.Long == "recompile"),
+            NoCache = seen.Any(entry => entry.Option.Long == "no-cache"),
         };
         flags.FeaturesOn.AddRange(All(seen, "feature"));
         flags.FeaturesOff.AddRange(All(seen, "no-feature"));

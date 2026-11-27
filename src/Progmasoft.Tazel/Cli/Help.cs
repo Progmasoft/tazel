@@ -15,6 +15,8 @@ internal static class Help
           --platform <name>             the platform to build for; default: tazel_options.txt, else this machine's
           --jobs <n>                    how many actions run at once; default: MODULE.csx, else the processors
           --keep-going                  go on with what does not depend on a failed action
+          --recompile                   compile every source again; links follow from what changed
+          --no-cache                    run every action and test; read and write no cache
           --feature <name>              turn a toolchain feature on for every target
           --no-feature <name>           turn a toolchain feature off for every target
           --compiler-options <option>   for every C, C++, Objective-C and Objective-C++ file

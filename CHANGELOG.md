@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- `--recompile` and `--no-cache` for `build`, `run`, `test` and `coverage`: every compilation runs, or every action and
+  test runs with no cache read or written. zig compiles again with an empty cache of its own.
+
 - `tazel tool launch <name>` runs `TAZEL_TOOL_EXECUTABLE`, or the first `tazel-<name>` of `PATH` this user may run,
   with its arguments as written, and passes its exit status on; `tazel tool create-wrapper <name> [-o dir]` writes a
   `tazel-<name>` that runs `<name>`. Error `E0507`.
