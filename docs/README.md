@@ -7,6 +7,7 @@
 | --- | --- |
 | [Project files](project-files.md) | `MODULE.csx`, `BUILD.csx` and toolchains, with every setting |
 | [Plugins](plugins.md) | making, packing and loading plugins, and their build steps |
+| [Packaging](packaging.md) | Progmasoft.Tazel.Packaging: reading and writing packages, SPDX license expressions |
 | [Remote cache](remote-cache.md) | sharing the results of actions between machines through a cache that speaks Bazel's HTTP protocol |
 | [MicroVM](microvm.md) | the sandbox: what tazel custom runs in, what it needs, and building its image |
 | [Commands](commands.md) | the commands of `tazel`, their options, and `tazel_options.txt`, `tazel_custom.txt` and `tazel_envs.txt` |

@@ -5,10 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
-using Progmasoft.Tazel.Archive;
+using Progmasoft.Tazel.Packaging;
 
 namespace Progmasoft.Tazel.PluginSdk;
 
@@ -76,29 +75,26 @@ public sealed class PackTazelPlugin : Task
                 File.Copy(Path.Combine(OutputDirectory, file), Path.Combine(staging, file));
             }
 
-            var manifest = new SortedDictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["entryAssembly"] = EntryAssembly,
-                ["group"] = Group,
-                ["name"] = Name,
-                ["pluginApi"] = PluginApiVersion,
-                ["version"] = Version,
-            };
-            File.WriteAllText(Path.Combine(staging, "tazel-plugin.json"),
-                JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }) + "\n");
-            files.Add("tazel-plugin.json");
+            var manifest = new TazelPluginManifest(Group, Name, Version, PluginApiVersion, EntryAssembly);
+            File.WriteAllText(Path.Combine(staging, TazelPluginManifest.FileName), manifest.ToJson());
+            files.Add(TazelPluginManifest.FileName);
             files.Sort(StringComparer.Ordinal);
 
-            var baseName = $"{Group}.{Name}-{Version}";
-            Archive = Path.Combine(PackageOutputPath, baseName + ".tazel.tar.xz");
-            ReproducibleArchive.Write(staging, baseName, Archive, files);
-            File.WriteAllText(Archive + ".sha256sums", ReproducibleArchive.SumsLine(Archive));
+            var identity = manifest.Identity;
+            Archive = Path.Combine(PackageOutputPath, identity.FileName);
+            TazelPackageArchive.Write(staging, identity.BaseName, Archive, files);
+            File.WriteAllText(Archive + ".sha256sums", Sha256Sums.Line(Archive));
             Log.LogMessage(MessageImportance.High, $"Tazel plugin: {Archive}");
             return true;
         }
         catch (IOException error)
         {
             Log.LogError($"The plugin archive could not be written: {error.Message}");
+            return false;
+        }
+        catch (TazelPackageException error)
+        {
+            Log.LogError($"The plugin cannot be packed: {error.Message}");
             return false;
         }
         finally

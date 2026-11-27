@@ -1,7 +1,7 @@
 {
   "metadata": [
     {
-      "src": [{ "src": "../..", "files": ["src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj", "src/Progmasoft.Tazel.PluginApi/Progmasoft.Tazel.PluginApi.csproj"] }],
+      "src": [{ "src": "../..", "files": ["src/Progmasoft.Tazel.Dsl/Progmasoft.Tazel.Dsl.csproj", "src/Progmasoft.Tazel.PluginApi/Progmasoft.Tazel.PluginApi.csproj", "src/Progmasoft.Tazel.Packaging/Progmasoft.Tazel.Packaging.csproj"] }],
       "dest": "api",
       "properties": { "TargetFramework": "net10.0" }
     }

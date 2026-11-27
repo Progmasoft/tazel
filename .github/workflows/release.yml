@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # Runs when a GitHub release of Tazel is published: builds Tazel for each platform, attaches the archives and their
-# SHA-256 sums to the release, and publishes the NuGet packages of the plugin API, the plugin SDK and its templates.
+# SHA-256 sums to the release, and publishes the NuGet packages of the plugin API, the plugin SDK and its templates, and the packaging library.
 # Started by hand with the tag of a published release, it builds and attaches that release's archives again from the
 # tag's sources; the NuGet packages are pushed only by a published release.
 name: Release

@@ -7,7 +7,8 @@
 //
 //   dotnet run spdx/update.cs -- 3.29.0
 //
-// Afterwards update the version that SpdxLicensesTests expects and the line of THIRD-PARTY-NOTICES.md.
+// Afterwards update the version that the tests expect (SpdxLicensesTests, PackagingTests), THIRD-PARTY-NOTICES.md and
+// docs/packaging.md.
 
 using System;
 using System.IO;

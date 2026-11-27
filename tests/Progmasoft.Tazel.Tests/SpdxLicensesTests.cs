@@ -36,7 +36,7 @@ public sealed class SpdxLicensesTests
     [InlineData("MIT AND", "not an SPDX expression", "AND and OR")]
     [InlineData("(MIT OR Apache-2.0", "not an SPDX expression", "parentheses")]
     [InlineData("   ", "License is empty", "leave it out")]
-    // These made Tethys.SPDX 2.2.0 recurse until the stack overflowed.
+    // These overflowed the stack of the SPDX parser Tazel first tried (Tethys.SPDX 2.2.0, tngraf/Tethys.SPDX#10).
     [InlineData("MIT OR", "ends with OR", "AND and OR")]
     [InlineData("AND MIT", "stands where a license should", "AND and OR")]
     [InlineData("MIT WITH", "an exception must follow WITH", "WITH")]

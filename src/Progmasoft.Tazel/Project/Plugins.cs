@@ -7,29 +7,20 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
-using System.Text.Json;
-using NuGet.Versioning;
 using Progmasoft.Tazel.Archive;
 using Progmasoft.Tazel.Dsl.Build.Prelude;
 using Progmasoft.Tazel.Dsl.Common;
 using Progmasoft.Tazel.Dsl.Module.Prelude;
 using Progmasoft.Tazel.Label;
+using Progmasoft.Tazel.Packaging;
 using Progmasoft.Tazel.PluginApi;
 
 namespace Progmasoft.Tazel.Project;
 
-/// <summary>What <c>tazel-plugin.json</c>, the manifest at the top of a plugin archive, says.</summary>
-/// <param name="Group">The group of the plugin.</param>
-/// <param name="Name">The name of the plugin.</param>
-/// <param name="Version">Its SemVer version.</param>
-/// <param name="PluginApi">The version of Progmasoft.Tazel.PluginApi it was built against.</param>
-/// <param name="EntryAssembly">The file of the assembly that holds its <see cref="ITazelPlugin"/>.</param>
-internal sealed record PluginManifest(string Group, string Name, string Version, string PluginApi, string EntryAssembly);
-
 /// <summary>A plugin, loaded into a load context of its own and applied.</summary>
-internal sealed class LoadedPlugin(PluginManifest manifest, string directory, AssemblyLoadContext context, List<Assembly> assemblies)
+internal sealed class LoadedPlugin(TazelPluginManifest manifest, string directory, AssemblyLoadContext context, List<Assembly> assemblies)
 {
-    public PluginManifest Manifest { get; } = manifest;
+    public TazelPluginManifest Manifest { get; } = manifest;
 
     public string Directory { get; } = directory;
 
@@ -52,7 +43,7 @@ internal sealed class LoadedPlugin(PluginManifest manifest, string directory, As
 /// </summary>
 internal static class Plugins
 {
-    public const string ManifestFile = "tazel-plugin.json";
+    public const string ManifestFile = TazelPluginManifest.FileName;
 
     private static readonly string[] Shared = ["Progmasoft.Tazel.PluginApi", "Progmasoft.Tazel.Dsl"];
 
@@ -135,7 +126,7 @@ internal static class Plugins
     /// <summary>The directory of the plugin's archive, unpacked once below the state directory by its SHA-256.</summary>
     private static string Unpacked(string mainRoot, string archive)
     {
-        var sha = Sha256Sums.Sha256(archive);
+        var sha = Archive.Sha256Sums.Sha256(archive);
         var destination = Path.Combine(mainRoot, ModuleFiles.StateDirectory, "plugins", sha[..32]);
         if (ModuleArchive.FromMarker(destination) is { } unpacked)
         {
@@ -164,55 +155,25 @@ internal static class Plugins
         }
     }
 
-    private static PluginManifest ReadManifest(string file, string shown)
+    private static TazelPluginManifest ReadManifest(string file, string shown)
     {
         try
         {
-            return JsonSerializer.Deserialize<PluginManifest>(File.ReadAllText(file),
-                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, AllowTrailingCommas = false })
-                ?? throw new ProjectException($"{shown}: {ManifestFile} is empty");
+            return TazelPluginManifest.Read(File.ReadAllText(file), shown);
         }
-        catch (JsonException error)
+        catch (TazelPackageException error)
         {
-            throw new ProjectException($"{shown}: {ManifestFile} cannot be read: {error.Message}", error);
+            throw new ProjectException(error.Message, error);
         }
     }
 
-    private static void CheckManifest(PluginManifest manifest, string shown)
-    {
-        CheckNames(manifest, shown);
-        CheckApi(manifest, shown);
-        var entry = manifest.EntryAssembly;
-        if (string.IsNullOrEmpty(entry) || entry.Contains('/', StringComparison.Ordinal) || entry.Contains('\\', StringComparison.Ordinal) ||
-            !entry.EndsWith(".dll", StringComparison.Ordinal))
-        {
-            throw new ProjectException($"{shown}: the entry assembly '{entry}' is not a .dll at the top");
-        }
-    }
-
-    private static void CheckNames(PluginManifest manifest, string shown)
-    {
-        if (string.IsNullOrEmpty(manifest.Group) || manifest.Group.Split('.').Any(part => part.Length == 0 || !Labels.IsName(part)))
-        {
-            throw new ProjectException($"{shown}: the group '{manifest.Group}' of its manifest is not names joined by dots");
-        }
-
-        if (string.IsNullOrEmpty(manifest.Name) || !Labels.IsName(manifest.Name))
-        {
-            throw new ProjectException($"{shown}: the name '{manifest.Name}' of its manifest is not a name");
-        }
-
-        if (!NuGetVersion.TryParseStrict(manifest.Version ?? "", out _))
-        {
-            throw new ProjectException($"{shown}: '{manifest.Version}' is not a SemVer version");
-        }
-    }
+    private static void CheckManifest(TazelPluginManifest manifest, string shown) => CheckApi(manifest, shown);
 
     /// <summary>
     /// The plugin API a plugin was built against must be this Tazel's: before 1.0.0 a new MINOR may change the API, so
     /// the MAJOR and MINOR must be the same; from 1.0.0 the MAJOR, and a MINOR no newer.
     /// </summary>
-    private static void CheckApi(PluginManifest manifest, string shown)
+    private static void CheckApi(TazelPluginManifest manifest, string shown)
     {
         if (!Version.TryParse(manifest.PluginApi ?? "", out var api))
         {

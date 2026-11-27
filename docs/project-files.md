@@ -49,7 +49,8 @@ execution = Execution.Define(new() { Jobs = 8, KeepGoing = false });
 toolchains = Toolchains.Define("//toolchains:clang");
 ```
 
-- `License` is an SPDX license expression, checked against the SPDX License List 3.29.0 that ships with Tazel:
+- `License` is an SPDX license expression, checked against the SPDX License List 3.29.0 that ships with Tazel
+  ([Packaging](packaging.md)):
   identifiers of the list in any case, joined by `AND` and `OR`, an exception after `WITH`, parentheses around a
   group and `+` for a version or later, such as `MIT OR Apache-2.0` or
   `GPL-2.0-or-later WITH Classpath-exception-2.0`. A license of your own is `LicenseRef-<name>`. A misspelt identifier
