@@ -126,7 +126,7 @@ CC.Test("math_test", new()
   `Tags = ["manual"]` keeps a target out of `//...` as well.
 - **Conditions** are C#: `Build.Mode` (`BuildMode.Debug`, `Release`), `Build.Platform`, `Build.OS`, `Build.Arch`.
 - **Headers** of a target are found below the root of its module and below its `IncludeDirectories`, by it and by
-  what depends on it.
+  what depends on it. An entry is a path below the package, or `"."` for the package's own directory.
 
 ### Objective-C
 
