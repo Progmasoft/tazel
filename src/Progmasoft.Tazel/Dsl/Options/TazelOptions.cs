@@ -98,11 +98,17 @@ public static class TazelOptionsFile
 
     /// <summary>
     /// The options of <paramref name="text"/>; <paramref name="file"/> names it in messages and a quoted include is
-    /// found beside <paramref name="path"/>. It is read twice: first without what depends on <c>target_system</c>, which
-    /// chooses the platform (<paramref name="requested"/>, else the file's, else this machine's), then for that
+    /// found beside <c>path</c>. It is read twice: first without what depends on <c>target_system</c>, which
+    /// chooses the platform (<c>requested</c>, else the file's, else this machine's), then for that
     /// platform. A platform chosen inside a condition on <c>target_system</c> is an error.
     /// </summary>
-    public static TazelOptions Parse(string text, string file, string? path = null, Platform? requested = null)
+    public static TazelOptions Parse(string text, string file) => Parse(text, file, null, null);
+
+    /// <summary><see cref="Parse(string, string)"/>, with includes found beside <paramref name="path"/>.</summary>
+    public static TazelOptions Parse(string text, string file, string? path) => Parse(text, file, path, null);
+
+    /// <summary><see cref="Parse(string, string, string)"/>, for the platform <paramref name="requested"/> when it is not null.</summary>
+    public static TazelOptions Parse(string text, string file, string? path, Platform? requested)
     {
         var machine = Configuration.ConfigurationContext.ForThisMachine();
         var chosen = Read(text, file, path, machine);
@@ -169,7 +175,10 @@ public static class TazelOptionsFile
     /// for in any file above stays asked for, so a project cannot turn off what a directory around it requires.
     /// Default options, and no file, without any.
     /// </summary>
-    public static (TazelOptions Options, string? SandboxFile) Effective(string directory, Platform? requested = null)
+    public static (TazelOptions Options, string? SandboxFile) Effective(string directory) => Effective(directory, null);
+
+    /// <summary><see cref="Effective(string)"/>, for the platform <paramref name="requested"/> when it is not null.</summary>
+    public static (TazelOptions Options, string? SandboxFile) Effective(string directory, Platform? requested)
     {
         var files = Find(directory).Select(file => (File: file, Options: Read(file, requested))).ToList();
         if (files.Count == 0)

@@ -35,7 +35,7 @@ public sealed class ConfigurationHomeException : Exception
 public static class TazelHome
 {
     /// <summary>The name of the variable that sets it.</summary>
-    public const string Variable = "TAZEL_HOME";
+    public static string Variable { get; } = "TAZEL_HOME";
 
     /// <summary>The directory, resolved from the environment as it is now.</summary>
     public static string Directory()

@@ -33,78 +33,96 @@ internal static class CsxMigration
     private static readonly HashSet<string> Families = new(StringComparer.Ordinal) { "CC", "ObjectiveC", "Zig" };
 
     /// <summary>Migrates every package below <paramref name="directory"/>, in every module there.</summary>
-    public static MigrationResult Run(string directory, bool write = true)
+    public static MigrationResult Run(string directory) => Run(directory, write: true);
+
+    /// <summary>Migrates every package below <paramref name="directory"/>, or with <paramref name="write"/> false only says what it would do.</summary>
+    public static MigrationResult Run(string directory, bool write)
     {
         var start = Path.GetFullPath(directory);
         var problems = new List<string>();
-        var plans = new List<(string? Legacy, string Target, string Text, bool Changed)>();
+        var plans = new List<Plan>();
         foreach (var packageDirectory in Directories(start))
         {
-            var names = new HashSet<string>(
-                Directory.EnumerateFiles(packageDirectory).Select(Path.GetFileName).OfType<string>(), StringComparer.Ordinal);
-            var legacy = LegacyNames.Where(names.Contains).ToList();
-            var shown = Shown(start, packageDirectory);
-            var csx = Path.Combine(packageDirectory, "BUILD.csx");
-            if (legacy.Count > 1)
+            if (PlanOf(start, packageDirectory, problems) is { } plan)
             {
-                problems.Add($"{shown}: {string.Join(" and ", legacy)} are both here; keep one, and run this again");
-                continue;
-            }
-
-            var source = legacy.Count == 1 ? Path.Combine(packageDirectory, legacy[0]) : names.Contains("BUILD.csx") ? csx : null;
-            if (source is null)
-            {
-                continue;
-            }
-
-            var text = File.ReadAllText(source);
-            var rewritten = Rewrite(text, Package(packageDirectory), Shown(start, source), problems);
-            if (legacy.Count == 1 && names.Contains("BUILD.csx"))
-            {
-                // What an interrupted run leaves: BUILD.csx already holds what this file becomes.
-                if (rewritten is not null && File.ReadAllText(csx) == rewritten)
-                {
-                    plans.Add((source, csx, rewritten, Changed: false));
-                }
-                else
-                {
-                    problems.Add($"{shown}: {legacy[0]} and BUILD.csx are both here; keep one, and run this again");
-                }
-
-                continue;
-            }
-
-            if (rewritten is not null && (legacy.Count == 1 || rewritten != text))
-            {
-                plans.Add((legacy.Count == 1 ? source : null, csx, rewritten, rewritten != text || legacy.Count == 1));
+                plans.Add(plan);
             }
         }
 
-        if (problems.Count > 0 || !write)
+        if (problems.Count == 0 && write)
         {
-            return Result(start, plans, problems);
-        }
-
-        foreach (var (legacy, target, text, changed) in plans)
-        {
-            if (changed)
-            {
-                var partial = target + ".partial";
-                File.WriteAllText(partial, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                File.Move(partial, target, overwrite: legacy is null);
-            }
-
-            if (legacy is not null)
-            {
-                File.Delete(legacy);
-            }
+            plans.ForEach(Apply);
         }
 
         return Result(start, plans, problems);
     }
 
-    private static MigrationResult Result(
-        string start, List<(string? Legacy, string Target, string Text, bool Changed)> plans, List<string> problems) =>
+    // What becomes of one package: Legacy is the file to remove, or null when BUILD.csx is rewritten in place.
+    private sealed record Plan(string? Legacy, string Target, string Text, bool Changed);
+
+    // The plan of one directory, or null when it has nothing to change or a problem was added.
+    private static Plan? PlanOf(string start, string packageDirectory, List<string> problems)
+    {
+        var names = new HashSet<string>(
+            Directory.EnumerateFiles(packageDirectory).Select(Path.GetFileName).OfType<string>(), StringComparer.Ordinal);
+        var legacy = LegacyNames.Where(names.Contains).ToList();
+        var shown = Shown(start, packageDirectory);
+        var csx = Path.Combine(packageDirectory, "BUILD.csx");
+        if (legacy.Count > 1)
+        {
+            problems.Add($"{shown}: {string.Join(" and ", legacy)} are both here; keep one, and run this again");
+            return null;
+        }
+
+        var source = legacy.Count == 1 ? Path.Combine(packageDirectory, legacy[0]) : csx;
+        if (!File.Exists(source))
+        {
+            return null;
+        }
+
+        var text = File.ReadAllText(source);
+        var rewritten = Rewrite(text, Package(packageDirectory), Shown(start, source), problems);
+        if (rewritten is null)
+        {
+            return null;
+        }
+
+        if (legacy.Count == 0)
+        {
+            return rewritten == text ? null : new Plan(null, csx, rewritten, Changed: true);
+        }
+
+        if (!names.Contains("BUILD.csx"))
+        {
+            return new Plan(source, csx, rewritten, Changed: true);
+        }
+
+        // What an interrupted run leaves: BUILD.csx already holds what this file becomes.
+        if (File.ReadAllText(csx) == rewritten)
+        {
+            return new Plan(source, csx, rewritten, Changed: false);
+        }
+
+        problems.Add($"{shown}: {legacy[0]} and BUILD.csx are both here; keep one, and run this again");
+        return null;
+    }
+
+    private static void Apply(Plan plan)
+    {
+        if (plan.Changed)
+        {
+            var partial = plan.Target + ".partial";
+            File.WriteAllText(partial, plan.Text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(partial, plan.Target, overwrite: plan.Legacy is null);
+        }
+
+        if (plan.Legacy is not null)
+        {
+            File.Delete(plan.Legacy);
+        }
+    }
+
+    private static MigrationResult Result(string start, List<Plan> plans, List<string> problems) =>
         new(plans.Where(plan => plan.Legacy is not null).Select(plan => $"{Shown(start, plan.Legacy!)} -> BUILD.csx").ToList(),
             plans.Where(plan => plan.Legacy is null).Select(plan => Shown(start, plan.Target)).ToList(),
             problems);
@@ -155,37 +173,51 @@ internal static class CsxMigration
         var root = tree.GetRoot();
         var changes = new List<TextChange>();
         var replaced = new Dictionary<ISymbol, int>(SymbolEqualityComparer.Default);
-        var failed = false;
-
+        var before = problems.Count;
         foreach (var element in DependsElements(root))
         {
-            var type = model.GetTypeInfo(element).Type;
-            if (type is null || type.SpecialType == SpecialType.System_String || type.Name != "Target")
+            if (Label(element, model, package, shown, problems) is { } label)
             {
-                continue;
+                changes.Add(new TextChange(element.Span, Literal(label.Text)));
+                replaced[label.Symbol] = replaced.GetValueOrDefault(label.Symbol) + 1;
             }
-
-            var line = element.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
-            if (element is not IdentifierNameSyntax identifier ||
-                model.GetSymbolInfo(identifier).Symbol is not { } symbol ||
-                DeclaredName(symbol) is not { } name)
-            {
-                problems.Add($"{shown}:{line}: Depends names '{element}', which is not a variable a declaration of this " +
-                    "file set; write the label of the target instead");
-                failed = true;
-                continue;
-            }
-
-            changes.Add(new TextChange(element.Span, Literal($"//{package}:{name}")));
-            replaced[symbol] = replaced.GetValueOrDefault(symbol) + 1;
         }
 
-        if (failed)
+        if (problems.Count > before)
         {
             return null;
         }
 
-        // A variable that only Depends used is left out: its declaration stays, as a statement of its own.
+        changes.AddRange(UnusedDeclarations(root, model, replaced));
+        return changes.Count == 0 ? text : SourceText.From(text).WithChanges(changes).ToString();
+    }
+
+    // The label an element of Depends becomes, with its variable; null for an element that is no Target, or when it
+    // cannot be resolved, with the reason added to problems.
+    private static (string Text, ISymbol Symbol)? Label(
+        ExpressionSyntax element, SemanticModel model, string package, string shown, List<string> problems)
+    {
+        var type = model.GetTypeInfo(element).Type;
+        if (type is null || type.SpecialType == SpecialType.System_String || type.Name != "Target")
+        {
+            return null;
+        }
+
+        if (element is IdentifierNameSyntax identifier && model.GetSymbolInfo(identifier).Symbol is { } symbol &&
+            DeclaredName(symbol) is { } name)
+        {
+            return ($"//{package}:{name}", symbol);
+        }
+
+        var line = element.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        problems.Add($"{shown}:{line}: Depends names '{element}', which is not a variable a declaration of this " +
+            "file set; write the label of the target instead");
+        return null;
+    }
+
+    // A variable that only Depends used is left out: its declaration stays, as a statement of its own.
+    private static IEnumerable<TextChange> UnusedDeclarations(SyntaxNode root, SemanticModel model, Dictionary<ISymbol, int> replaced)
+    {
         foreach (var (symbol, count) in replaced)
         {
             var uses = root.DescendantNodes().OfType<IdentifierNameSyntax>()
@@ -193,22 +225,18 @@ internal static class CsxMigration
                     SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(name).Symbol, symbol));
             if (uses == count && Declarator(symbol) is { Parent: VariableDeclarationSyntax { Variables.Count: 1 } declaration } declarator)
             {
-                changes.Add(new TextChange(TextSpan.FromBounds(declaration.SpanStart, declarator.Initializer!.Value.SpanStart), ""));
+                yield return new TextChange(TextSpan.FromBounds(declaration.SpanStart, declarator.Initializer!.Value.SpanStart), "");
             }
         }
-
-        return changes.Count == 0 ? text : SourceText.From(text).WithChanges(changes).ToString();
     }
 
     // The elements of every Depends = [...] (and Depends = new() {...}) in object initializers.
     private static IEnumerable<ExpressionSyntax> DependsElements(SyntaxNode root) =>
         root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
             .Where(assignment => assignment.Left is IdentifierNameSyntax { Identifier.ValueText: "Depends" })
-            .SelectMany(assignment => assignment.Right switch
-            {
-                CollectionExpressionSyntax collection => collection.Elements.OfType<ExpressionElementSyntax>().Select(e => e.Expression),
-                _ => [],
-            });
+            .SelectMany(assignment => assignment.Right is CollectionExpressionSyntax collection
+                ? collection.Elements.OfType<ExpressionElementSyntax>().Select(e => e.Expression)
+                : []);
 
     // The name in the first argument of the declaration a variable was set to: CC.StaticLibrary("math", ...).
     private static string? DeclaredName(ISymbol symbol)

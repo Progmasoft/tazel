@@ -244,12 +244,7 @@ internal sealed class ConditionReader(string text)
         {
             _position++;
             var inner = Or();
-            if (!Take(")"))
-            {
-                throw new ConditionException("a '(' has no ')'");
-            }
-
-            return inner;
+            return Take(")") ? inner : throw new ConditionException("a '(' has no ')'");
         }
 
         if (letter is '"' or '\'' or '`')
@@ -258,44 +253,47 @@ internal sealed class ConditionReader(string text)
         }
 
         var name = Word();
-        if (name.Length == 0)
+        return name switch
         {
-            throw new ConditionException($"'{letter}' is not an operator of conditions");
+            "" => throw new ConditionException($"'{letter}' is not an operator of conditions"),
+            "true" => new LiteralCondition(true),
+            "false" => new LiteralCondition(false),
+            "host_system" or "target_system" => Member(name),
+            "defined" or "env" => Call(name),
+            _ => throw new ConditionException($"'{name}' is not a name conditions know" +
+                (Cli.Suggestions.Nearest(name, ["true", "false", "host_system", "target_system", "defined", "env"]) is { } near ? $"; did you mean {near}?" : "")),
+        };
+    }
+
+    // host_system.os and the like, after its name.
+    private MemberCondition Member(string name)
+    {
+        if (!Take("."))
+        {
+            throw new ConditionException($"{name} needs a field: {name}.os, .arch, .abi or .platform");
         }
 
-        switch (name)
+        var field = Word();
+        return Fields.Contains(field) ? new MemberCondition(name, field)
+            : throw new ConditionException($"{name}.{field} is not a field; the fields are os, arch, abi and platform");
+    }
+
+    // defined("NAME") or env("NAME"), after its name.
+    private CallCondition Call(string name)
+    {
+        if (!Take("("))
         {
-            case "true":
-                return new LiteralCondition(true);
-            case "false":
-                return new LiteralCondition(false);
-            case "host_system" or "target_system":
-                if (!Take("."))
-                {
-                    throw new ConditionException($"{name} needs a field: {name}.os, .arch, .abi or .platform");
-                }
-
-                var field = Word();
-                return Fields.Contains(field) ? new MemberCondition(name, field)
-                    : throw new ConditionException($"{name}.{field} is not a field; the fields are os, arch, abi and platform");
-            case "defined" or "env":
-                if (!Take("("))
-                {
-                    throw new ConditionException($"{name} is called: {name}(\"NAME\")");
-                }
-
-                Space();
-                if (_position >= text.Length || text[_position] is not ('"' or '\'' or '`'))
-                {
-                    throw new ConditionException($"{name} takes the name of a variable in quotes");
-                }
-
-                var variable = Quoted();
-                return Take(")") ? new CallCondition(name, variable) : throw new ConditionException($"{name}(\"{variable}\" has no ')'");
-            default:
-                var near = Cli.Suggestions.Nearest(name, ["true", "false", "host_system", "target_system", "defined", "env"]);
-                throw new ConditionException($"'{name}' is not a name conditions know{(near is null ? "" : $"; did you mean {near}?")}");
+            throw new ConditionException($"{name} is called: {name}(\"NAME\")");
         }
+
+        Space();
+        if (_position >= text.Length || text[_position] is not ('"' or '\'' or '`'))
+        {
+            throw new ConditionException($"{name} takes the name of a variable in quotes");
+        }
+
+        var variable = Quoted();
+        return Take(")") ? new CallCondition(name, variable) : throw new ConditionException($"{name}(\"{variable}\" has no ')'");
     }
 
     private static Condition Booleans(Condition condition, string op) => condition.Type == ConditionType.Boolean
@@ -364,50 +362,41 @@ public static class ConditionEvaluator
         Condition condition, SystemFacts host, SystemFacts? target, IReadOnlyDictionary<string, string> environment)
     {
         ArgumentNullException.ThrowIfNull(condition);
-        return Value(condition, host, target, environment) switch
-        {
-            bool truth => truth,
-            _ => null,
-        };
+        return new Evaluator(host, target, environment).Value(condition) as bool?;
     }
 
-    // A bool, a string, or null for unknown.
-    private static object? Value(Condition condition, SystemFacts host, SystemFacts? target, IReadOnlyDictionary<string, string> environment)
+    private sealed class Evaluator(SystemFacts host, SystemFacts? target, IReadOnlyDictionary<string, string> environment)
     {
-        switch (condition)
+        // A bool, a string, or null for unknown.
+        public object? Value(Condition condition) => condition switch
         {
-            case LiteralCondition literal:
-                return literal.Value;
-            case MemberCondition member:
-                return member.System == "host_system" ? host[member.Field] : target?[member.Field];
-            case CallCondition call:
-                return call.Function == "defined" ? environment.ContainsKey(call.Name) : environment.GetValueOrDefault(call.Name, "");
-            case NotCondition not:
-                return Value(not.Operand, host, target, environment) is bool truth ? !truth : null;
-            case BinaryCondition { Operator: "&&" } and:
-                return Value(and.Left, host, target, environment) switch
-                {
-                    false => false,
-                    true => Value(and.Right, host, target, environment),
-                    _ => Value(and.Right, host, target, environment) is false ? false : null,
-                };
-            case BinaryCondition { Operator: "||" } or:
-                return Value(or.Left, host, target, environment) switch
-                {
-                    true => true,
-                    false => Value(or.Right, host, target, environment),
-                    _ => Value(or.Right, host, target, environment) is true ? true : null,
-                };
-            case BinaryCondition binary:
-                var (left, right) = (Value(binary.Left, host, target, environment), Value(binary.Right, host, target, environment));
-                if (left is null || right is null)
-                {
-                    return null;
-                }
+            LiteralCondition literal => literal.Value,
+            MemberCondition member => member.System == "host_system" ? host[member.Field] : target?[member.Field],
+            CallCondition call => call.Function == "defined" ? environment.ContainsKey(call.Name) : environment.GetValueOrDefault(call.Name, ""),
+            NotCondition not => Value(not.Operand) is bool truth ? !truth : null,
+            BinaryCondition { Operator: "&&" or "||" } logical => Logical(logical),
+            BinaryCondition binary => Compare(binary),
+            _ => throw new ArgumentException($"no condition {condition.GetType().Name}", nameof(condition)),
+        };
 
-                return binary.Operator == "==" ? Equals(left, right) : !Equals(left, right);
-            default:
-                throw new ArgumentException($"no condition {condition.GetType().Name}", nameof(condition));
+        // && and ||: the first side decides when it can; an unknown first side decides only with the second.
+        private bool? Logical(BinaryCondition logical)
+        {
+            var decides = logical.Operator == "||";
+            var left = Value(logical.Left) as bool?;
+            if (left == decides)
+            {
+                return decides;
+            }
+
+            var right = Value(logical.Right) as bool?;
+            return left is null ? (right == decides ? decides : null) : right;
+        }
+
+        private bool? Compare(BinaryCondition binary)
+        {
+            var (left, right) = (Value(binary.Left), Value(binary.Right));
+            return left is null || right is null ? null : Equals(left, right) == (binary.Operator == "==");
         }
     }
 }

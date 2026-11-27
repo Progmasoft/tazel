@@ -53,9 +53,19 @@ public sealed record ConfigurationDocument(IReadOnlyList<Node> Nodes, bool Once)
 public static class ConfigurationParser
 {
     /// <summary>The deepest <c>.if</c> may nest, and the deepest includes may go.</summary>
-    public const int MaxDepth = 64;
+    public static int MaxDepth { get; } = 64;
 
-    private sealed class Frame(Token at)
+    private static readonly string[] Directives = ["include", "import", "pragma", "if", "elif", "else", "end"];
+
+    /// <summary>The tree of <paramref name="tokens"/>, read from <paramref name="text"/> of <paramref name="file"/>.</summary>
+    public static ConfigurationDocument Parse(IReadOnlyList<Token> tokens, string file, string text)
+    {
+        ArgumentNullException.ThrowIfNull(tokens);
+        return new Reader(file, text).Read(tokens);
+    }
+
+    // An .if being read: its branches so far, and the one being read.
+    private sealed class Frame(Token at, Condition? test)
     {
         public Token At { get; } = at;
 
@@ -63,45 +73,63 @@ public static class ConfigurationParser
 
         public Token BranchAt { get; set; } = at;
 
-        public Condition? Condition { get; set; }
+        public Condition? Test { get; set; } = test;
 
         public List<Node> Body { get; set; } = [];
 
         public bool SawElse { get; set; }
+
+        public void Close() => Branches.Add(new Branch(BranchAt, Test, Body));
     }
 
-    /// <summary>The tree of <paramref name="tokens"/>, read from <paramref name="text"/> of <paramref name="file"/>.</summary>
-    public static ConfigurationDocument Parse(IReadOnlyList<Token> tokens, string file, string text)
+    private sealed class Reader(string file, string text)
     {
-        ArgumentNullException.ThrowIfNull(tokens);
-        var root = new List<Node>();
-        var frames = new Stack<Frame>();
-        var pending = new List<Token>();
-        var once = false;
-        List<Node> Current() => frames.Count == 0 ? root : frames.Peek().Body;
-        void Flush()
-        {
-            if (pending.Count > 0)
-            {
-                Current().Add(new TokensNode(pending.ToList()));
-                pending.Clear();
-            }
-        }
+        private readonly List<Node> _root = [];
+        private readonly Stack<Frame> _frames = new();
+        private readonly List<Token> _pending = [];
+        private bool _once;
 
-        CustomCommandsException Fail(string code, Token at, string message, string help, string joke) =>
-            new(Diagnostic.AtToken(code, text, file, at with { Text = "." + at.Text }, message, "this directive", help, joke));
+        private List<Node> Current => _frames.Count == 0 ? _root : _frames.Peek().Body;
 
-        for (var i = 0; i < tokens.Count; i++)
+        public ConfigurationDocument Read(IReadOnlyList<Token> tokens)
         {
-            var token = tokens[i];
-            if (token.Kind != TokenKind.Directive)
+            for (var i = 0; i < tokens.Count; i++)
             {
-                pending.Add(token);
-                continue;
+                var token = tokens[i];
+                if (token.Kind != TokenKind.Directive)
+                {
+                    _pending.Add(token);
+                    continue;
+                }
+
+                Flush();
+                Directive(token, token.Argument ?? "", first: i == 0);
             }
 
             Flush();
-            var argument = token.Argument ?? "";
+            if (_frames.Count > 0)
+            {
+                throw Fail(ErrorCodes.ConditionalUnbalanced, _frames.Peek().At, ".if without its .end", "close the block with .end",
+                    "This .if is still waiting for the end of the story.");
+            }
+
+            return new ConfigurationDocument(_root, _once);
+        }
+
+        private void Flush()
+        {
+            if (_pending.Count > 0)
+            {
+                Current.Add(new TokensNode(_pending.ToList()));
+                _pending.Clear();
+            }
+        }
+
+        private CustomCommandsException Fail(string code, Token at, string message, string help, string joke) =>
+            new(Diagnostic.AtToken(code, text, file, at with { Text = "." + at.Text }, message, "this directive", help, joke));
+
+        private void Directive(Token token, string argument, bool first)
+        {
             if (argument.EndsWith(';'))
             {
                 throw Fail(ErrorCodes.DirectiveUnknown, token, $".{token.Text} takes no ';'", "leave the ';' out",
@@ -111,71 +139,22 @@ public static class ConfigurationParser
             switch (token.Text)
             {
                 case "include" or "import":
-                    var (path, global) = IncludePath(argument) ?? throw Fail(ErrorCodes.IncludePathRefused, token,
-                        $".{token.Text} needs one path, in quotes or in angle brackets, not '{argument}'",
-                        $"write .{token.Text} \"file\" for a file beside this one, or .{token.Text} <file> for one of TAZEL_HOME's Include directory",
-                        "Tazel looked for a path and found an opinion instead.");
-                    Current().Add(new IncludeNode(token, path, global, token.Text == "import"));
+                    Include(token, argument);
                     break;
                 case "pragma":
-                    if (argument != "once")
-                    {
-                        throw Fail(ErrorCodes.DirectiveUnknown, token, $"'.pragma {argument}' is not a pragma Tazel knows",
-                            ".pragma once is the only pragma", "Tazel has exactly one pragma, and it is used once.");
-                    }
-
-                    if (i != 0)
-                    {
-                        throw Fail(ErrorCodes.DirectiveUnknown, token, ".pragma once must come first in its file",
-                            "move it to the top, above everything but comments", "Once is a word that only works at the start.");
-                    }
-
-                    once = true;
+                    Pragma(token, argument, first);
                     break;
                 case "if":
-                    if (frames.Count >= MaxDepth)
-                    {
-                        throw Fail(ErrorCodes.ConditionalUnbalanced, token, $".if blocks nest more than {MaxDepth} deep",
-                            "fold the conditions together with && and ||", "Somewhere, deep in the ifs, a condition got lost.");
-                    }
-
-                    frames.Push(new Frame(token) { Condition = Condition(token, file, text) });
+                    If(token);
                     break;
                 case "elif" or "else":
-                    var frame = frames.Count > 0 ? frames.Peek() : throw Fail(ErrorCodes.ConditionalUnbalanced, token,
-                        $".{token.Text} without an .if", "open the block with .if", "An answer, and nobody asked.");
-                    if (frame.SawElse)
-                    {
-                        throw Fail(ErrorCodes.ConditionalUnbalanced, token, $".{token.Text} after .else",
-                            ".else is the last branch of its .if", "After else, there is nothing else.");
-                    }
-
-                    if (token.Text == "else" && argument.Length > 0)
-                    {
-                        throw Fail(ErrorCodes.ConditionalUnbalanced, token, ".else takes no condition",
-                            "write .elif and the condition, or .else alone", "Else is for everything that is left; it does not choose.");
-                    }
-
-                    frame.Branches.Add(new Branch(frame.BranchAt, frame.Condition, frame.Body));
-                    frame.BranchAt = token;
-                    frame.Condition = token.Text == "elif" ? Condition(token, file, text) : null;
-                    frame.Body = [];
-                    frame.SawElse = token.Text == "else";
+                    Else(token, argument);
                     break;
                 case "end":
-                    var closing = frames.Count > 0 ? frames.Pop() : throw Fail(ErrorCodes.ConditionalUnbalanced, token,
-                        ".end without an .if", "remove it, or open the block with .if", "Tazel found an ending without a story.");
-                    if (argument.Length > 0)
-                    {
-                        throw Fail(ErrorCodes.ConditionalUnbalanced, token, ".end takes nothing after it", "write .end alone",
-                            "The end is the end. Nothing comes after it on the line.");
-                    }
-
-                    closing.Branches.Add(new Branch(closing.BranchAt, closing.Condition, closing.Body));
-                    Current().Add(new IfNode(closing.At, closing.Branches));
+                    End(token, argument);
                     break;
                 default:
-                    var near = Cli.Suggestions.Nearest(token.Text, ["include", "import", "pragma", "if", "elif", "else", "end"]);
+                    var near = Cli.Suggestions.Nearest(token.Text, Directives);
                     throw Fail(ErrorCodes.DirectiveUnknown, token, $".{token.Text} is not a directive",
                         near is null ? "the directives are .include, .import, .pragma once, .if, .elif, .else and .end; a name that starts with a dot goes in quotes"
                             : $"did you mean .{near}?",
@@ -183,14 +162,80 @@ public static class ConfigurationParser
             }
         }
 
-        Flush();
-        if (frames.Count > 0)
+        private void Include(Token token, string argument)
         {
-            throw Fail(ErrorCodes.ConditionalUnbalanced, frames.Peek().At, ".if without its .end", "close the block with .end",
-                "This .if is still waiting for the end of the story.");
+            var (path, global) = IncludePath(argument) ?? throw Fail(ErrorCodes.IncludePathRefused, token,
+                $".{token.Text} needs one path, in quotes or in angle brackets, not '{argument}'",
+                $"write .{token.Text} \"file\" for a file beside this one, or .{token.Text} <file> for one of TAZEL_HOME's Include directory",
+                "Tazel looked for a path and found an opinion instead.");
+            Current.Add(new IncludeNode(token, path, global, token.Text == "import"));
         }
 
-        return new ConfigurationDocument(root, once);
+        private void Pragma(Token token, string argument, bool first)
+        {
+            if (argument != "once")
+            {
+                throw Fail(ErrorCodes.DirectiveUnknown, token, $"'.pragma {argument}' is not a pragma Tazel knows",
+                    ".pragma once is the only pragma", "Tazel has exactly one pragma, and it is used once.");
+            }
+
+            if (!first)
+            {
+                throw Fail(ErrorCodes.DirectiveUnknown, token, ".pragma once must come first in its file",
+                    "move it to the top, above everything but comments", "Once is a word that only works at the start.");
+            }
+
+            _once = true;
+        }
+
+        private void If(Token token)
+        {
+            if (_frames.Count >= MaxDepth)
+            {
+                throw Fail(ErrorCodes.ConditionalUnbalanced, token, $".if blocks nest more than {MaxDepth} deep",
+                    "fold the conditions together with && and ||", "Somewhere, deep in the ifs, a condition got lost.");
+            }
+
+            _frames.Push(new Frame(token, ConditionOf(token, file, text)));
+        }
+
+        private void Else(Token token, string argument)
+        {
+            var frame = _frames.Count > 0 ? _frames.Peek() : throw Fail(ErrorCodes.ConditionalUnbalanced, token,
+                $".{token.Text} without an .if", "open the block with .if", "An answer, and nobody asked.");
+            if (frame.SawElse)
+            {
+                throw Fail(ErrorCodes.ConditionalUnbalanced, token, $".{token.Text} after .else",
+                    ".else is the last branch of its .if", "After else, there is nothing else.");
+            }
+
+            var isElse = token.Text == "else";
+            if (isElse && argument.Length > 0)
+            {
+                throw Fail(ErrorCodes.ConditionalUnbalanced, token, ".else takes no condition",
+                    "write .elif and the condition, or .else alone", "Else is for everything that is left; it does not choose.");
+            }
+
+            frame.Close();
+            frame.BranchAt = token;
+            frame.Test = isElse ? null : ConditionOf(token, file, text);
+            frame.Body = [];
+            frame.SawElse = isElse;
+        }
+
+        private void End(Token token, string argument)
+        {
+            var closing = _frames.Count > 0 ? _frames.Pop() : throw Fail(ErrorCodes.ConditionalUnbalanced, token,
+                ".end without an .if", "remove it, or open the block with .if", "Tazel found an ending without a story.");
+            if (argument.Length > 0)
+            {
+                throw Fail(ErrorCodes.ConditionalUnbalanced, token, ".end takes nothing after it", "write .end alone",
+                    "The end is the end. Nothing comes after it on the line.");
+            }
+
+            closing.Close();
+            Current.Add(new IfNode(closing.At, closing.Branches));
+        }
     }
 
     // "file", 'file' or `file`, relative to the file that names it; <file>, below the Include directory.
@@ -216,7 +261,7 @@ public static class ConfigurationParser
         };
     }
 
-    private static Condition Condition(Token token, string file, string text)
+    private static Condition ConditionOf(Token token, string file, string text)
     {
         try
         {
