@@ -114,6 +114,35 @@ public sealed class BuildCommandTests
     }
 
     [Fact]
+    public async Task ADotIncludesThePackagesOwnDirectory()
+    {
+        Assert.SkipWhen(Host.Which("clang++") is null && Host.Which("g++") is null, "no C++ compiler on PATH");
+        Assert.SkipWhen(OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("INCLUDE") is null,
+            "no MSVC environment for clang on Windows");
+        using var module = new TemporaryModule()
+            .Write("MODULE.csx", TemporaryModule.ModuleFile)
+            .Write("lib/BUILD.csx", """
+                using Progmasoft.Tazel.Dsl.Build.Prelude;
+                CC.StaticLibrary("greet", new()
+                {
+                    Sources = ["greet.cpp"], Headers = ["greet.hpp"], IncludeDirectories = ["."], Visibility = Visibility.Public,
+                });
+                """)
+            .Write("lib/greet.hpp", "#pragma once\nint greet();\n")
+            .Write("lib/greet.cpp", "#include \"greet.hpp\"\nint greet() { return 3; }\n")
+            .Write("BUILD.csx", "using Progmasoft.Tazel.Dsl.Build.Prelude;\nCC.Executable(\"app\", new() { Sources = [\"main.cpp\"], Depends = [\"//lib:greet\"] });\n")
+            .Write("main.cpp", "#include \"greet.hpp\"\nint main() { return greet() == 3 ? 0 : 1; }\n");
+        var (status, output) = await module.TazelAsync(".", "run", "//:app");
+        Assert.True(status == 0, output);
+
+        // Only "." alone: a path with a "." part still is no path below the package.
+        module.Write("lib/BUILD.csx", "using Progmasoft.Tazel.Dsl.Build.Prelude;\nCC.StaticLibrary(\"greet\", new() { IncludeDirectories = [\"./sub\"], Visibility = Visibility.Public });\n");
+        (status, output) = await module.TazelAsync(".", "build", "//lib:greet");
+        Assert.Equal(1, status);
+        Assert.True(output.Contains("has no . or .. parts", StringComparison.Ordinal), output);
+    }
+
+    [Fact]
     public async Task BuildsAZigProgramThatImportsAModule()
     {
         Assert.SkipWhen(Host.Which("zig") is null, "no zig on PATH");

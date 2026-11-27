@@ -21,6 +21,10 @@
   declaration returns is no longer taken. `tazel limited-time C#`, until 1.0.0, renames those files and writes the
   targets `Depends` named by their variables as labels, without running any project file.
 
+## 0.2.0 - 2026-11-27
+
+- `IncludeDirectories = ["."]` names the package's own directory, as `includes = ["."]` does in Bazel; it was refused.
+
 - Building for DragonFly BSD with zig says that zig brings no libc for it, instead of zig's own error, and what does
   build for it. Tests build Zig, C and C++ for FreeBSD and OpenBSD with zig and check that the files are theirs.
 
