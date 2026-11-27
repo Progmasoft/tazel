@@ -10,6 +10,7 @@
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.12.0" />
     <PackageVersion Include="NuGet.Versioning" Version="8.0.0" />
+    <PackageVersion Include="Tethys.SPDX.ExpressionParser" Version="2.2.0" />
     <PackageVersion Include="Microsoft.Z3" Version="4.12.2" />
     <PackageVersion Include="Lzma.Net" Version="5.8.4.3" />
     <PackageVersion Include="xunit.v3" Version="4.0.3" />

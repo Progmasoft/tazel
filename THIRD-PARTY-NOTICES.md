@@ -11,11 +11,18 @@ Tazel ships with the libraries below. Their licenses are in [LICENSES/](LICENSES
 | [Spectre.Console](https://github.com/spectreconsole/spectre.console) | MIT | Copyright (c) Patrik Svensson, Phil Scott, Nils Andresen, Cédric Luthi |
 | [Roslyn](https://github.com/dotnet/roslyn): Microsoft.CodeAnalysis.CSharp.Scripting and its assemblies | MIT | Copyright (c) .NET Foundation and Contributors |
 | [NuGet.Versioning](https://github.com/NuGet/NuGet.Client) | Apache-2.0 | Copyright (c) .NET Foundation and Contributors |
+| [Tethys.SPDX.ExpressionParser](https://github.com/tngraf/Tethys.SPDX) | Apache-2.0 | Copyright (c) 2019-2026 T. Graf |
 | [Lzma.Net](https://github.com/zcsizmadia/Lzma.Net) | 0BSD | Copyright (c) 2026 Zoltan Csizmadia |
 | [BouncyCastle.Cryptography](https://github.com/bcgit/bc-csharp) | MIT | Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc. |
 
 The libraries that only build and test Tazel (xUnit, CsCheck, Snapshooter, Coverlet, BenchmarkDotNet, SharpFuzz,
 DocFX) are not part of what is shipped.
+
+## The SPDX License List
+
+Tazel carries `licenses.json` and `exceptions.json` of the SPDX License List 3.29.0, unmodified, from
+<https://github.com/spdx/license-list-data> (tag `v3.29.0`), in `spdx/` of the repository and inside `tazel.dll`. The
+list is the work of the SPDX Workgroup, a project of the Linux Foundation; see <https://spdx.org/licenses/>.
 
 ## The image of the MicroVM
 

@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- `License` in `MODULE.csx` is checked as an SPDX license expression against the SPDX License List 3.29.0, which
+  ships with Tazel (`spdx/`, updated by `dotnet run spdx/update.cs -- <version>`); expressions are parsed with
+  Tethys.SPDX.ExpressionParser after Tazel checks their form. A misspelt identifier is refused with the closest
+  ones, a deprecated one with what replaces it: `error[E0509]`. The check is a fuzz target.
+
 - `tazel tool launch <name>` runs `TAZEL_TOOL_EXECUTABLE`, or the first `tazel-<name>` of `PATH` this user may run,
   with its arguments as written, and passes its exit status on; `tazel tool create-wrapper <name> [-o dir]` writes a
   `tazel-<name>` that runs `<name>`. Error `E0507`.

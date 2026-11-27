@@ -22,7 +22,7 @@ namespace Progmasoft.Tazel.Fuzz;
 public static class Program
 {
     /// <summary>The fuzz targets by name.</summary>
-    public static readonly string[] Targets = ["custom", "options", "envs", "label", "depfile", "command-line"];
+    public static readonly string[] Targets = ["custom", "options", "envs", "label", "depfile", "command-line", "license"];
 
     /// <summary>Runs one target on the inputs libFuzzer gives.</summary>
     public static void Main(string[] arguments)
@@ -36,6 +36,7 @@ public static class Program
             "label" => text => Refused<LabelException>(() => Labels.Selection(text, PackageId.Root)),
             "depfile" => text => Depfiles.Inputs(text),
             "command-line" => text => Refused<CommandLineException>(() => CommandLine.Parse(text.Split('\n'))),
+            "license" => text => Refused<Project.LicenseException>(() => Project.SpdxLicenses.Check(text, "MODULE.csx")),
             _ => throw new ArgumentException($"the targets are {string.Join(", ", Targets)}"),
         };
         Fuzzer.LibFuzzer.Run(span =>

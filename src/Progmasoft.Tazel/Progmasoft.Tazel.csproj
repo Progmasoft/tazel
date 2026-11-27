@@ -20,6 +20,7 @@
     <PackageReference Include="Spectre.Console" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
     <PackageReference Include="NuGet.Versioning" />
+    <PackageReference Include="Tethys.SPDX.ExpressionParser" />
     <PackageReference Include="Lzma.Net" />
     <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
@@ -27,5 +28,10 @@
     <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
     <InternalsVisibleTo Include="Progmasoft.Tazel.Benchmarks" />
     <InternalsVisibleTo Include="Progmasoft.Tazel.Fuzz" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The SPDX License List the License of a module is checked against; spdx/update.cs replaces it. -->
+    <EmbeddedResource Include="../../spdx/licenses.json" LogicalName="spdx.licenses.json" />
+    <EmbeddedResource Include="../../spdx/exceptions.json" LogicalName="spdx.exceptions.json" />
   </ItemGroup>
 </Project>
