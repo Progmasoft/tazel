@@ -192,7 +192,7 @@ public sealed class ConfigurationLayersTests
     [Fact]
     public void TheMainModuleTakesTheLayersOfEnvsAndADependencyItsOwnAlone()
     {
-        var (tree, home, here) = Tree();
+        var (tree, home, _) = Tree();
         using (tree)
         using (home)
         {
