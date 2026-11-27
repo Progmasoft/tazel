@@ -250,3 +250,9 @@ Zig.Toolchain("zig", new()
 - The platforms are `LinuxAmd64` (`linux-amd64`), `LinuxAarch64`, `WindowsX64`, `WindowsArm64`, `MacOSX86_64`
   (`macos-x86_64`), `MacOSArm64`, `FreeBSDAmd64`, `FreeBSDAarch64`, `OpenBSDAmd64`, `OpenBSDAarch64` and
   `DragonFlyBSDAmd64`.
+- The BSD platforms are platforms to build for: Tazel runs on Linux, macOS and Windows. This machine's own compilers
+  build only for this machine, so another platform takes a registered toolchain. zig brings the libc of FreeBSD and
+  OpenBSD, so a `Zig.Toolchain` whose `Zig` is the zig on PATH builds Zig, C and C++ for them; a `CC.Toolchain` for
+  them names a compiler that targets them (zig cc does, wrapped in a script that adds `-target aarch64-freebsd`). zig
+  has no libc for DragonFly BSD: for `DragonFlyBSDAmd64` it builds static libraries, and linking needs a CC toolchain
+  whose compiler has a DragonFly sysroot.
