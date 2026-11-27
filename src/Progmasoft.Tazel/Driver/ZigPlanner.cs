@@ -117,6 +117,16 @@ internal sealed partial class Planner
             return products;
         }
 
+        // zig brings the libc of FreeBSD and OpenBSD, so it links for them on any host, but not DragonFly's: there it
+        // compiles and archives, and linking fails without a sysroot of DragonFly that zig is not given.
+        if (Options.Platform == Platform.DragonFlyBSDAmd64 && target.Kind != TargetKind.StaticLibrary)
+        {
+            throw new ProjectException(
+                $"{target.Place}: zig brings no libc for DragonFly BSD, so it cannot link {target.Label} for " +
+                "dragonfly-bsd-amd64; Zig static libraries build for it, and C and C++ programs build with a registered " +
+                "CC toolchain whose compiler has a DragonFly sysroot");
+        }
+
         var settings = (ZigCompiledSettings)target.Settings;
         var zig = Toolchains.Zig();
         var directory = Layout.PackageOut(target);
