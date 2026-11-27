@@ -42,6 +42,12 @@ public sealed record TazelOptions
 
     /// <summary>The platform commands build for unless <c>--platform</c> names one; default: the host's.</summary>
     public Platform? Platform { get; init; }
+
+    /// <summary>
+    /// <c>dotnet-settings: [ "Name=Value" ... ];</c>: settings of the .NET runtime of the Tazel process, applied before
+    /// those of <c>--dotnet-settings</c>; none by default.
+    /// </summary>
+    public IReadOnlyList<Runtime.DotnetSetting> DotnetSettings { get; init; } = [];
 }
 
 /// <summary>What is wrong with a <c>tazel_options.txt</c>, with where it is.</summary>
@@ -83,7 +89,7 @@ public static class TazelOptionsFile
     private const int MaxCpus = 256;
 
     private static readonly string[] Keys =
-        ["sandboxing-with-microvm", "microvm-network", "microvm-memory", "microvm-cpus", "platform"];
+        ["sandboxing-with-microvm", "microvm-network", "microvm-memory", "microvm-cpus", "platform", "dotnet-settings"];
 
     /// <summary>
     /// Reads the text of a <c>tazel_options.txt</c>, with the comments and strings of <c>tazel_custom.txt</c>.
@@ -229,6 +235,17 @@ public static class TazelOptionsFile
                 }
 
                 Take(TokenKind.Colon, $"':' after {key.Text}");
+                if (key.Text == "dotnet-settings")
+                {
+                    options = options with { DotnetSettings = SettingsList() };
+                    if (_position < tokens.Count)
+                    {
+                        Take(TokenKind.Semicolon, "';' after the list of dotnet-settings");
+                    }
+
+                    continue;
+                }
+
                 if (_position >= tokens.Count || tokens[_position].Kind is not (TokenKind.Name or TokenKind.String))
                 {
                     throw new TazelOptionsException(Diagnostic.After(Output.ErrorCodes.OptionsNoValue, text, file, tokens[_position - 1],
@@ -254,6 +271,39 @@ public static class TazelOptionsFile
             }
 
             return options;
+        }
+
+        // [ "Name=Value" 'Name=Value' `Name=Value` ]: strings in any of the quotes, no commas between them.
+        private IReadOnlyList<Runtime.DotnetSetting> SettingsList()
+        {
+            var open = Take(TokenKind.BracketOpen, "'[' to open the list of dotnet-settings");
+            var settings = new List<Runtime.DotnetSetting>();
+            while (_position < tokens.Count && tokens[_position].Kind == TokenKind.String)
+            {
+                var entry = tokens[_position++];
+                try
+                {
+                    settings.Add(Runtime.DotnetSettings.Parse(entry.Text, $"{file}:{entry.Line}"));
+                }
+                catch (Runtime.DotnetSettingsException error)
+                {
+                    throw Fail(Output.ErrorCodes.OptionsDotnetSetting, entry, error.Message, "this setting",
+                        "write \"Name=Value\" with one of the names of tazel help dotnet --long",
+                        "Tazel knows thirteen .NET settings by heart; this was not one of them.");
+                }
+            }
+
+            if (_position >= tokens.Count || tokens[_position].Kind != TokenKind.BracketClose)
+            {
+                var at = _position < tokens.Count ? tokens[_position] : tokens[_position - 1];
+                throw Fail(Output.ErrorCodes.OptionsDotnetSetting, at,
+                    $"the list of dotnet-settings, opened at line {open.Line}, holds strings and ends with ]", "here",
+                    "put each setting in quotes, with no commas, and close the list with ]",
+                    "A list without its ] is a sentence without its full stop.");
+            }
+
+            _position++;
+            return settings;
         }
 
         private TazelOptionsException Fail(string code, Token token, string message, string label, string help, string joke) =>
