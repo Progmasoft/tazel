@@ -179,8 +179,14 @@ public sealed class IgnoreTests
     {
         using var module = new TemporaryModule().Write("home/Include/Ignore/common.ignore.txt", "*.o\n");
         using var home = new Home(Path.Combine(module.Root, "home"));
-        var rules = IgnoreFile.Read(Path.Combine(module.Root, ".tazelignore"), "import:<common.ignore.txt>\n");
-        Assert.Equal("*.o", Assert.Single(rules).Text);
+        var file = Path.Combine(module.Root, ".tazelignore");
+        Assert.Equal("*.o", Assert.Single(IgnoreFile.Read(file, "import:<common.ignore.txt>\n")).Text);
+        // Where a file is does not choose the directive: include: reads it each time, import: once, both ways.
+        module.Write("local.ignore.txt", "*.l\n");
+        Assert.Equal(2, IgnoreFile.Read(file, "include:<common.ignore.txt>\ninclude:<common.ignore.txt>\n").Count);
+        Assert.Equal(2, IgnoreFile.Read(file, "include:\"local.ignore.txt\"\ninclude:\"local.ignore.txt\"\n").Count);
+        Assert.Single(IgnoreFile.Read(file, "import:\"local.ignore.txt\"\nimport:\"local.ignore.txt\"\n"));
+        Assert.Single(IgnoreFile.Read(file, "import:<common.ignore.txt>\ninclude:<common.ignore.txt>\n"));
     }
 
     [Fact]

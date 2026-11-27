@@ -238,9 +238,11 @@ A `.tazelignore` holds gitignore rules: comments, `*`, `**`, `?`, `[...]`, ancho
 directories, `\` escapes, `!` negation, trailing spaces dropped unless escaped, the last matching rule deciding, and
 nothing inside an ignored directory brought back. A file applies to its directory and below, after the files above
 it. `regex:` and `!regex:` take a .NET regular expression over the path relative to the file's directory, with `/`
-between its parts; it must compile and finish within a second on a path. `pragma:once`, `import:` and `include:` read
-other files as the directives of the text files do, `<file>` below `$TAZEL_HOME/Include/Ignore/`; there are no
-conditions. A gitignore rule that starts with one of these words takes a backslash: `\regex:name`. A `.gitignore` is
+between its parts; it must compile and finish within a second on a path. `include:` and `import:` put another file's
+rules in their place, as `#include` and `#import` do: `include:` each time it is named, `import:` once, and a file
+read with `import:` is not read again by `include:` either; `pragma:once` first in a file makes every inclusion of it
+an import. Each takes a path in quotes, beside the file that names it, or in angle brackets, below
+`$TAZEL_HOME/Include/Ignore/`; where the file is does not change which of the two reads it. There are no conditions. A gitignore rule that starts with one of these words takes a backslash: `\regex:name`. A `.gitignore` is
 not read.
 
 The rules apply to package discovery, `//...` and the other patterns, source globs and module archives. A path or a

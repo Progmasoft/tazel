@@ -221,8 +221,9 @@ internal static class Help
             tazel ignore delete|del <pattern>
 
             A .tazelignore holds gitignore rules, and regex:EXPRESSION or !regex:EXPRESSION for a .NET regular
-            expression over the path relative to its directory; pragma:once, import:<file>, import:"file",
-            include:<file> and include:"file" read other files in place. It applies to its directory and below, to
+            expression over the path relative to its directory; include: and import: put another file's rules in
+            their place, as #include and #import do: include: each time, import: once; either takes "file", beside
+            this one, or <file>, below $TAZEL_HOME/Include/Ignore; pragma:once makes a file an import wherever named. It applies to its directory and below, to
             package discovery, //..., source globs and the archives of modules; a path or label named explicitly is
             never ignored. A .gitignore is not read.
 
