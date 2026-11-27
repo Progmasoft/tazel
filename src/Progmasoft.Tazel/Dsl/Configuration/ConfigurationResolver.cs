@@ -338,16 +338,24 @@ public static class ConfigurationResolver
 
     /// <summary>
     /// <paramref name="path"/> with every link of it followed, so two names of one file are one file and a link
-    /// cannot lead out of a directory.
+    /// cannot lead out of a directory; on Windows each part is written as the directory holds it, so a path typed in
+    /// another case is the same path.
     /// </summary>
-    internal static string Canonical(string path)
+    public static string Canonical(string path)
     {
         var full = Path.GetFullPath(path);
         var root = Path.GetPathRoot(full)!;
-        var current = root;
+        var current = OperatingSystem.IsWindows() ? root.ToUpperInvariant() : root;
         foreach (var part in full[root.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
         {
-            var next = Path.Combine(current, part);
+            var name = part;
+            if (OperatingSystem.IsWindows() && System.IO.Directory.Exists(current))
+            {
+                name = System.IO.Directory.EnumerateFileSystemEntries(current, part).Select(Path.GetFileName)
+                    .FirstOrDefault(entry => string.Equals(entry, part, StringComparison.OrdinalIgnoreCase)) ?? part;
+            }
+
+            var next = Path.Combine(current, name);
             FileSystemInfo info = Directory.Exists(next) ? new DirectoryInfo(next) : new FileInfo(next);
             current = info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } resolved
                 ? Path.GetFullPath(resolved.FullName)

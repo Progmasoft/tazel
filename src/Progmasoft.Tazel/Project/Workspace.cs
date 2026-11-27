@@ -154,7 +154,7 @@ internal sealed class Workspace
         var shown = repository is null ? Dsl.Envs.TazelEnvsFile.FileName : $"@{repository}//{Dsl.Envs.TazelEnvsFile.FileName}";
         try
         {
-            return Dsl.Envs.ModuleEnvironment.Load(root, shown, target);
+            return Dsl.Envs.ModuleEnvironment.Load(root, shown, target, inherit: repository is null);
         }
         catch (Dsl.Custom.CustomCommandsException error)
         {

@@ -212,6 +212,35 @@ internal static class Help
 
               --algorithm ed25519|rsa-4096|ml-dsa  the algorithm; default: ed25519. ml-dsa is ML-DSA-65 (FIPS 204).
             """),
+        ["options"] = new("tazel options validate|get|what-is|update: the options of tazel_options.txt, layer by layer.", """
+            tazel options validate [--user | --project | --local]
+            tazel options get <setting> [--user | --project | --local]
+            tazel options what-is <setting>
+            tazel options update <setting> <value> [--user | --project] [--create]
+
+            The layers of tazel_options.txt, lowest first: the user's ($TAZEL_HOME/User/), the directories above this one,
+            farthest first, this machine's for the project ($TAZEL_HOME/Projects/<key>/), and this directory; the
+            command line is above them all. Each option comes from the highest layer that sets it; a sandbox asked
+            for anywhere stays asked for. validate reads every layer, or the one a flag names, and runs nothing. get
+            prints the value that holds and the file it came from, or with a flag the value of that layer alone.
+            what-is says what an option takes and means. update sets an option in ./tazel_options.txt, or the user's
+            or the project's file: it replaces the value where it stands or adds the entry, keeps the rest of the file,
+            and needs --create for a file that is not there yet. An option set inside .if or in an included file is
+            left for you to edit.
+            """),
+        ["custom-cmds"] = new("tazel custom-cmds validate: checks the layers of tazel_custom.txt.", """
+            tazel custom-cmds validate [--user | --project | --local]
+
+            Reads every layer of tazel_custom.txt, or the one a flag names, as tazel custom would, and runs nothing.
+            A command of a higher layer replaces the one of the same name below it.
+            """),
+        ["envs"] = new("tazel envs validate: checks the layers of tazel_envs.txt.", """
+            tazel envs validate [--user | --project | --local]
+
+            Reads every layer of tazel_envs.txt, or the one a flag names, and runs none of its programs or shell lines.
+            The main module takes the layers around its root, a value of a higher layer replacing the one of the same
+            name, and runs every value in its root; a module it depends on takes its own file alone.
+            """),
         ["dotnet"] = new("tazel dotnet get|what-is: the .NET runtime of this Tazel process and terms of .NET.", """
             tazel dotnet get <setting>
             tazel dotnet what-is <term>

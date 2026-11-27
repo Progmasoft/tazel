@@ -43,6 +43,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             PortalModulesCommand portal => PortalModulesAsync(portal, cancel),
             PackageCommand => PackageAsync(),
             CustomCommandLine custom => CustomAsync(custom, cancel),
+            OptionsCommand options => Task.FromResult(Options(options)),
+            ValidateCommand validate => Task.FromResult(Validate(validate.Kind, validate.Scope)),
             _ => Task.FromResult(RunAtOnce(command)),
         };
     }
@@ -160,6 +162,49 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         return 0;
     }
 
+    /// <summary>
+    /// The custom commands that hold here: those of every layer of tazel_custom.txt, a command of a higher layer
+    /// replacing the one of the same name below it. Their conditions see the platform tazel_options.txt chooses.
+    /// </summary>
+    private IReadOnlyList<CustomCommand> CustomCommandsHere()
+    {
+        var (options, _) = TazelOptionsFile.Effective(workingDirectory);
+        var context = Dsl.Configuration.ConfigurationContext.ForThisMachine() with
+        {
+            Target = Dsl.Configuration.SystemFacts.Of(options.Platform ?? Driver.Host.Platform),
+        };
+        var merged = new List<CustomCommand>();
+        foreach (var layer in CustomLayers())
+        {
+            foreach (var command in CustomParser.Parse(File.ReadAllText(layer.File), Shown(layer.File), layer.File, context))
+            {
+                merged.RemoveAll(other => other.Name == command.Name);
+                merged.Add(command);
+            }
+        }
+
+        return merged;
+    }
+
+    private IReadOnlyList<Dsl.Configuration.Layer> CustomLayers()
+    {
+        try
+        {
+            return Dsl.Configuration.ConfigurationLayers.For(CustomCommandFiles.FileName, workingDirectory);
+        }
+        catch (Dsl.Configuration.ConfigurationHomeException error)
+        {
+            throw new CustomCommandsException(error.Message, error);
+        }
+    }
+
+    // A file of a layer as messages show it: from the working directory when it is below it.
+    private string Shown(string file)
+    {
+        var relative = Path.GetRelativePath(workingDirectory, file);
+        return relative.StartsWith("..", StringComparison.Ordinal) ? file : relative.Replace('\\', '/');
+    }
+
     /// <summary>tazel dotnet what-is: a term of .NET explained, offline.</summary>
     private int WhatIs(string term)
     {
@@ -220,19 +265,13 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     /// <summary>The command of tazel_custom.txt the words name, and its arguments, which must fit what it takes.</summary>
     private (CustomCommand Command, IReadOnlyList<string> Arguments) FindCustom(IReadOnlyList<string> words)
     {
-        var file = Path.Combine(workingDirectory, CustomCommandFiles.FileName);
-        if (!File.Exists(file))
+        var commands = CustomCommandsHere();
+        if (commands.Count == 0)
         {
-            throw new CustomCommandsException($"there is no {CustomCommandFiles.FileName} in {workingDirectory}");
+            throw new CustomCommandsException(
+                $"there is no {CustomCommandFiles.FileName} in {workingDirectory}, above it, or in the user's or the project's settings");
         }
 
-        // Its conditions see the platform tazel_options.txt chooses, else this machine's.
-        var (options, _) = TazelOptionsFile.Effective(workingDirectory);
-        var context = Dsl.Configuration.ConfigurationContext.ForThisMachine() with
-        {
-            Target = Dsl.Configuration.SystemFacts.Of(options.Platform ?? Driver.Host.Platform),
-        };
-        var commands = CustomParser.Parse(File.ReadAllText(file), CustomCommandFiles.FileName, file, context);
         if (words.Count > CustomCommandFiles.MaxArguments)
         {
             throw new CommandLineException($"tazel custom takes at most {CustomCommandFiles.MaxArguments} words");

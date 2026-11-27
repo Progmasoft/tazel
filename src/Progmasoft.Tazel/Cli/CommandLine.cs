@@ -139,7 +139,7 @@ internal static class CommandLine
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
         ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
-            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time"];
+            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time", "options", "custom-cmds", "envs"];
 
     private enum Kind
     {
@@ -161,6 +161,10 @@ internal static class CommandLine
         new("progress", Kind.Value, ["always", "auto", "never"]),
         new("quiet", Kind.Flag, null),
         new("dotnet-settings", Kind.ListAlways, null),
+        new("user", Kind.Flag, null, "options", "custom-cmds", "envs"),
+        new("project", Kind.Flag, null, "options", "custom-cmds", "envs"),
+        new("local", Kind.Flag, null, "options", "custom-cmds", "envs"),
+        new("create", Kind.Flag, null, "options"),
         new("message-format", Kind.Value, ["rich-stdio", "script-friendly-stdio", "jsonl", "xml"]),
         new("help", Kind.Flag, null),
         new("platform", Kind.Value, Platforms.Names, Building),
@@ -321,6 +325,9 @@ internal static class CommandLine
             ? new MigrateCommand(output)
             : throw new CommandLineException("tazel limited-time takes one word, C#: tazel limited-time C#"),
         ["dotnet"] = MakeDaemon,
+        ["options"] = MakeOptions,
+        ["custom-cmds"] = (scanned, output) => MakeValidate(scanned, output, ConfigurationKind.Custom),
+        ["envs"] = (scanned, output) => MakeValidate(scanned, output, ConfigurationKind.Envs),
         ["cache"] = MakeCache,
     };
 
@@ -343,6 +350,47 @@ internal static class CommandLine
         scanned.Positional.Count == 0
             ? throw new CommandLineException($"tazel {scanned.Command} needs an expression, such as deps(//app:greeter)")
             : new QueryCommand(output, kind, string.Join(' ', scanned.Positional), Flags(scanned.Seen), Last(scanned.Seen, "output") ?? "label");
+
+    // --user, --project or --local: one at most; null for none.
+    private static Dsl.Configuration.LayerKind? Scope(Scanned scanned)
+    {
+        var given = new[] { ("user", Dsl.Configuration.LayerKind.User), ("project", Dsl.Configuration.LayerKind.Project), ("local", Dsl.Configuration.LayerKind.Local) }
+            .Where(flag => scanned.Has(flag.Item1)).ToList();
+        return given.Count switch
+        {
+            0 => null,
+            1 => given[0].Item2,
+            _ => throw new CommandLineException($"--{given[0].Item1} and --{given[1].Item1} name two layers; give one"),
+        };
+    }
+
+    private static Command MakeOptions(Scanned scanned, OutputOptions output)
+    {
+        var positional = scanned.Positional;
+        var scope = Scope(scanned);
+        if (scanned.Has("create") && positional is not ["update", ..])
+        {
+            throw new CommandLineException("--create is an option of tazel options update");
+        }
+
+        return positional switch
+        {
+            ["validate"] => new OptionsCommand(output, "validate", null, null, scope, false),
+            ["get", var name] => new OptionsCommand(output, "get", name, null, scope, false),
+            ["what-is", var name] => scope is null ? new OptionsCommand(output, "what-is", name, null, null, false)
+                : throw new CommandLineException("tazel options what-is reads no file, so it takes no layer"),
+            ["update", var name, var value] => scope == Dsl.Configuration.LayerKind.Local
+                ? throw new CommandLineException("tazel options update writes ./tazel_options.txt without a flag; --local is for reading")
+                : new OptionsCommand(output, "update", name, value, scope, scanned.Has("create")),
+            _ => throw new CommandLineException(
+                "tazel options takes validate, get <setting>, what-is <setting> or update <setting> <value>" +
+                (positional.Count > 0 && Suggestions.Nearest(positional[0], ["validate", "get", "what-is", "update"]) is { } near ? $"; did you mean {near}?" : "")),
+        };
+    }
+
+    private static Command MakeValidate(Scanned scanned, OutputOptions output, ConfigurationKind kind) => scanned.Positional is ["validate"]
+        ? new ValidateCommand(output, kind, Scope(scanned))
+        : throw new CommandLineException($"tazel {scanned.Command} takes validate");
 
     private static Command MakeDaemon(Scanned scanned, OutputOptions output)
     {

@@ -223,17 +223,45 @@ internal sealed class ModuleEnvironment : IEnvironmentValues
     /// The values of the module at <paramref name="root"/>, or null when it has no <c>tazel_envs.txt</c>; its
     /// conditions see <paramref name="target"/> as the platform built for (this machine's when null).
     /// </summary>
-    public static ModuleEnvironment? Load(string root, string shown, Common.Platform? target = null)
+    public static ModuleEnvironment? Load(string root, string shown, Common.Platform? target = null, bool inherit = false)
     {
-        var file = Path.Combine(root, TazelEnvsFile.FileName);
-        if (!File.Exists(file))
-        {
-            return null;
-        }
-
         var context = Configuration.ConfigurationContext.ForThisMachine();
         context = context with { Target = Configuration.SystemFacts.Of(target ?? Driver.Host.Platform) };
-        return new ModuleEnvironment(root, shown, TazelEnvsFile.Parse(File.ReadAllText(file), shown, file, context));
+
+        // The main module takes the layers of tazel_envs.txt around its root, a value of a higher layer replacing the
+        // one of the same name; a module it depends on takes its own file alone, so it sees nothing of the user's or
+        // the main module's. Every value runs in the root of its module.
+        IEnumerable<string> files;
+        if (inherit)
+        {
+            try
+            {
+                files = Configuration.ConfigurationLayers.For(TazelEnvsFile.FileName, root).Select(layer => layer.File);
+            }
+            catch (Configuration.ConfigurationHomeException error)
+            {
+                throw new CustomCommandsException(error.Message, error);
+            }
+        }
+        else
+        {
+            var own = Path.Combine(root, TazelEnvsFile.FileName);
+            files = File.Exists(own) ? [own] : [];
+        }
+
+        var entries = new Dictionary<string, EnvEntry>(StringComparer.Ordinal);
+        var any = false;
+        foreach (var file in files)
+        {
+            any = true;
+            var name = file == Path.Combine(root, TazelEnvsFile.FileName) ? shown : file;
+            foreach (var entry in TazelEnvsFile.Parse(File.ReadAllText(file), name, file, context))
+            {
+                entries[entry.Name] = entry;
+            }
+        }
+
+        return any ? new ModuleEnvironment(root, shown, entries.Values.ToList()) : null;
     }
 
     public string? Get(string name)

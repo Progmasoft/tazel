@@ -5,6 +5,11 @@
 
 ## Unreleased
 
+- Configuration in layers: `$TAZEL_HOME/User/`, the directories above, `$TAZEL_HOME/Projects/<key>/` and the current
+  directory, for `tazel_options.txt`, `tazel_custom.txt` and the main module's `tazel_envs.txt`. The project key is
+  Agenceland's. New commands `tazel options validate|get|what-is|update`, `tazel custom-cmds validate` and
+  `tazel envs validate`, with `--user`, `--project`, `--local` and `--create`.
+
 - `--dotnet-settings Name=Value[,...]` and `dotnet-settings: [ ... ];` in `tazel_options.txt` set the .NET runtime of
   the Tazel process: the GC heap hard limits (in bytes or percent, whole or per object heap), the GC latency mode, and
   the thread pool's minimum and maximum threads. `tazel dotnet get <setting>` reads them; `tazel dotnet what-is <term>`
