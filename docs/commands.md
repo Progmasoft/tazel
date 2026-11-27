@@ -141,6 +141,54 @@ above stays asked for. This Tazel has no MicroVM to start, so with `sandboxing-w
 command that would run what a project brings (`build`, `run`, `test`, `package`, `custom`) rather than run it on this
 machine.
 
+## Directives of the text files
+
+`tazel_options.txt`, `tazel_custom.txt` and `tazel_envs.txt` share one grammar: besides their entries they take
+directives, lines that start with a dot and need no `;`.
+
+```text
+.pragma once
+.import <security.options.txt>
+.include "config/build.options.txt"
+platform: linux-amd64;
+.if target_system.os == "linux" && !defined("CI")
+    microvm-memory: 4096;
+.elif host_system.os == "macos"
+    microvm-memory: 2048;
+.else
+    microvm-memory: auto;
+.end
+```
+
+- `.include "file"` reads a file in this place, as if its text stood here; the path is relative to the directory of the
+  file that names it. `.include <file>` reads one below `$TAZEL_HOME/Include/Options/` (`Custom/`, `Envs/` for the
+  other two files), and may not leave it, through `..` or a link. `TAZEL_HOME` is `$HOME/.Tazel`, or
+  `%APPDATA%\Tazel` on Windows, when it is not set; set, it must be an absolute path.
+- `.import` does the same, once: a file already read is not read again, and an imported file is not included again
+  either. `.pragma once`, first in a file, says the same of the file itself. A file that includes itself otherwise is
+  an error that shows the chain.
+- Paths are taken as written: no wildcards, no URLs, no environment variables; a quoted path is not absolute. The
+  name of a file does not matter; `.options.txt`, `.custom.txt` and `.envs.txt` are the custom.
+- `.if`, `.elif`, `.else` and `.end` choose the first branch whose condition holds. A branch not taken is read, so its
+  mistakes are found, but its includes are not opened. A condition takes `true`, `false`, strings in any of the three
+  quotes, `==`, `!=`, `!`, `&&`, `||` and parentheses, and:
+
+  | Name | Value |
+  | --- | --- |
+  | `host_system.os`, `target_system.os` | `linux`, `windows`, `macos`, `freebsd`, `openbsd`, `dragonfly` |
+  | `host_system.arch`, `target_system.arch` | `amd64` or `aarch64`, on every system |
+  | `host_system.abi`, `target_system.abi` | `gnu`, `musl`, `msvc` or `default` |
+  | `host_system.platform`, `target_system.platform` | the platform's name, as `--platform` takes it |
+  | `defined("NAME")` | whether the environment variable is set |
+  | `env("NAME")` | its value, `""` when it is not set |
+
+  A condition runs nothing; the environment is read once for the whole command.
+- `tazel_options.txt` is read twice. First, without the branches that depend on `target_system`, which choose the
+  platform: `--platform`, else the file's `platform`, else this machine's. Then everything is read for that platform.
+  A `platform` inside a condition on `target_system`, or in a file such a branch includes, is an error.
+- Includes nest 64 deep, `.if` blocks 64 deep, and one configuration reads at most 4,096 files and 1,000,000 tokens.
+  The last entry of each file may leave out its `;`. An error in an included file is shown in that file.
+
 ## tazel_custom.txt
 
 ```text

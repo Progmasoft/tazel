@@ -104,8 +104,8 @@ internal sealed class Workspace
         string directory, BuildContext build, Version tazelVersion, Action<string>? status = null)
     {
         var root = ModuleFiles.FindRoot(directory);
-        var main = await LoadModuleAsync(root, null, tazelVersion, root).ConfigureAwait(false);
-        var workspace = new Workspace(main);
+        var main = await LoadModuleAsync(root, null, tazelVersion, root, build.Platform).ConfigureAwait(false);
+        var workspace = new Workspace(main) { _target = build.Platform };
         await workspace.LoadDependenciesAsync(main, tazelVersion).ConfigureAwait(false);
         await workspace.LoadPortalModulesAsync(tazelVersion, offline: false).ConfigureAwait(false);
         await workspace.LoadPackagesAsync(main, build, status ?? (_ => { })).ConfigureAwait(false);
@@ -125,12 +125,16 @@ internal sealed class Workspace
         return LoadModuleAsync(root, null, tazelVersion, root);
     }
 
-    private static async Task<LoadedModule> LoadModuleAsync(string root, string? repository, Version tazelVersion, string mainRoot)
+    // The platform the modules are loaded for: what the conditions of their tazel_envs.txt see.
+    private Platform? _target;
+
+    private static async Task<LoadedModule> LoadModuleAsync(
+        string root, string? repository, Version tazelVersion, string mainRoot, Platform? target = null)
     {
         var file = Path.Combine(root, ModuleFiles.ModuleFile);
         var shown = repository is null ? ModuleFiles.ModuleFile : $"@{repository}//{ModuleFiles.ModuleFile}";
         var globals = new ModuleGlobals();
-        var environment = EnvironmentOf(root, repository);
+        var environment = EnvironmentOf(root, repository, target);
         using (Dsl.Environment.EnvironmentValues.Enter(environment))
         {
             await ScriptHost.RunAsync(await File.ReadAllTextAsync(file).ConfigureAwait(false), shown, globals, mainRoot)
@@ -145,12 +149,12 @@ internal sealed class Workspace
     }
 
     /// <summary>The values of the module's tazel_envs.txt, or null when it has none.</summary>
-    private static Dsl.Envs.ModuleEnvironment? EnvironmentOf(string root, string? repository)
+    private static Dsl.Envs.ModuleEnvironment? EnvironmentOf(string root, string? repository, Platform? target)
     {
         var shown = repository is null ? Dsl.Envs.TazelEnvsFile.FileName : $"@{repository}//{Dsl.Envs.TazelEnvsFile.FileName}";
         try
         {
-            return Dsl.Envs.ModuleEnvironment.Load(root, shown);
+            return Dsl.Envs.ModuleEnvironment.Load(root, shown, target);
         }
         catch (Dsl.Custom.CustomCommandsException error)
         {
@@ -214,7 +218,7 @@ internal sealed class Workspace
             }
 
             var unpacked = LocalModules.Unpack(Main.Root, module.Root, local, place);
-            var loaded = await LoadModuleAsync(unpacked, local.Name, tazelVersion, Main.Root).ConfigureAwait(false);
+            var loaded = await LoadModuleAsync(unpacked, local.Name, tazelVersion, Main.Root, _target).ConfigureAwait(false);
             External[local.Name] = loaded;
             await LoadDependenciesAsync(loaded, tazelVersion).ConfigureAwait(false);
         }
@@ -246,7 +250,7 @@ internal sealed class Workspace
 
             var root = await PortalDependencies.FetchAsync(Main.Root, module, offline ? null : client,
                 System.Threading.CancellationToken.None).ConfigureAwait(false);
-            External[module.Repository] = await LoadModuleAsync(root, module.Repository, tazelVersion, Main.Root).ConfigureAwait(false);
+            External[module.Repository] = await LoadModuleAsync(root, module.Repository, tazelVersion, Main.Root, _target).ConfigureAwait(false);
             PortalModules.Add(module);
         }
     }

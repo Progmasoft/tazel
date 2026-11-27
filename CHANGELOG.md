@@ -5,6 +5,12 @@
 
 ## Unreleased
 
+- `tazel_options.txt`, `tazel_custom.txt` and `tazel_envs.txt` take directives: `.include "file"` and
+  `.include <file>` (below `$TAZEL_HOME/Include/`), `.import`, `.pragma once`, and `.if`, `.elif`, `.else`, `.end` on
+  conditions over `host_system`, `target_system`, `defined("NAME")` and `env("NAME")`. `tazel_options.txt` chooses the
+  platform before it reads what depends on it. A line that starts with a dot and a letter is a directive; a name that
+  starts with a dot goes in quotes. Errors `E0006` to `E0012`.
+
 - Breaking: a package's project file is `BUILD.csx` and nothing else; a directory with `BUILD.tzl`, `BUILD.tazel`,
   `BUILD` or `Tazel.build` stops the build with a message. `Depends` takes labels only, such as `"//:math"`; the value a
   declaration returns is no longer taken. `tazel limited-time C#`, until 1.0.0, renames those files and writes the

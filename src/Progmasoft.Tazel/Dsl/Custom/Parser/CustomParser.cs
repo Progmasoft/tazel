@@ -15,9 +15,20 @@ public static class CustomParser
     /// <summary>The commands of the text of a <c>tazel_custom.txt</c>, in the order they are written.</summary>
     public static IReadOnlyList<CustomCommand> Parse(string text) => Parse(text, CustomCommandFiles.FileName);
 
-    /// <summary>The commands of <paramref name="text"/>; <paramref name="file"/> names it in messages.</summary>
-    public static IReadOnlyList<CustomCommand> Parse(string text, string file) =>
-        new Reader(new CustomLexer(text, file).Tokens(), file, text).Commands();
+    /// <summary>
+    /// The commands of <paramref name="text"/>; <paramref name="file"/> names it in messages. Its directives are
+    /// resolved for <c>context</c> (this machine, built for itself, by default), and a quoted include is
+    /// found beside <c>path</c> (<paramref name="file"/> from the working directory by default).
+    /// </summary>
+    public static IReadOnlyList<CustomCommand> Parse(string text, string file) => Parse(text, file, null, null);
+
+    /// <summary><see cref="Parse(string, string)"/>, with includes found beside <paramref name="path"/>.</summary>
+    public static IReadOnlyList<CustomCommand> Parse(string text, string file, string? path) => Parse(text, file, path, null);
+
+    /// <summary><see cref="Parse(string, string, string)"/>, resolved for <paramref name="context"/> when it is not null.</summary>
+    public static IReadOnlyList<CustomCommand> Parse(string text, string file, string? path, Configuration.ConfigurationContext? context) =>
+        new Reader(Configuration.ConfigurationResolver.Resolve(path ?? file, file, text, Configuration.ConfigurationFamily.Custom,
+            context ?? Configuration.ConfigurationContext.ForThisMachine().ForItself()), file, text).Commands();
 
     private sealed class Reader(IReadOnlyList<Token> tokens, string file, string text)
     {

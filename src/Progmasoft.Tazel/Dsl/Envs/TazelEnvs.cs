@@ -48,11 +48,23 @@ public static class TazelEnvsFile
     /// <summary>The entries of <paramref name="text"/>, named tazel_envs.txt in messages.</summary>
     public static IReadOnlyList<EnvEntry> Parse(string text) => Parse(text, FileName);
 
-    /// <summary>The entries of <paramref name="text"/>; <paramref name="file"/> names it in messages.</summary>
-    public static IReadOnlyList<EnvEntry> Parse(string text, string file)
+    /// <summary>
+    /// The entries of <paramref name="text"/>; <paramref name="file"/> names it in messages. Its directives are
+    /// resolved for <c>context</c> (this machine, built for itself, by default), and a quoted include is
+    /// found beside <c>path</c>.
+    /// </summary>
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file) => Parse(text, file, null, null);
+
+    /// <summary><see cref="Parse(string, string)"/>, with includes found beside <paramref name="path"/>.</summary>
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file, string? path) => Parse(text, file, path, null);
+
+    /// <summary><see cref="Parse(string, string, string)"/>, resolved for <paramref name="context"/> when it is not null.</summary>
+    public static IReadOnlyList<EnvEntry> Parse(string text, string file, string? path, Configuration.ConfigurationContext? context)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return new Reader(new CustomLexer(text, file).Tokens(), text, file).Entries();
+        var tokens = Configuration.ConfigurationResolver.Resolve(path ?? file, file, text, Configuration.ConfigurationFamily.Envs,
+            context ?? Configuration.ConfigurationContext.ForThisMachine().ForItself());
+        return new Reader(tokens, text, file).Entries();
     }
 
     private sealed class Reader(IReadOnlyList<Token> tokens, string text, string file)
@@ -213,11 +225,25 @@ internal sealed class ModuleEnvironment : IEnvironmentValues
         _entries = entries.ToDictionary(entry => entry.Name, StringComparer.Ordinal);
     }
 
-    /// <summary>The values of the module at <paramref name="root"/>, or null when it has no <c>tazel_envs.txt</c>.</summary>
-    public static ModuleEnvironment? Load(string root, string shown)
+    /// <summary>
+    /// The values of the module at <paramref name="root"/>, or null when it has no <c>tazel_envs.txt</c>; its
+    /// conditions see <c>target</c> as the platform built for (this machine's when null).
+    /// </summary>
+    public static ModuleEnvironment? Load(string root, string shown) => Load(root, shown, null);
+
+    /// <summary><see cref="Load(string, string)"/>, its conditions read for <paramref name="target"/>, else this machine.</summary>
+    public static ModuleEnvironment? Load(string root, string shown, Common.Platform? target)
     {
-        var file = Path.Combine(root, TazelEnvsFile.FileName);
-        return File.Exists(file) ? new ModuleEnvironment(root, shown, TazelEnvsFile.Parse(File.ReadAllText(file), shown)) : null;
+        // Join, not Combine: the file stays below the root whatever the name holds.
+        var file = Path.Join(root, TazelEnvsFile.FileName);
+        if (!File.Exists(file))
+        {
+            return null;
+        }
+
+        var context = Configuration.ConfigurationContext.ForThisMachine();
+        context = context with { Target = Configuration.SystemFacts.Of(target ?? Driver.Host.Platform) };
+        return new ModuleEnvironment(root, shown, TazelEnvsFile.Parse(File.ReadAllText(file), shown, file, context));
     }
 
     public string? Get(string name)
