@@ -42,6 +42,8 @@ A misspelt command, option or value gets a hint that keeps how it was written: `
 | `--platform <name>` | build, run, test | the platform to build for |
 | `--jobs <n>` | build, run, test | how many actions run at once |
 | `--keep-going` | build, run, test | go on with what does not depend on a failed action |
+| `--recompile` | build, run, test, coverage | compile every source again ([below](#recompile-and-no-cache)) |
+| `--no-cache` | build, run, test, coverage | run every action and test, and read and write no cache |
 | `--feature <name>`, `--no-feature <name>` | build, run, test | turn a toolchain feature on or off for every target |
 | `--compiler-options <option>` | build, run, test | every C, C++, Objective-C and Objective-C++ file |
 | `--c-compiler-options <option>` | build, run, test | .c and .m files |
@@ -54,6 +56,26 @@ the compiler takes the last flag, and they are part of the key of each action.
 
 The platform comes from `--platform`, else from `tazel_options.txt`, else it is this machine's. `--jobs` and
 `--keep-going` win over `Execution` of `MODULE.csx`.
+
+## Recompile and no-cache
+
+| | default | `--recompile` | `--no-cache` |
+| --- | --- | --- | --- |
+| compiling (C family), compiling and linking (zig) | when something changed | always | always |
+| linking, archiving | when something changed | when an object came out different | always |
+| plugin and custom build steps | when something changed | when something changed | always |
+| local and remote action cache reads | as configured | none for compilations | none |
+| action cache writes | as configured | as configured | none |
+| test results | as configured | as configured | not read, not written |
+
+Neither flag deletes a cache, changes `--jobs` or changes a key: a record written before is kept, and the next build
+checks it against the files, as it checks every record. With both, `--no-cache` holds. A test that fails under
+`--no-cache` loses the pass recorded before it. The tag `no-cache` of a test keeps its meaning. Fetched modules are
+fetched as always.
+
+zig keeps what it compiled in a cache of its own: a forced zig action runs with an empty one in `.tazel/forced/`,
+removed after, so it does compile; zig's global cache, of its standard library and of libc, is kept. A compiler that
+caches by itself, such as ccache behind `cc`, is not bypassed.
 
 ## Message formats
 
