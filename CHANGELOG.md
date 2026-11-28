@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `tazel cache validate [--remote]` checks the action records, test results and compiled project files of `.tazel`
+  (valid, stale, broken), and with `--remote` the remote cache and its keys; `tazel cache repair [--remote]` removes
+  what is broken, and stores again in the remote cache what it lacks. Error `E0508`.
+
 - `.tazelignore`: gitignore rules, `regex:` and `!regex:`, `pragma:once`, `import:` and `include:`, nested per
   directory, for package discovery, patterns, source globs and module archives; explicit paths and labels are never
   ignored. `tazel ignore create-from|validate|add|delete|del`. Error `E0013`.

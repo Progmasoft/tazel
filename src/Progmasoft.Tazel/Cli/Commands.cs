@@ -43,6 +43,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             PortalModulesCommand portal => PortalModulesAsync(portal, cancel),
             PackageCommand => PackageAsync(),
             CustomCommandLine custom => CustomAsync(custom, cancel),
+            CacheCheckCommand check => CacheCheckAsync(check, cancel),
             ToolLaunchCommand tool => Task.FromResult(LaunchTool(tool)),
             IgnoreCommand ignore => Task.FromResult(new IgnoreCommands(reporter, workingDirectory).Run(ignore)),
             ToolWrapperCommand wrapper => Task.FromResult(CreateWrapper(wrapper)),
