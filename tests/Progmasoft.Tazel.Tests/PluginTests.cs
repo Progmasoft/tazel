@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Progmasoft.Tazel.Archive;
+using Progmasoft.Tazel.Driver;
 using Progmasoft.Tazel.Project;
 using Xunit;
 
@@ -67,6 +68,58 @@ public sealed class StepTests
         Assert.Equal(1, status);
         Assert.Contains($"FAILED Running {label}", output, StringComparison.Ordinal);
         Assert.Contains(message, output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AStepSeesItsTargetItsDependenciesAndTheProgramsOfTheMachine()
+    {
+        Assert.SkipWhen(Host.Which("clang") is null && Host.Which("gcc") is null, "no C compiler on PATH");
+        Assert.SkipWhen(OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("INCLUDE") is null,
+            "no MSVC environment (INCLUDE) for the headers of clang on Windows");
+        using var module = new TemporaryModule().Write("MODULE.csx", TemporaryModule.ModuleFile).Write("BUILD.csx", """
+            using System.IO;
+            using System.Linq;
+            using Progmasoft.Tazel.Dsl.Build.Prelude;
+            using Progmasoft.Tazel.PluginApi;
+            using Progmasoft.Tazel.PluginApi.Steps;
+            var core = CC.StaticLibrary("core", new() { Sources = ["core.c"] });
+            var first = Step.Declare("first", new() { Outputs = ["first.txt"], Run = async (step, cancel) =>
+            {
+                await File.WriteAllTextAsync(Path.Combine(step.OutputDirectory, "first.txt"), "1", cancel);
+            } });
+            Step.Declare("look", new()
+            {
+                Depends = [core, first],
+                Outputs = ["seen.txt"],
+                Run = async (step, cancel) =>
+                {
+                    var run = await step.RunAsync("dotnet", ["--version"], null, cancel);
+                    step.Log($"label {step.Label}, mode {step.Mode}, platform {step.Platform}");
+                    step.Log($"root {step.ModuleRoot == step.PackageDirectory}, dotnet {step.FindProgram("dotnet") is not null}");
+                    step.Log($"made {string.Join(",", step.Dependencies.Keys)}, exit {run.ExitCode}");
+                    await File.WriteAllTextAsync(Path.Combine(step.OutputDirectory, "seen.txt"), "seen", cancel);
+                },
+            });
+            Step.Declare("missing", new() { Tags = ["manual"], Run = async (step, cancel) =>
+            {
+                await step.RunAsync("no-such-program-anywhere", [], null, cancel);
+            } });
+            Step.Declare("throws", new() { Tags = ["manual"], Run = (step, cancel) => throw new System.InvalidOperationException("broken") });
+            """).Write("core.c", "int core(void) { return 1; }\n");
+
+        var (status, output) = await module.TazelAsync(".", "build", "//:look");
+        Assert.True(status == 0, output);
+        Assert.Contains("label //:look, mode Debug, platform", output, StringComparison.Ordinal);
+        Assert.Contains("root True, dotnet True", output, StringComparison.Ordinal);
+        Assert.Contains("made //:core, exit 0", output, StringComparison.Ordinal);
+
+        (status, output) = await module.TazelAsync(".", "build", "//:missing");
+        Assert.Equal(1, status);
+        Assert.Contains("//:missing: the program 'no-such-program-anywhere' is not found", output, StringComparison.Ordinal);
+
+        (status, output) = await module.TazelAsync(".", "build", "//:throws");
+        Assert.Equal(1, status);
+        Assert.Contains("the step threw InvalidOperationException: broken", output, StringComparison.Ordinal);
     }
 
     [Fact]

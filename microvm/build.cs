@@ -36,11 +36,14 @@ if (!OperatingSystem.IsLinux())
     return 2;
 }
 
-if (args.Length != 2)
+// --agent takes an agent published elsewhere: the coverage job publishes it with its symbols and instruments it.
+if (args is not ([_, _] or [_, _, "--agent", _]))
 {
-    Console.Error.WriteLine("usage: dotnet run microvm/build.cs -- <work directory> <output directory>");
+    Console.Error.WriteLine("usage: dotnet run microvm/build.cs -- <work directory> <output directory> [--agent <published agent>]");
     return 2;
 }
+
+var published = args.Length == 4 ? Path.GetFullPath(args[3]) : null;
 
 var repository = Path.GetFullPath(Path.Combine(AppContext.GetData("EntryPointFileDirectoryPath") as string ?? "microvm", ".."));
 var work = Path.GetFullPath(args[0]);
@@ -76,8 +79,21 @@ if (Directory.Exists(root))
 var agent = Path.Combine(root, "tazel", "agent");
 var libraries = Path.Combine(root, "tazel", "lib");
 Directory.CreateDirectory(libraries);
-Run(repository, "dotnet", "publish", "src/Progmasoft.Tazel.Guest", "-c", "Release", "-r", "linux-musl-x64", "--self-contained",
-    "-p:PublishTrimmed=true", "-p:DebugType=none", "-o", agent);
+if (published is null)
+{
+    Run(repository, "dotnet", "publish", "src/Progmasoft.Tazel.Guest", "-c", "Release", "-r", "linux-musl-x64", "--self-contained",
+        "-p:PublishTrimmed=true", "-p:DebugType=none", "-o", agent);
+}
+else
+{
+    Directory.CreateDirectory(agent);
+    foreach (var file in Directory.EnumerateFiles(published, "*", SearchOption.AllDirectories))
+    {
+        var to = Path.Combine(agent, Path.GetRelativePath(published, file));
+        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+        File.Copy(file, to, overwrite: true);
+    }
+}
 var unpacked = Path.Combine(work, "alpine");
 foreach (var (file, sha) in packages)
 {
@@ -172,7 +188,9 @@ static string CultureInvariant(FormattableString text) => FormattableString.Inva
 
 /// <summary>
 /// The "newc" cpio format the kernel unpacks: files sorted by path, owned by root, dated at the epoch, with
-/// /dev/console as a device, so the agent has a console before it mounts /dev.
+/// /dev/console, /dev/random and /dev/urandom as devices, so the agent has a console and random bytes before it mounts
+/// /dev: .NET reads /dev/urandom for them, and the first Guid of a process (Coverlet's, in the coverage job) comes
+/// before any line of the agent.
 /// </summary>
 [System.Runtime.Versioning.SupportedOSPlatform("linux")]
 static class Cpio
@@ -198,6 +216,8 @@ static class Cpio
                 if (name == "dev")
                 {
                     Entry(stream, inode++, "dev/console", 0x2000 | 0x180, [], 5, 1);
+                    Entry(stream, inode++, "dev/random", 0x2000 | 0x1B6, [], 1, 8);
+                    Entry(stream, inode++, "dev/urandom", 0x2000 | 0x1B6, [], 1, 9);
                 }
             }
             else

@@ -42,7 +42,8 @@ tazel ──vsock (Cloud Hypervisor's Unix socket, CONNECT 1024)──▶ tazel-
 - The guest kernel is a long-term Linux of kernel.org on top of `tinyconfig` with `microvm/kernel.config`: virtio
   (PCI, console, vsock, file system), PVH boot, no modules and no network device.
 - The initramfs holds `tazel-guest` (`src/Progmasoft.Tazel.Guest`), published self-contained for linux-musl and
-  trimmed, beside musl's loader, and the libraries of Alpine it needs (musl, libgcc, libstdc++). The kernel starts the
+  trimmed, beside musl's loader, and the libraries of Alpine it needs (musl, libgcc, libstdc++), with `/dev/console`,
+  `/dev/random` and `/dev/urandom`, which the agent needs before it mounts `/dev`. The kernel starts the
   loader as the first process, so the guest's `/lib` is free to be the host's `/usr/lib`.
 - The agent reaches the C library through `[LibraryImport]`; it refuses a working directory outside what was shared
   for writing.
@@ -58,6 +59,14 @@ tazel ──vsock (Cloud Hypervisor's Unix socket, CONNECT 1024)──▶ tazel-
 dotnet run microvm/build.cs -- <work directory> <output directory>
 TAZEL_MICROVM_IMAGE=<output directory> tazel custom <command>
 ```
+
+`--agent <directory>` takes an agent published elsewhere instead of publishing one.
+
+The agent runs only as the guest's first process, so its coverage is measured inside the guest:
+`microvm/guest-coverage.sh <work directory> <output directory> <report>` publishes it with its symbols, has Coverlet
+instrument it, builds the image from it and runs the MicroVM tests with `TAZEL_MICROVM_COVERAGE` naming the directory of
+Coverlet's hits. Tazel shares that directory with the guest at the same path, and the agent runs the process-exit
+handlers before it powers off, so Coverlet's are among them. CI runs it in the MicroVM job.
 
 It needs make, a C compiler, flex, bison and bc for the kernel. Every download (the kernel and the three Alpine
 packages) is checked against the SHA-256 in `microvm/build.cs`, and the same inputs give the same bytes.

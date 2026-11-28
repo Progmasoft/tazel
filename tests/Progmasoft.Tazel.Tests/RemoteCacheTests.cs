@@ -83,6 +83,37 @@ public sealed class RemoteCacheTests
         Assert.Contains("CS0103", error.Message, StringComparison.Ordinal);
     }
 
+    private static byte[] Length(int field, params byte[] body) => [(byte)((field << 3) | 2), (byte)body.Length, .. body];
+
+    private static byte[] Text(int field, string text) => Length(field, System.Text.Encoding.ASCII.GetBytes(text));
+
+    private static byte[] Digest(string hash, byte size) => Length(2, [.. Text(1, hash), 0x10, size]);
+
+    [Fact]
+    public void FieldsTazelDoesNotReadArePassedOverAndBrokenOnesRefuseTheResult()
+    {
+        var hash = new string('c', 64);
+        // An OutputFile with an unknown 64-bit field (3) and an unknown 32-bit field (5) between its own.
+        byte[] file = [.. Text(1, "out/x"), 0x19, 1, 2, 3, 4, 5, 6, 7, 8, .. Digest(hash, 9), 0x2D, 1, 2, 3, 4, 0x20, 0x01];
+        var decoded = ActionResultMessage.Decode(Length(2, file));
+        Assert.Equal([new OutputFile("out/x", hash, 9, true)], decoded);
+
+        foreach (byte[] broken in new byte[][]
+        {
+            Length(2, Text(1, "out/x")),                              // no digest
+            Length(2, [.. Text(1, "out/x"), .. Digest("short", 1)]),   // a hash that is not 64 hex digits
+            Length(2, [0x0A, 0x09, 0x41]),                            // a path longer than its message
+            [0x00, 0x01],                                             // field 0
+            [0x08, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01], // a varint of more than 64 bits
+            [0x12, 0x05, 0x01],                                       // a length past the end
+            [0x19, 0x01, 0x02],                                       // a 64-bit field past the end
+            [0x1B],                                                   // a group, which is not read
+        })
+        {
+            Assert.Null(ActionResultMessage.Decode(broken));
+        }
+    }
+
     [Fact]
     public void AResultIsTheProtocolBufferOfTheRemoteExecutionApi()
     {

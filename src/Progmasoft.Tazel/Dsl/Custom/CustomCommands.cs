@@ -69,6 +69,9 @@ public abstract record CustomArgument
 /// <summary>One step of a custom command.</summary>
 public abstract record CustomStep
 {
+    /// <summary>What to start: the program and its arguments, given those of the command line and the host.</summary>
+    public abstract IReadOnlyList<string> ToStart(IReadOnlyList<string> given, bool windows);
+
     /// <summary>
     /// A program started directly, with these arguments and no shell between; the first is the program, a string.
     /// </summary>
@@ -86,6 +89,9 @@ public abstract record CustomStep
                 _ => given,
             }).ToList();
         }
+
+        /// <inheritdoc/>
+        public override IReadOnlyList<string> ToStart(IReadOnlyList<string> given, bool windows) => Expanded(given);
     }
 
     /// <summary>A whole command line for the shell of the host: CMD on Windows, <c>sh</c> elsewhere.</summary>
@@ -95,6 +101,9 @@ public abstract record CustomStep
         /// <summary>What to start on this machine; the line reaches the shell unchanged.</summary>
         public IReadOnlyList<string> Started(bool windows) =>
             windows ? ["cmd.exe", "/d", "/s", "/c", $"\"{Line}\""] : ["sh", "-c", Line];
+
+        /// <inheritdoc/>
+        public override IReadOnlyList<string> ToStart(IReadOnlyList<string> given, bool windows) => Started(windows);
     }
 }
 

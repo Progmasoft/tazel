@@ -124,4 +124,46 @@ public sealed class WorkspaceTests
         var error = await Assert.ThrowsAsync<ProjectException>(() => module.LoadAsync());
         Assert.Contains("no toolchain //toolchains:clang is declared", error.Message, StringComparison.Ordinal);
     }
+
+    private static string Module(string group = "com.example", string name = "sample", string extra = "") => $$"""
+        using Progmasoft.Tazel.Dsl.Module.Prelude;
+        module = Module.Define(new() { Group = "{{group}}", Name = "{{name}}", Version = "0.1.0" });
+        {{extra}}
+        """;
+
+    [Theory]
+    [InlineData("com.example", "bad name", "", "the module name 'bad name' must be letters")]
+    [InlineData("com..example", "sample", "", "the group 'com..example' must be names joined by dots")]
+    [InlineData("", "sample", "", "the group '' must be names joined by dots")]
+    [InlineData("com.example", "sample", "dependencies = Dependencies.Define(LocalModule.From(new() { Name = \"no way\", Include = \"x.tazel.tar.xz\", Sha256 = \"00\" }));", "the local module name 'no way' must be letters")]
+    [InlineData("com.example", "sample", "toolchains = Toolchains.Define(\"//:a:b\");", "MODULE.csx: ")]
+    public async Task AModuleFileWithAWrongNameIsRefused(string group, string name, string extra, string message)
+    {
+        using var module = new TemporaryModule();
+        module.Write("MODULE.csx", Module(group, name, extra)).Write("BUILD.csx", Prelude);
+        var error = await Assert.ThrowsAsync<ProjectException>(() => module.LoadAsync());
+        Assert.Contains(message, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("CC.Executable(\"a\", new() { Depends = [\":t\"] }); CC.Test(\"t\", new());", "//:t is a test; only libraries are linked")]
+    [InlineData("Zig.Module(\"m\", new() { RootSourceFile = \"m.zig\" }); Zig.Executable(\"a\", new() { RootSourceFile = \"a.zig\", Depends = [\":m\"] });", "//:m is a Zig module; name it in ModuleImports")]
+    [InlineData("CC.StaticLibrary(\"l\", new()); Zig.Executable(\"a\", new() { RootSourceFile = \"a.zig\", ModuleImports = new System.Collections.Generic.Dictionary<string, string> { [\"l\"] = \":l\" } });", "ModuleImports[\"l\"] names //:l, which is not a Zig module")]
+    [InlineData("CC.Executable(\"a\", new() { Depends = [\"//:x:y\"] });", "BUILD.csx:2: ")]
+    public async Task ADependencyOfTheWrongKindIsRefused(string body, string message)
+    {
+        using var module = new TemporaryModule();
+        module.Write("MODULE.csx", TemporaryModule.ModuleFile).Write("BUILD.csx", Prelude + body);
+        var error = await Assert.ThrowsAsync<ProjectException>(() => module.LoadAsync());
+        Assert.Contains(message, error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ATargetIsWrittenAsItsLabel()
+    {
+        using var module = new TemporaryModule();
+        module.Write("MODULE.csx", TemporaryModule.ModuleFile).Write("BUILD.csx", Prelude + "CC.StaticLibrary(\"core\", new());");
+        var workspace = await module.LoadAsync();
+        Assert.Equal("//:core", workspace.Targets.Values.Single().ToString());
+    }
 }
