@@ -93,14 +93,18 @@ internal static class FileSets
     {
         Checked(glob.Pattern, place);
         var all = new List<string>();
-        Walk(packageDirectory, "", all, top: true);
+        // A package is in a module; outside one, its own directory is where ignore files start.
+        var root = ModuleFiles.RootOf(packageDirectory) ?? packageDirectory;
+        var package = Path.GetRelativePath(root, packageDirectory).Replace('\\', '/');
+        Walk(packageDirectory, "", all, top: true, Ignore.IgnoreRules.For(root), package == "." ? "" : package + "/");
         return all
             .Where(file => Matches(glob.Pattern, file) && !glob.Exclude.Any(pattern => Matches(pattern, file)))
             .Order(StringComparer.Ordinal)
             .ToList();
     }
 
-    private static void Walk(string directory, string prefix, List<string> found, bool top)
+    // The files of a package below directory, less hidden ones, other packages and modules, and what is ignored.
+    private static void Walk(string directory, string prefix, List<string> found, bool top, Ignore.IgnoreRules ignore, string package)
     {
         if (!top && ModuleFiles.BuildFileIn(directory) is not null)
         {
@@ -109,7 +113,8 @@ internal static class FileSets
 
         foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
-            if (entry.Name.StartsWith('.') || entry.LinkTarget is not null)
+            if (entry.Name.StartsWith('.') || entry.LinkTarget is not null ||
+                ignore.Ignored(package + prefix + entry.Name, entry is DirectoryInfo))
             {
                 continue;
             }
@@ -118,7 +123,7 @@ internal static class FileSets
             {
                 if (!File.Exists(Path.Combine(entry.FullName, ModuleFiles.ModuleFile)))
                 {
-                    Walk(entry.FullName, prefix + entry.Name + "/", found, top: false);
+                    Walk(entry.FullName, prefix + entry.Name + "/", found, top: false, ignore, package);
                 }
             }
             else

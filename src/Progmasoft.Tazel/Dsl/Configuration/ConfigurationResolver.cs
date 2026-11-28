@@ -23,6 +23,9 @@ public enum ConfigurationFamily
 
     /// <summary><c>tazel_envs.txt</c>.</summary>
     Envs,
+
+    /// <summary><c>.tazelignore</c>.</summary>
+    Ignore,
 }
 
 /// <summary>
@@ -78,6 +81,29 @@ public static class ConfigurationResolver
     /// <summary>The file a path of a file of <paramref name="family"/> names, checked against its root.</summary>
     internal static string IncludeRoot(ConfigurationFamily family) =>
         Path.Combine(TazelHome.Directory(), "Include", family.ToString());
+
+    // Why a path is not taken as written, or null when it is.
+    internal static string? Refusal(string path, bool global)
+    {
+        if (path.IndexOfAny(['*', '?', '[', ']']) >= 0)
+        {
+            return "has a wildcard; name one file";
+        }
+
+        if (path.Contains("://", StringComparison.Ordinal))
+        {
+            return "is a URL; Tazel includes files of this machine only";
+        }
+
+        if (Path.IsPathRooted(path) || (path.Length >= 2 && path[1] == ':'))
+        {
+            return global ? "is absolute; a path in <> is below the Include directory" : "is absolute; a path in quotes is relative to this file";
+        }
+
+        return global && path.Replace('\\', '/').Split('/').Any(part => part is ".." or ".")
+            ? "has . or .. parts; a path in <> stays below the Include directory"
+            : null;
+    }
 
     private sealed class Walk(ConfigurationFamily family, ConfigurationContext context)
     {
@@ -273,29 +299,6 @@ public static class ConfigurationResolver
             }
 
             return Global(path, at, shown, text);
-        }
-
-        // Why a path is not taken as written, or null when it is.
-        private static string? Refusal(string path, bool global)
-        {
-            if (path.IndexOfAny(['*', '?', '[', ']']) >= 0)
-            {
-                return "has a wildcard; name one file";
-            }
-
-            if (path.Contains("://", StringComparison.Ordinal))
-            {
-                return "is a URL; Tazel includes files of this machine only";
-            }
-
-            if (Path.IsPathRooted(path) || (path.Length >= 2 && path[1] == ':'))
-            {
-                return global ? "is absolute; a path in <> is below the Include directory" : "is absolute; a path in quotes is relative to this file";
-            }
-
-            return global && path.Replace('\\', '/').Split('/').Any(part => part is ".." or ".")
-                ? "has . or .. parts; a path in <> stays below the Include directory"
-                : null;
         }
 
         // A file below the family's Include directory of TAZEL_HOME, which no link may leave.

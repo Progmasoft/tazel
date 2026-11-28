@@ -44,6 +44,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             PackageCommand => PackageAsync(),
             CustomCommandLine custom => CustomAsync(custom, cancel),
             ToolLaunchCommand tool => Task.FromResult(LaunchTool(tool)),
+            IgnoreCommand ignore => Task.FromResult(new IgnoreCommands(reporter, workingDirectory).Run(ignore)),
             ToolWrapperCommand wrapper => Task.FromResult(CreateWrapper(wrapper)),
             OptionsCommand options => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Options(options)),
             ValidateCommand validate => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Validate(validate.Kind, validate.Scope)),
@@ -340,7 +341,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         var mode = flags.Mode ?? BuildMode.Debug;
         reporter.Status($"loading the module for {platform.Name()}, {mode.ToString().ToLowerInvariant()}");
         var workspace = await Workspace.LoadAsync(workingDirectory, new BuildContext(mode, platform), TazelVersion,
-            reporter.Status).ConfigureAwait(false);
+            reporter.Status, labels).ConfigureAwait(false);
         WarnAboutWhatThisTazelDoesNotDo(workspace.Main.Globals);
         var buildOptions = OptionsOf(flags, workspace.Main.Globals.execution?.Settings, kind, platform, mode);
         var selected = Select(new Selector(workspace, platform), labels, kind, platform);

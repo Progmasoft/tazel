@@ -221,6 +221,42 @@ tazel dotnet what-is CLI
   .NET, CLI (the Common Language Infrastructure), CIL, CLR, C++/CLI, C#, WorkstationGC, BackgroundGC, daemon, CTS,
   VES and ECMA-335, offline. Tazel has no daemon: `tazel dotnet start-daemon` and the like say so.
 
+## .tazelignore
+
+```gitignore
+pragma:once
+import:<common.ignore.txt>
+include:"config/build.ignore.txt"
+*.tmp
+**/generated/
+!important.log
+regex:^src/.*\.generated\.cpp$
+!regex:^src/required\.generated\.cpp$
+```
+
+A `.tazelignore` holds gitignore rules: comments, `*`, `**`, `?`, `[...]`, anchoring with `/`, a trailing `/` for
+directories, `\` escapes, `!` negation, trailing spaces dropped unless escaped, the last matching rule deciding, and
+nothing inside an ignored directory brought back. A file applies to its directory and below, after the files above
+it. `regex:` and `!regex:` take a .NET regular expression over the path relative to the file's directory, with `/`
+between its parts; it must compile and finish within a second on a path. `include:` and `import:` put another file's
+rules in their place, as `#include` and `#import` do: `include:` each time it is named, `import:` once, and a file
+read with `import:` is not read again by `include:` either; `pragma:once` first in a file makes every inclusion of it
+an import. Each takes a path in quotes, beside the file that names it, or in angle brackets, below
+`$TAZEL_HOME/Include/Ignore/`; where the file is does not change which of the two reads it. There are no conditions. A gitignore rule that starts with one of these words takes a backslash: `\regex:name`. A `.gitignore` is
+not read.
+
+The rules apply to package discovery, `//...` and the other patterns, source globs and module archives. A path or a
+label named explicitly is never ignored: a package that `Depends` or the command line names is loaded from its own
+directory, without searching ignored ones, and patterns still leave it out. Hidden directories, `.tazel` among them,
+are left out before any rule.
+
+```text
+tazel ignore create-from .gitignore     # ./.tazelignore from a gitignore file, never over one
+tazel ignore validate                   # every .tazelignore of the module, ignored directories too
+tazel ignore add '*.log'                # appended to ./.tazelignore unless it is there already
+tazel ignore del '*.log'                # every line that is the pattern as written; delete is the same
+```
+
 ## External tools
 
 ```text

@@ -31,7 +31,7 @@ internal sealed partial class Commands
         var platform = query.Flags.Platform ?? options.Platform ?? Host.Platform;
         var mode = query.Flags.Mode ?? BuildMode.Debug;
         var workspace = await Workspace.LoadAsync(workingDirectory, new BuildContext(mode, platform), TazelVersion,
-            reporter.Status).ConfigureAwait(false);
+            reporter.Status, [query.Expression]).ConfigureAwait(false);
         var current = CurrentPackage(workspace);
         var targets = new Query(workspace, current).Evaluate(query.Expression);
         var configuration = $"{platform.Name()}-{mode.ToString().ToLowerInvariant()}";

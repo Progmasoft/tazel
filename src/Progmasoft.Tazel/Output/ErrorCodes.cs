@@ -36,6 +36,7 @@ internal static partial class ErrorCodes
     public const string IncludeMissing = "E0010";
     public const string IncludeTooDeep = "E0011";
     public const string PlatformDependsOnTarget = "E0012";
+    public const string IgnoreInvalid = "E0013";
 
     public const string CommandLine = "E0100";
 
@@ -172,6 +173,13 @@ internal static partial class ErrorCodes
             "cannot be given an argument with \", % or a line break as written, so such an argument is refused. " +
             "tazel tool create-wrapper writes tazel-<name> into a directory that exists and never overwrites a file.",
             "TAZEL_TOOL_EXECUTABLE= tazel tool launch fmt", "TAZEL_TOOL_EXECUTABLE=./bin/fmt tazel tool launch fmt", "tazel"),
+        new(IgnoreInvalid, "a .tazelignore Tazel cannot read",
+            "A .tazelignore holds gitignore rules, one per line, and a few lines of Tazel's own: pragma:once first in a " +
+            "file, import:<file> or import:\"file\" and include:<file> or include:\"file\" (quoted beside this file, " +
+            "<> below TAZEL_HOME's Include/Ignore), and regex:EXPRESSION or !regex:EXPRESSION, a .NET regular expression " +
+            "over the path relative to the file's directory, which must compile and finish within a second. A gitignore " +
+            "rule that starts with one of these words takes a backslash before it: \\regex:name.",
+            "regex:([a-z", "regex:^[a-z]+\\.tmp$", ".tazelignore"),
         new(CommandLine, "a command line Tazel cannot take",
             "The command, an option or a value is not one Tazel knows, or a command got arguments it does not take. Tazel " +
             "suggests the nearest spelling when there is one. tazel help lists the commands, and tazel help <command> --long " +
