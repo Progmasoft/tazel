@@ -64,8 +64,8 @@ internal sealed class CacheChecks(string root)
             return new CacheCensus(0, 0, [], []);
         }
 
-        // A pass is kept under the log directory's path with / as _ (a test of the root package with a _ before it);
-        // the log must be there.
+        // A pass is kept under the path of its log directory with every / written as _, and a test of the root package
+        // gets one more _ in front. The log must be there.
         var logged = Directory.EnumerateFiles(logs, "test.log", SearchOption.AllDirectories)
             .Select(file => Path.GetRelativePath(logs, Path.GetDirectoryName(file)!).Replace('\\', '/'))
             .SelectMany(directory => new[] { directory.Replace('/', '_'), "_" + directory.Replace('/', '_') })
@@ -135,35 +135,9 @@ internal sealed class CacheChecks(string root)
 
     private static RecordState Classify(string record, out string? reason)
     {
-        reason = null;
-        string[] lines;
-        try
+        if (ReadRecord(record, out reason) is not { } files)
         {
-            lines = File.ReadAllLines(record);
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            reason = $"it cannot be read: {error.Message}";
             return RecordState.Broken;
-        }
-
-        var files = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (lines.Length == 0 || !lines[0].StartsWith("key ", StringComparison.Ordinal) || !IsDigest(lines[0][4..]))
-        {
-            reason = "it does not start with the key of its action";
-            return RecordState.Broken;
-        }
-
-        foreach (var line in lines.Skip(1))
-        {
-            var parts = line.Split(' ', 3);
-            if (parts.Length != 3 || parts[0] != "file" || !IsDigest(parts[1]) || parts[2].Length == 0)
-            {
-                reason = $"'{line}' is not a line of a record";
-                return RecordState.Broken;
-            }
-
-            files[parts[2]] = parts[1];
         }
 
         var output = record[..^".action".Length];
@@ -188,6 +162,43 @@ internal sealed class CacheChecks(string root)
         }
 
         return RecordState.Stale;
+    }
+
+    /// <summary>The files and digests a record lists, or null with the reason it is broken.</summary>
+    private static Dictionary<string, string>? ReadRecord(string record, out string? reason)
+    {
+        reason = null;
+        string[] lines;
+        try
+        {
+            lines = File.ReadAllLines(record);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            reason = $"it cannot be read: {error.Message}";
+            return null;
+        }
+
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (lines.Length == 0 || !lines[0].StartsWith("key ", StringComparison.Ordinal) || !IsDigest(lines[0][4..]))
+        {
+            reason = "it does not start with the key of its action";
+            return null;
+        }
+
+        foreach (var line in lines.Skip(1))
+        {
+            var parts = line.Split(' ', 3);
+            if (parts.Length != 3 || parts[0] != "file" || !IsDigest(parts[1]) || parts[2].Length == 0)
+            {
+                reason = $"'{line}' is not a line of a record";
+                return null;
+            }
+
+            files[parts[2]] = parts[1];
+        }
+
+        return files;
     }
 
     private static string? DigestOf(string file)
