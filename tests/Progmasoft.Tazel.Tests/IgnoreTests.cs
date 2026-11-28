@@ -69,7 +69,7 @@ public sealed class GitignoreTests
     public void ATrailingSlashMeansDirectoriesOnly()
     {
         Assert.Equal(true, Matches("build/", "build", directory: true));
-        Assert.Equal(false, Matches("build/", "build", directory: false));
+        Assert.Equal(false, Matches("build/", "build"));
         Assert.Equal(true, Matches("build/", "x/build", directory: true));
     }
 

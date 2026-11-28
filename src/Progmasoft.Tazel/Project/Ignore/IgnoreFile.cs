@@ -87,11 +87,11 @@ internal static class IgnoreFile
 
         public IReadOnlyList<IgnoreRule> Root(string file, string text)
         {
-            Read(Path.GetFullPath(file), text);
+            Load(Path.GetFullPath(file), text);
             return _rules;
         }
 
-        private void Read(string file, string text)
+        private void Load(string file, string text)
         {
             var canonical = ConfigurationResolver.Canonical(file);
             _chain.Add(canonical);
@@ -179,7 +179,7 @@ internal static class IgnoreFile
                 _once.Add(canonical);
             }
 
-            Read(target, File.ReadAllText(target));
+            Load(target, File.ReadAllText(target));
         }
 
         // A file below TAZEL_HOME/Include/Ignore, which no link may leave.
@@ -302,7 +302,7 @@ internal static class Gitignore
                 continue;
             }
 
-            result.Append(Part(parts[i]));
+            result.Append(PartExpression(parts[i]));
             if (!last)
             {
                 result.Append('/');
@@ -312,35 +312,43 @@ internal static class Gitignore
         return result.ToString();
     }
 
-    private static string Part(string part)
+    // One part of a path, between slashes, as a regular expression; each step says how far it read.
+    private static string PartExpression(string part)
     {
         var result = new StringBuilder();
-        for (var i = 0; i < part.Length; i++)
+        var i = 0;
+        while (i < part.Length)
         {
             var letter = part[i];
-            switch (letter)
+            if (letter == '\\' && i + 1 < part.Length)
             {
-                case '\\' when i + 1 < part.Length:
-                    result.Append(Regex.Escape(part[++i].ToString()));
-                    break;
-                case '*':
-                    while (i + 1 < part.Length && part[i + 1] == '*')
-                    {
-                        i++;
-                    }
+                result.Append(Regex.Escape(part[i + 1].ToString()));
+                i += 2;
+            }
+            else if (letter == '*')
+            {
+                // Stars in a row match what one star matches.
+                while (i < part.Length && part[i] == '*')
+                {
+                    i++;
+                }
 
-                    result.Append("[^/]*");
-                    break;
-                case '?':
-                    result.Append("[^/]");
-                    break;
-                case '[' when Class(part, i) is { } found:
-                    result.Append(found.Expression);
-                    i = found.End;
-                    break;
-                default:
-                    result.Append(Regex.Escape(letter.ToString()));
-                    break;
+                result.Append("[^/]*");
+            }
+            else if (letter == '?')
+            {
+                result.Append("[^/]");
+                i++;
+            }
+            else if (letter == '[' && Class(part, i) is { } found)
+            {
+                result.Append(found.Expression);
+                i = found.End + 1;
+            }
+            else
+            {
+                result.Append(Regex.Escape(letter.ToString()));
+                i++;
             }
         }
 
