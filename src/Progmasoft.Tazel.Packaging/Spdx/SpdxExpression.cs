@@ -24,7 +24,8 @@ public abstract record SpdxExpression
         pending.Push(this);
         while (pending.Count > 0)
         {
-            switch (pending.Pop())
+            var node = pending.Pop();
+            switch (node)
             {
                 case SpdxAnd and:
                     pending.Push(and.Right);
@@ -37,8 +38,8 @@ public abstract record SpdxExpression
                 case SpdxWith with:
                     yield return with.License;
                     break;
-                case var leaf:
-                    yield return leaf;
+                default:
+                    yield return node;
                     break;
             }
         }

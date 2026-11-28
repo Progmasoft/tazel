@@ -18,7 +18,7 @@ namespace Progmasoft.Tazel.Archive;
 internal static class ModuleArchive
 {
     /// <summary>The extension of an archive.</summary>
-    public const string Extension = TazelPackageArchive.Extension;
+    public static string Extension => TazelPackageArchive.Extension;
 
     /// <summary><c>$group.$module-$version</c>, the name of an archive without its extension.</summary>
     public static string BaseName(string group, string module, string version) => $"{group}.{module}-{version}";

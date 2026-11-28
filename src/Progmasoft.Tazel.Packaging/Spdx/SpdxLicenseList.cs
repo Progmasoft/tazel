@@ -109,6 +109,9 @@ public sealed class SpdxLicenseList
                 case ExceptionMark mark:
                     CheckException(mark.Id, problems);
                     break;
+                default:
+                    // A LicenseRef- names a license of its author's own, which no list holds.
+                    break;
             }
         }
 

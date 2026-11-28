@@ -57,13 +57,13 @@ public sealed class SpdxExpressionException : FormatException
 public static class SpdxExpressionParser
 {
     /// <summary>The deepest nesting of parentheses it reads; deeper ones are refused, so no input can exhaust the stack.</summary>
-    public const int MaxDepth = 64;
+    public static int MaxDepth { get; } = 64;
 
     /// <summary>
     /// The most licenses one expression may name. The tree of a longer one would be deep enough that walking it, to write
     /// or compare it, could exhaust the stack.
     /// </summary>
-    public const int MaxLicenses = 1000;
+    public static int MaxLicenses { get; } = 1000;
 
     /// <summary>The expression <paramref name="text"/> writes.</summary>
     /// <exception cref="SpdxExpressionException">The text is not an SPDX license expression.</exception>
@@ -216,19 +216,7 @@ public static class SpdxExpressionParser
             var token = tokens[_at++];
             if (token.Kind == Kind.Open)
             {
-                if (depth + 1 > MaxDepth)
-                {
-                    throw new SpdxExpressionException($"parentheses nest deeper than {MaxDepth}", token.Position);
-                }
-
-                var inner = Or(depth + 1);
-                if (AtEnd || Current.Kind != Kind.Close)
-                {
-                    throw new SpdxExpressionException("a '(' is not closed", token.Position);
-                }
-
-                _at++;
-                return inner;
+                return Group(token, depth);
             }
 
             if (token.Kind == Kind.Close || IsOperator(token, "AND") || IsOperator(token, "OR") || IsOperator(token, "WITH"))
@@ -242,11 +230,28 @@ public static class SpdxExpressionParser
             }
 
             var simple = Simple(token);
-            if (AtEnd || !IsOperator(Current, "WITH"))
+            return AtEnd || !IsOperator(Current, "WITH") ? simple : Exception(simple);
+        }
+
+        private SpdxExpression Group(Token open, int depth)
+        {
+            if (depth + 1 > MaxDepth)
             {
-                return simple;
+                throw new SpdxExpressionException($"parentheses nest deeper than {MaxDepth}", open.Position);
             }
 
+            var inner = Or(depth + 1);
+            if (AtEnd || Current.Kind != Kind.Close)
+            {
+                throw new SpdxExpressionException("a '(' is not closed", open.Position);
+            }
+
+            _at++;
+            return inner;
+        }
+
+        private SpdxWith Exception(SpdxExpression simple)
+        {
             var with = Current.Position;
             _at++;
             if (AtEnd || Current.Kind != Kind.Word || IsOperator(Current, "AND") || IsOperator(Current, "OR") ||

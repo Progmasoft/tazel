@@ -43,7 +43,7 @@ internal sealed class LoadedPlugin(TazelPluginManifest manifest, string director
 /// </summary>
 internal static class Plugins
 {
-    public const string ManifestFile = TazelPluginManifest.FileName;
+    public static string ManifestFile => TazelPluginManifest.FileName;
 
     private static readonly string[] Shared = ["Progmasoft.Tazel.PluginApi", "Progmasoft.Tazel.Dsl"];
 

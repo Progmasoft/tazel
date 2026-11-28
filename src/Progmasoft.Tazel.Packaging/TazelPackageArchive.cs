@@ -24,13 +24,13 @@ namespace Progmasoft.Tazel.Packaging;
 public static class TazelPackageArchive
 {
     /// <summary>The extension of an archive.</summary>
-    public const string Extension = ".tazel.tar.xz";
+    public static string Extension { get; } = ".tazel.tar.xz";
 
     /// <summary>The most an archive may unpack to; a larger one is refused before it fills the disk.</summary>
-    public const long MaxUnpackedBytes = 1L << 30;
+    public static long MaxUnpackedBytes { get; } = 1L << 30;
 
     /// <summary>The most entries an archive may hold.</summary>
-    public const int MaxEntries = 100_000;
+    public static int MaxEntries { get; } = 100_000;
 
     private const UnixFileMode FileMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead;

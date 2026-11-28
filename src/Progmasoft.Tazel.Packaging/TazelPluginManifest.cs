@@ -19,7 +19,7 @@ namespace Progmasoft.Tazel.Packaging;
 public sealed record TazelPluginManifest(string Group, string Name, string Version, string PluginApi, string EntryAssembly)
 {
     /// <summary>The name of the manifest file.</summary>
-    public const string FileName = "tazel-plugin.json";
+    public static string FileName { get; } = "tazel-plugin.json";
 
     private static readonly JsonSerializerOptions ReadOptions =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, AllowTrailingCommas = false };
@@ -63,6 +63,12 @@ public sealed record TazelPluginManifest(string Group, string Name, string Versi
     /// <exception cref="TazelPackageException">A field is not what it must be; the message says which.</exception>
     public void Check(string shown)
     {
+        CheckIdentity(shown);
+        CheckLoading(shown);
+    }
+
+    private void CheckIdentity(string shown)
+    {
         if (string.IsNullOrEmpty(Group) || !TazelPackageIdentity.IsGroup(Group))
         {
             throw new TazelPackageException($"{shown}: the group '{Group}' of its manifest is not names joined by dots");
@@ -77,7 +83,10 @@ public sealed record TazelPluginManifest(string Group, string Name, string Versi
         {
             throw new TazelPackageException($"{shown}: '{Version}' is not a SemVer version");
         }
+    }
 
+    private void CheckLoading(string shown)
+    {
         if (!System.Version.TryParse(PluginApi ?? "", out _))
         {
             throw new TazelPackageException($"{shown}: '{PluginApi}' is not the version of a plugin API");
