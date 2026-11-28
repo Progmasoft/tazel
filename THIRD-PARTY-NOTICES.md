@@ -17,6 +17,12 @@ Tazel ships with the libraries below. Their licenses are in [LICENSES/](LICENSES
 The libraries that only build and test Tazel (xUnit, CsCheck, Snapshooter, Coverlet, BenchmarkDotNet, SharpFuzz,
 DocFX) are not part of what is shipped.
 
+## The SPDX License List
+
+Tazel carries `licenses.json` and `exceptions.json` of the SPDX License List 3.29.0, unmodified, from
+<https://github.com/spdx/license-list-data> (tag `v3.29.0`), in `spdx/` of the repository and inside `Progmasoft.Tazel.Packaging.dll`. The
+list is the work of the SPDX Workgroup, a project of the Linux Foundation; see <https://spdx.org/licenses/>.
+
 ## The image of the MicroVM
 
 The guest image (`microvm/build.cs`) holds, besides the .NET runtime of `tazel-guest` (MIT, .NET Foundation and

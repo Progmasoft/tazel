@@ -89,6 +89,7 @@ internal static partial class ErrorCodes
     public const string DotnetSettingRefused = "E0506";
     public const string Tool = "E0507";
     public const string CacheBroken = "E0508";
+    public const string License = "E0509";
     public const string Label = "E0600";
 
     private const string Lexer = "the text files: tazel_custom.txt, tazel_options.txt and tazel_envs.txt";
@@ -182,6 +183,13 @@ internal static partial class ErrorCodes
             "cannot be given an argument with \", % or a line break as written, so such an argument is refused. " +
             "tazel tool create-wrapper writes tazel-<name> into a directory that exists and never overwrites a file.",
             "TAZEL_TOOL_EXECUTABLE= tazel tool launch fmt", "TAZEL_TOOL_EXECUTABLE=./bin/fmt tazel tool launch fmt", "tazel"),
+        new(License, "a License that is not an SPDX expression of the license list",
+            "License in Module.Define is an SPDX license expression: identifiers of the SPDX License List that ships with " +
+            "Tazel, joined by AND and OR, an exception of the list after WITH, parentheses around a group, and + after a " +
+            "license for that version or later. Identifiers match in any case. A license of your own is LicenseRef-<name>. " +
+            "A deprecated identifier is refused with what replaces it, such as GPL-2.0-only or GPL-2.0-or-later for " +
+            "GPL-2.0, and a misspelt one with the identifiers closest to it.",
+            "License = \"GPL-2.0 WITH Classpath\"", "License = \"GPL-2.0-only WITH Classpath-exception-2.0\"", "MODULE.csx"),
         new(IgnoreInvalid, "a .tazelignore Tazel cannot read",
             "A .tazelignore holds gitignore rules, one per line, and a few lines of Tazel's own: pragma:once first in a " +
             "file, import:<file> or import:\"file\" and include:<file> or include:\"file\" (quoted beside this file, " +

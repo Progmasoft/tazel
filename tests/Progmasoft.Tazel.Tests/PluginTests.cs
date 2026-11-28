@@ -161,7 +161,7 @@ public sealed class PluginSdkTests
         await Run(Path.Combine(work.Root, "Greeter"), isolated, "pack", "-c", "Release", "-o", "out");
 
         var archive = Path.Combine(work.Root, "Greeter", "out", "com.example.tools.greeter-0.1.0.tazel.tar.xz");
-        Assert.Equal(ReproducibleArchive.SumsLine(archive),
+        Assert.Equal(Packaging.Sha256Sums.Line(archive),
             await File.ReadAllTextAsync(archive + ".sha256sums", TestContext.Current.CancellationToken));
         Directory.CreateDirectory(Path.Combine(work.Root, "module", "plugins"));
         File.Copy(archive, Path.Combine(work.Root, "module", "plugins", "greeter.tazel.tar.xz"));

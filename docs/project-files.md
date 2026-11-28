@@ -49,6 +49,13 @@ execution = Execution.Define(new() { Jobs = 8, KeepGoing = false });
 toolchains = Toolchains.Define("//toolchains:clang");
 ```
 
+- `License` is an SPDX license expression, checked against the SPDX License List 3.29.0 that ships with Tazel
+  ([Packaging](packaging.md)):
+  identifiers of the list in any case, joined by `AND` and `OR`, an exception after `WITH`, parentheses around a
+  group and `+` for a version or later, such as `MIT OR Apache-2.0` or
+  `GPL-2.0-or-later WITH Classpath-exception-2.0`. A license of your own is `LicenseRef-<name>`. A misspelt identifier
+  is refused with the closest ones of the list, a deprecated one with what replaces it (`GPL-2.0` becomes
+  `GPL-2.0-only` or `GPL-2.0-or-later`), as `error[E0509]`.
 - `TazelVersion` has `Exactly`, `AtLeast`, `GreaterThan`, `AtMost`, `LessThan` and `Between`, which includes both
   ends. A Tazel outside the range stops with the range and its own version.
 - A dependency is a `LocalModule`: Tazel checks its archive against the SHA-256 and unpacks it once below `.tazel/`.

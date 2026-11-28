@@ -9,6 +9,14 @@
   (valid, stale, broken), and with `--remote` the remote cache and its keys; `tazel cache repair [--remote]` removes
   what is broken, and stores again in the remote cache what it lacks. Error `E0508`.
 
+- Progmasoft.Tazel.Packaging, a new NuGet package, reads and writes Tazel packages as NuGet.Packaging does for NuGet:
+  package identities, reproducible `.tazel.tar.xz` archives and safe unpacking, `.sha256sums` files, the plugin
+  manifest, and SPDX license expressions with the SPDX License List 3.29.0. Tazel and the plugin SDK use it.
+
+- `License` in `MODULE.csx` is checked as an SPDX license expression against that list (`spdx/`, updated by
+  `dotnet run spdx/update.cs -- <version>`). A misspelt identifier is refused with the closest ones, a deprecated one
+  with what replaces it, a malformed expression with what is wrong: `error[E0509]`. The check is a fuzz target.
+
 - `.tazelignore`: gitignore rules, `regex:` and `!regex:`, `pragma:once`, `import:` and `include:`, nested per
   directory, for package discovery, patterns, source globs and module archives; explicit paths and labels are never
   ignored. `tazel ignore create-from|validate|add|delete|del`. Error `E0013`.

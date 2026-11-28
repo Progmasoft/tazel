@@ -76,6 +76,12 @@ internal static class Program
                 "A key with no name on it opens nothing, least of all a cache.");
             return 1;
         }
+        catch (LicenseException error)
+        {
+            reporter.Error(ErrorCodes.License, error.Message, "tazel explain E0509 says what an SPDX expression may hold",
+                "Even a license needs a license plate that the list recognises.");
+            return 1;
+        }
         catch (Project.Ignore.IgnoreException error)
         {
             reporter.Error(ErrorCodes.IgnoreInvalid, error.Message, "tazel explain E0013 says what a .tazelignore takes",

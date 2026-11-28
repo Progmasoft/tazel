@@ -24,6 +24,9 @@
     <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../Progmasoft.Tazel.Packaging/Progmasoft.Tazel.Packaging.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Progmasoft.Tazel.Tests" />
     <InternalsVisibleTo Include="Progmasoft.Tazel.Benchmarks" />
     <InternalsVisibleTo Include="Progmasoft.Tazel.Fuzz" />

@@ -18,7 +18,7 @@
     <NoWarn>$(NoWarn);NU5100;NU5128</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../Shared/*.cs" LinkBase="Shared" />
+    <ProjectReference Include="../Progmasoft.Tazel.Packaging/Progmasoft.Tazel.Packaging.csproj" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Utilities.Core" ExcludeAssets="runtime" PrivateAssets="all" />
@@ -38,6 +38,7 @@
     <ItemGroup>
       <None Include="$(_TazelSdkProps)" Pack="true" PackagePath="Sdk/Sdk.props" />
       <None Include="$(OutputPath)Progmasoft.Tazel.PluginSdk.dll" Pack="true" PackagePath="tasks/net10.0/" />
+      <None Include="$(OutputPath)Progmasoft.Tazel.Packaging.dll" Pack="true" PackagePath="tasks/net10.0/" />
       <None Include="$(OutputPath)LzmaNet.dll" Pack="true" PackagePath="tasks/net10.0/" />
     </ItemGroup>
   </Target>

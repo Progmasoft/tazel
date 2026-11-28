@@ -27,7 +27,7 @@ change is right, move it over the stored one and commit it. A test without a sto
 
 ## Fuzzing
 
-The readers of what users write (`tazel_custom.txt`, `tazel_options.txt`, `tazel_envs.txt`, labels, depfiles, command lines) are fuzz
+The readers of what users write (`tazel_custom.txt`, `tazel_options.txt`, `tazel_envs.txt`, labels, depfiles, command lines, the `License` of a module) are fuzz
 targets. With [libfuzzer-dotnet](https://github.com/Metalnem/libfuzzer-dotnet):
 
 ```text

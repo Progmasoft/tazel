@@ -1,0 +1,20 @@
+<!-- SPDX-FileCopyrightText: 2026 Progmasoft <support@progmasoft.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Reading and writing Tazel packages, as NuGet.Packaging does for NuGet; the NuGet package Progmasoft.Tazel.Packaging. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Progmasoft.Tazel.Packaging</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>Progmasoft.Tazel.Packaging</PackageId>
+    <Description>Tazel packages: their identity, reproducible .tazel.tar.xz archives and safe unpacking, .sha256sums files, the plugin manifest, and SPDX license expressions with the SPDX License List.</Description>
+    <PackageTags>tazel;package;archive;spdx;license</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Lzma.Net" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The SPDX License List 3.29.0, unmodified; spdx/update.cs replaces it. -->
+    <EmbeddedResource Include="../../spdx/licenses.json" LogicalName="spdx.licenses.json" />
+    <EmbeddedResource Include="../../spdx/exceptions.json" LogicalName="spdx.exceptions.json" />
+  </ItemGroup>
+</Project>

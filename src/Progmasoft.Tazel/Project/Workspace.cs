@@ -197,6 +197,11 @@ internal sealed class Workspace
             throw new ProjectException($"{shown}: '{definition.Version}' is not a SemVer version such as 1.2.0");
         }
 
+        if (definition.License is { } license)
+        {
+            SpdxLicenses.Check(license, shown);
+        }
+
         if (definition.Compatibility is { } compatibility && !compatibility.Admits(tazelVersion))
         {
             throw new ProjectException(
