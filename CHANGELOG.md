@@ -5,6 +5,10 @@
 
 ## Unreleased
 
+- `tazel cache validate [--remote]` checks the action records, test results and compiled project files of `.tazel`
+  (valid, stale, broken), and with `--remote` the remote cache and its keys; `tazel cache repair [--remote]` removes
+  what is broken, and stores again in the remote cache what it lacks. Error `E0508`.
+
 - Progmasoft.Tazel.Packaging, a new NuGet package, reads and writes Tazel packages as NuGet.Packaging does for NuGet:
   package identities, reproducible `.tazel.tar.xz` archives and safe unpacking, `.sha256sums` files, the plugin
   manifest, and SPDX license expressions with the SPDX License List 3.29.0. Tazel and the plugin SDK use it.

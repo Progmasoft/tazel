@@ -172,6 +172,7 @@ internal static class CommandLine
         new("local", Kind.Flag, null, "options", "custom-cmds", "envs"),
         new("create", Kind.Flag, null, "options"),
         new("output-dir", Kind.Value, null, "tool"),
+        new("remote", Kind.Flag, null, "cache"),
         new("message-format", Kind.Value, ["rich-stdio", "script-friendly-stdio", "jsonl", "xml"]),
         new("help", Kind.Flag, null),
         new("platform", Kind.Value, Platforms.Names, Building),
@@ -469,9 +470,21 @@ internal static class CommandLine
 
     private static Command MakeCache(Scanned scanned, OutputOptions output)
     {
+        if (scanned.Positional is ["validate" or "repair"])
+        {
+            return Last(scanned.Seen, "algorithm") is not null
+                ? throw new CommandLineException("--algorithm is an option of tazel cache keygen")
+                : new CacheCheckCommand(output, scanned.Positional[0] == "repair", scanned.Has("remote"));
+        }
+
         if (scanned.Positional is not ["keygen"])
         {
-            throw new CommandLineException("tazel cache takes keygen: tazel cache keygen [--algorithm ed25519|rsa-4096|ml-dsa]");
+            throw new CommandLineException("tazel cache takes keygen [--algorithm ed25519|rsa-4096|ml-dsa], validate [--remote] or repair [--remote]");
+        }
+
+        if (scanned.Has("remote"))
+        {
+            throw new CommandLineException("--remote is an option of tazel cache validate and repair");
         }
 
         var algorithm = Last(scanned.Seen, "algorithm") switch

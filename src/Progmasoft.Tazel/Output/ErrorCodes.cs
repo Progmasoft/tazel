@@ -88,6 +88,7 @@ internal static partial class ErrorCodes
     public const string CacheKey = "E0505";
     public const string DotnetSettingRefused = "E0506";
     public const string Tool = "E0507";
+    public const string CacheBroken = "E0508";
     public const string License = "E0509";
     public const string Label = "E0600";
 
@@ -166,6 +167,14 @@ internal static partial class ErrorCodes
             "and in percent. Limits per object heap need both SOH and LOH; their percentages are each below 100, and so is " +
             "their sum. .NET itself may refuse a heap limit below what this process has committed, a latency mode its GC " +
             "cannot take, or thread counts it does not allow. Nothing of the command ran.", null, null, "tazel"),
+        new(CacheBroken, "a cache entry that cannot be trusted, or a remote cache that cannot be used",
+            "tazel cache validate reads the records of .tazel. A record is broken when it cannot be read, or when the output " +
+            "it is kept beside is gone or changed while every input is as it recorded: a file touched behind Tazel's back, " +
+            "or a disk that lost it. A test result is broken without its log, a compiled project file when its metadata " +
+            "does not read. tazel cache repair removes what is broken, and the next build redoes it; stale records, whose " +
+            "inputs changed, are left, as builds handle them. With --remote, the remote cache must answer, let this machine " +
+            "in, and have a SigningKey that signs what its PublicKey verifies.",
+            null, null, "tazel"),
         new(Tool, "a tool Tazel cannot find, start or give its arguments",
             "tazel tool launch <name> runs TAZEL_TOOL_EXECUTABLE when it is set, and nothing else then: it must be a " +
             "program this user may run, its path absolute or from the working directory. Otherwise it runs the first " +

@@ -205,8 +205,20 @@ internal static class Help
 
             Prints what Tazel can do, or what one command does; --long says more.
             """),
-        ["cache"] = new("tazel cache keygen: a key pair that signs and checks the results of a remote cache.", """
+        ["cache"] = new("tazel cache keygen|validate|repair: keys of a remote cache, and checks of the caches.", """
             tazel cache keygen [--algorithm ed25519|rsa-4096|ml-dsa]
+            tazel cache validate [--remote]
+            tazel cache repair [--remote]
+
+            validate reads the records of .tazel and changes nothing: action records are valid, stale (an input changed;
+            the next build runs the action) or broken (unreadable, or the output gone or changed while its inputs are as
+            recorded); test results are broken without their log; compiled project files when their metadata does not
+            read. With --remote it reads MODULE.csx, asks the remote cache for a key no action has, and checks that the
+            SigningKey signs what the PublicKey verifies. repair removes what is broken and what writes left half done,
+            never a stale record or an output; with --remote, and a cache that takes writes, it stores again the results
+            of this machine's valid records, for its platform in debug, that the cache lacks or holds unsigned. Run
+            repair when no build runs.
+
 
             Prints a PublicKey and a SigningKey for Remote.From in MODULE.csx, each written as its algorithm and the key
             in base64. The machines that write to the cache sign with the SigningKey; every machine that reads checks with
