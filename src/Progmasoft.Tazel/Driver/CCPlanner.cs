@@ -151,8 +151,10 @@ internal sealed partial class Planner
         var objectFile = $"{context.ObjectsDirectory}/{relative}.o";
         var cxx = language is SourceLanguage.Cpp or SourceLanguage.ObjectiveCpp;
         var settings = context.Settings;
-        var command = new List<string>((cxx ? context.Toolchain.Cpp : context.Toolchain.C).Command);
+        var compiler = cxx ? context.Toolchain.Cpp : context.Toolchain.C;
+        var command = new List<string>(compiler.Command);
         command.AddRange(ModeFlags());
+        command.AddRange(ReproducibleCompileFlags(compiler));
         command.AddRange(Flags(context.Features, ActionOf(language)));
         if (context.Pic)
         {
@@ -170,6 +172,7 @@ internal sealed partial class Planner
         command.AddRange(["-MD", "-MF", objectFile + ".d", "-c", source, "-o", objectFile]);
         var compile = new BuildAction
         {
+            Kind = ActionKind.Compile,
             Description = $"Compiling {target.Label} {relative}",
             Command = command,
             Directory = Layout.MainRoot,
@@ -262,6 +265,7 @@ internal sealed partial class Planner
         command.AddRange(objects);
         var archive = new BuildAction
         {
+            Kind = ActionKind.Archive,
             Description = $"Archiving {target.Label}",
             Command = command,
             Directory = Layout.MainRoot,
@@ -326,6 +330,7 @@ internal sealed partial class Planner
         var settings = (CCSettings)target.Settings;
         var command = new List<string>(toolchain.Linker.Command);
         command.AddRange(ModeFlags());
+        command.AddRange(ReproducibleLinkFlags(toolchain.Linker));
         command.AddRange(Flags(features, shared ? CCAction.CppLinkSharedLibrary : CCAction.CppLinkExecutable));
         var (output, after) = shared
             ? SharedLibraryOutput(target, (CCSharedLibrarySettings)settings, products, directory, command)
@@ -354,6 +359,7 @@ internal sealed partial class Planner
         command.AddRange(Options.LinkerOptions);
         var link = new BuildAction
         {
+            Kind = ActionKind.Link,
             Description = $"Linking {target.Label}",
             Command = command,
             Directory = Layout.MainRoot,
@@ -419,6 +425,42 @@ internal sealed partial class Planner
 
     private IEnumerable<string> ModeFlags() =>
         Options.Mode == BuildMode.Debug ? ["-g"] : ["-O2", "-DNDEBUG"];
+
+    /// <summary>
+    /// Keeps a compiler from writing the time into an object. Clang targeting Windows stamps every COFF object for
+    /// incremental linking unless told not to, so the same source would give another object, and the archive, the
+    /// program and its tests after it would run again. GCC takes SOURCE_DATE_EPOCH from the action environment.
+    /// </summary>
+    private IEnumerable<string> ReproducibleCompileFlags(Tool compiler) =>
+        Options.Platform.GetOS() == OS.Windows && IsClang(compiler) ? ["-mno-incremental-linker-compatible"] : [];
+
+    /// <summary>Keeps a linker from writing the time into a Windows program or library.</summary>
+    private IEnumerable<string> ReproducibleLinkFlags(Tool linker)
+    {
+        if (Options.Platform.GetOS() != OS.Windows)
+        {
+            return [];
+        }
+
+        if (IsClang(linker))
+        {
+            // link.exe and lld-link take /Brepro; the MinGW driver links with ld, which has its own switch.
+            return TargetsMinGW(linker) ? ["-Wl,--no-insert-timestamp"] : ["-Wl,/Brepro"];
+        }
+
+        var name = Path.GetFileNameWithoutExtension(linker.Program);
+        return name.EndsWith("gcc", StringComparison.Ordinal) || name.EndsWith("g++", StringComparison.Ordinal)
+            ? ["-Wl,--no-insert-timestamp"]
+            : [];
+    }
+
+    private static bool IsClang(Tool tool) =>
+        Path.GetFileNameWithoutExtension(tool.Program).Contains("clang", StringComparison.Ordinal);
+
+    private static bool TargetsMinGW(Tool tool) =>
+        Path.GetFileNameWithoutExtension(tool.Program).Contains("mingw", StringComparison.Ordinal) ||
+        tool.Prefix.Any(argument => argument.Contains("-gnu", StringComparison.Ordinal) ||
+            argument.Contains("mingw", StringComparison.Ordinal));
 
     /// <summary>Every target <paramref name="target"/> depends on, near or far, each once.</summary>
     private static List<ProjectTarget> Closure(ProjectTarget target)

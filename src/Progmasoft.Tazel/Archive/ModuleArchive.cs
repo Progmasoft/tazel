@@ -32,6 +32,7 @@ internal static class ModuleArchive
     {
         ArgumentNullException.ThrowIfNull(excluded);
         var found = new List<string>();
+        var ignore = Project.Ignore.IgnoreRules.For(root);
         Visit(new DirectoryInfo(root), "");
         found.Sort(StringComparer.Ordinal);
         return found;
@@ -46,6 +47,11 @@ internal static class ModuleArchive
                 }
 
                 var relative = prefix + entry.Name;
+                if (ignore.Ignored(relative, entry is DirectoryInfo))
+                {
+                    continue;
+                }
+
                 if (entry.LinkTarget is not null)
                 {
                     throw new ProjectException($"{relative} is a symbolic link; an archive holds only files");

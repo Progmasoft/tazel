@@ -15,6 +15,8 @@ internal static class Help
           --platform <name>             the platform to build for; default: tazel_options.txt, else this machine's
           --jobs <n>                    how many actions run at once; default: MODULE.csx, else the processors
           --keep-going                  go on with what does not depend on a failed action
+          --recompile                   compile every source again; links follow from what changed
+          --no-cache                    run every action and test; read and write no cache
           --feature <name>              turn a toolchain feature on for every target
           --no-feature <name>           turn a toolchain feature off for every target
           --compiler-options <option>   for every C, C++, Objective-C and Objective-C++ file
@@ -211,6 +213,25 @@ internal static class Help
             the PublicKey and takes only results signed by it. Keep the SigningKey secret, as a secret of your CI.
 
               --algorithm ed25519|rsa-4096|ml-dsa  the algorithm; default: ed25519. ml-dsa is ML-DSA-65 (FIPS 204).
+            """),
+        ["ignore"] = new("tazel ignore create-from|validate|add|delete: the .tazelignore of this directory.", """
+            tazel ignore create-from <path>
+            tazel ignore validate
+            tazel ignore add <pattern>
+            tazel ignore delete|del <pattern>
+
+            A .tazelignore holds gitignore rules, and regex:EXPRESSION or !regex:EXPRESSION for a .NET regular
+            expression over the path relative to its directory; include: and import: put another file's rules in
+            their place, as #include and #import do: include: each time, import: once; either takes "file", beside
+            this one, or <file>, below $TAZEL_HOME/Include/Ignore; pragma:once makes a file an import wherever named. It applies to its directory and below, to
+            package discovery, //..., source globs and the archives of modules; a path or label named explicitly is
+            never ignored. A .gitignore is not read.
+
+            create-from writes ./.tazelignore from a gitignore file, never over one, and leaves the source as it was; a
+            line that starts with a word above takes a backslash, so it means what it meant for git. validate reads every
+            .tazelignore of the module, those of ignored directories too, and runs nothing. add appends a rule to
+            ./.tazelignore, which must exist, unless it is there already; delete and del remove every line that is the
+            pattern as written.
             """),
         ["tool"] = new("tazel tool launch|create-wrapper: runs tazel-<name> tools, or writes a wrapper for a program.", """
             tazel tool launch <name> [arguments]

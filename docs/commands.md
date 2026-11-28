@@ -42,6 +42,8 @@ A misspelt command, option or value gets a hint that keeps how it was written: `
 | `--platform <name>` | build, run, test | the platform to build for |
 | `--jobs <n>` | build, run, test | how many actions run at once |
 | `--keep-going` | build, run, test | go on with what does not depend on a failed action |
+| `--recompile` | build, run, test, coverage | compile every source again ([below](#recompile-and-no-cache)) |
+| `--no-cache` | build, run, test, coverage | run every action and test, and read and write no cache |
 | `--feature <name>`, `--no-feature <name>` | build, run, test | turn a toolchain feature on or off for every target |
 | `--compiler-options <option>` | build, run, test | every C, C++, Objective-C and Objective-C++ file |
 | `--c-compiler-options <option>` | build, run, test | .c and .m files |
@@ -54,6 +56,26 @@ the compiler takes the last flag, and they are part of the key of each action.
 
 The platform comes from `--platform`, else from `tazel_options.txt`, else it is this machine's. `--jobs` and
 `--keep-going` win over `Execution` of `MODULE.csx`.
+
+## Recompile and no-cache
+
+| | default | `--recompile` | `--no-cache` |
+| --- | --- | --- | --- |
+| compiling (C family), compiling and linking (zig) | when something changed | always | always |
+| linking, archiving | when something changed | when an object came out different | always |
+| plugin and custom build steps | when something changed | when something changed | always |
+| local and remote action cache reads | as configured | none for compilations | none |
+| action cache writes | as configured | as configured | none |
+| test results | as configured | as configured | not read, not written |
+
+Neither flag deletes a cache, changes `--jobs` or changes a key: a record written before is kept, and the next build
+checks it against the files, as it checks every record. With both, `--no-cache` holds. A test that fails under
+`--no-cache` loses the pass recorded before it. The tag `no-cache` of a test keeps its meaning. Fetched modules are
+fetched as always.
+
+zig keeps what it compiled in a cache of its own: a forced zig action runs with an empty one in `.tazel/forced/`,
+removed after, so it does compile; zig's global cache, of its standard library and of libc, is kept. A compiler that
+caches by itself, such as ccache behind `cc`, is not bypassed.
 
 ## Message formats
 
@@ -198,6 +220,42 @@ tazel dotnet what-is CLI
   and for heap limits the memory available to the GC. `tazel dotnet what-is <term>` explains GCHeapHardLimit, RyuJIT,
   .NET, CLI (the Common Language Infrastructure), CIL, CLR, C++/CLI, C#, WorkstationGC, BackgroundGC, daemon, CTS,
   VES and ECMA-335, offline. Tazel has no daemon: `tazel dotnet start-daemon` and the like say so.
+
+## .tazelignore
+
+```gitignore
+pragma:once
+import:<common.ignore.txt>
+include:"config/build.ignore.txt"
+*.tmp
+**/generated/
+!important.log
+regex:^src/.*\.generated\.cpp$
+!regex:^src/required\.generated\.cpp$
+```
+
+A `.tazelignore` holds gitignore rules: comments, `*`, `**`, `?`, `[...]`, anchoring with `/`, a trailing `/` for
+directories, `\` escapes, `!` negation, trailing spaces dropped unless escaped, the last matching rule deciding, and
+nothing inside an ignored directory brought back. A file applies to its directory and below, after the files above
+it. `regex:` and `!regex:` take a .NET regular expression over the path relative to the file's directory, with `/`
+between its parts; it must compile and finish within a second on a path. `include:` and `import:` put another file's
+rules in their place, as `#include` and `#import` do: `include:` each time it is named, `import:` once, and a file
+read with `import:` is not read again by `include:` either; `pragma:once` first in a file makes every inclusion of it
+an import. Each takes a path in quotes, beside the file that names it, or in angle brackets, below
+`$TAZEL_HOME/Include/Ignore/`; where the file is does not change which of the two reads it. There are no conditions. A gitignore rule that starts with one of these words takes a backslash: `\regex:name`. A `.gitignore` is
+not read.
+
+The rules apply to package discovery, `//...` and the other patterns, source globs and module archives. A path or a
+label named explicitly is never ignored: a package that `Depends` or the command line names is loaded from its own
+directory, without searching ignored ones, and patterns still leave it out. Hidden directories, `.tazel` among them,
+are left out before any rule.
+
+```text
+tazel ignore create-from .gitignore     # ./.tazelignore from a gitignore file, never over one
+tazel ignore validate                   # every .tazelignore of the module, ignored directories too
+tazel ignore add '*.log'                # appended to ./.tazelignore unless it is there already
+tazel ignore del '*.log'                # every line that is the pattern as written; delete is the same
+```
 
 ## External tools
 

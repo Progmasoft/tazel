@@ -46,6 +46,12 @@ internal sealed record BuildFlags
 
     public bool KeepGoing { get; init; }
 
+    /// <summary><c>--recompile</c>: every compilation runs.</summary>
+    public bool Recompile { get; init; }
+
+    /// <summary><c>--no-cache</c>: every action and test runs, and no cache is read or written.</summary>
+    public bool NoCache { get; init; }
+
     public List<string> FeaturesOn { get; } = [];
 
     public List<string> FeaturesOff { get; } = [];
@@ -139,7 +145,7 @@ internal static class CommandLine
     /// <summary>The commands, as <c>tazel help</c> lists them.</summary>
     public static IReadOnlyList<string> Commands { get; } =
         ["build", "run", "test", "coverage", "query", "cquery", "aquery", "fetch", "vendor", "clean", "package", "custom",
-            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time", "options", "custom-cmds", "envs", "tool"];
+            "portal-modules", "cache", "explain", "version", "help", "dotnet", "limited-time", "options", "custom-cmds", "envs", "tool", "ignore"];
 
     private enum Kind
     {
@@ -172,6 +178,8 @@ internal static class CommandLine
         new("mode", Kind.Value, ["debug", "release"], Building),
         new("jobs", Kind.Value, null, Building),
         new("keep-going", Kind.Flag, null, Building),
+        new("recompile", Kind.Flag, null, "build", "run", "test", "coverage"),
+        new("no-cache", Kind.Flag, null, "build", "run", "test", "coverage"),
         new("feature", Kind.List, null, Building),
         new("no-feature", Kind.List, null, Building),
         new("compiler-options", Kind.List, null, Building),
@@ -331,6 +339,7 @@ internal static class CommandLine
         ["dotnet"] = MakeDaemon,
         ["options"] = MakeOptions,
         ["tool"] = MakeTool,
+        ["ignore"] = MakeIgnore,
         ["custom-cmds"] = (scanned, output) => MakeValidate(scanned, output, ConfigurationKind.Custom),
         ["envs"] = (scanned, output) => MakeValidate(scanned, output, ConfigurationKind.Envs),
         ["cache"] = MakeCache,
@@ -392,6 +401,18 @@ internal static class CommandLine
                 (positional.Count > 0 && Suggestions.Nearest(positional[0], ["validate", "get", "what-is", "update"]) is { } near ? $"; did you mean {near}?" : "")),
         };
     }
+
+    private static Command MakeIgnore(Scanned scanned, OutputOptions output) => scanned.Positional switch
+    {
+        ["validate"] => new IgnoreCommand(output, "validate", null),
+        ["create-from" or "add", var argument] => new IgnoreCommand(output, scanned.Positional[0], argument),
+        ["delete" or "del", var argument] => new IgnoreCommand(output, "delete", argument),
+        [var action, ..] when action is "create-from" or "add" or "delete" or "del" =>
+            throw new CommandLineException($"tazel ignore {action} takes one {(action == "create-from" ? "path" : "pattern")}; quote a pattern with spaces"),
+        _ => throw new CommandLineException("tazel ignore takes create-from <path>, validate, add <pattern>, delete <pattern> or del <pattern>" +
+            (scanned.Positional.Count > 0 && Suggestions.Nearest(scanned.Positional[0], ["create-from", "validate", "add", "delete"]) is { } near
+                ? $"; did you mean {near}?" : "")),
+    };
 
     private static Command MakeTool(Scanned scanned, OutputOptions output)
     {
@@ -651,6 +672,8 @@ internal static class CommandLine
             Platform = platform,
             Jobs = jobs,
             KeepGoing = seen.Any(entry => entry.Option.Long == "keep-going"),
+            Recompile = seen.Any(entry => entry.Option.Long == "recompile"),
+            NoCache = seen.Any(entry => entry.Option.Long == "no-cache"),
         };
         flags.FeaturesOn.AddRange(All(seen, "feature"));
         flags.FeaturesOff.AddRange(All(seen, "no-feature"));

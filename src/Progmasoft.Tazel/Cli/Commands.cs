@@ -44,6 +44,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             PackageCommand => PackageAsync(),
             CustomCommandLine custom => CustomAsync(custom, cancel),
             ToolLaunchCommand tool => Task.FromResult(LaunchTool(tool)),
+            IgnoreCommand ignore => Task.FromResult(new IgnoreCommands(reporter, workingDirectory).Run(ignore)),
             ToolWrapperCommand wrapper => Task.FromResult(CreateWrapper(wrapper)),
             OptionsCommand options => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Options(options)),
             ValidateCommand validate => Task.FromResult(new ConfigurationCommands(reporter, workingDirectory).Validate(validate.Kind, validate.Scope)),
@@ -340,7 +341,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
         var mode = flags.Mode ?? BuildMode.Debug;
         reporter.Status($"loading the module for {platform.Name()}, {mode.ToString().ToLowerInvariant()}");
         var workspace = await Workspace.LoadAsync(workingDirectory, new BuildContext(mode, platform), TazelVersion,
-            reporter.Status).ConfigureAwait(false);
+            reporter.Status, labels).ConfigureAwait(false);
         WarnAboutWhatThisTazelDoesNotDo(workspace.Main.Globals);
         var buildOptions = OptionsOf(flags, workspace.Main.Globals.execution?.Settings, kind, platform, mode);
         var selected = Select(new Selector(workspace, platform), labels, kind, platform);
@@ -368,6 +369,7 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             LinkerOptions = flags.LinkerOptions,
             ZigCompilerOptions = flags.ZigCompilerOptions,
             Coverage = kind == BuildKind.Coverage,
+            CachePolicy = flags.NoCache ? CachePolicy.NoCache : flags.Recompile ? CachePolicy.Recompile : CachePolicy.Normal,
         };
 
     /// <summary>The targets of a command: tests for test and coverage, one program for run, anything for build.</summary>
@@ -411,7 +413,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
             : null;
         var remoteActions = remoteCache is null ? null : RemoteActionsOf(remoteCache, cacheSettings!.Remote!.Settings, digests);
         var executor = new Executor(buildOptions.Jobs, buildOptions.KeepGoing || kind is BuildKind.Test or BuildKind.Coverage,
-            new ActionCache(digests, enabled: cacheSettings?.Local ?? true), reporter, remoteActions);
+            new ActionCache(digests, enabled: cacheSettings?.Local ?? true), reporter, remoteActions, buildOptions.CachePolicy,
+            planner.Layout.Full($"{ModuleFiles.StateDirectory}/forced"));
         var succeeded = await executor.RunAsync(goals, cancel).ConfigureAwait(false);
         return new Built(buildOptions, planner, chooser, executor, succeeded, planned);
     }
@@ -445,7 +448,8 @@ internal sealed partial class Commands(Reporter reporter, string workingDirector
     {
         var tests = built.Planned.Select(entry => (entry.Target, entry.Products,
             Built: entry.Products.Main is { } main && built.Executor.Succeeded(main))).ToList();
-        var outcomes = await new TestRunner(built.Planner.Layout, built.Options.Jobs, reporter, built.Options.Coverage)
+        var outcomes = await new TestRunner(built.Planner.Layout, built.Options.Jobs, reporter, built.Options.Coverage,
+                built.Options.CachePolicy == CachePolicy.NoCache)
             .RunAsync(tests, cancel).ConfigureAwait(false);
         reporter.TestSummary(outcomes);
         var passed = outcomes.All(outcome => outcome.Status is TestStatus.Passed or TestStatus.Cached or TestStatus.Flaky);

@@ -17,7 +17,8 @@ namespace Progmasoft.Tazel.Driver;
 /// behind the back of the command.
 /// </summary>
 internal sealed class Executor(
-    int jobs, bool keepGoing, ActionCache cache, Reporter reporter, Cache.RemoteActions? remote = null)
+    int jobs, bool keepGoing, ActionCache cache, Reporter reporter, Cache.RemoteActions? remote = null,
+    CachePolicy policy = CachePolicy.Normal, string? scratch = null)
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<BuildAction, bool> _made = new();
     private int _done;
@@ -96,7 +97,8 @@ internal sealed class Executor(
     /// </summary>
     private async Task<bool> MakeAsync(BuildAction action, int total, CancellationTokenSource stop)
     {
-        if (cache.IsCurrent(action))
+        var forced = Forced(action);
+        if (!forced && cache.IsCurrent(action))
         {
             action.After?.Invoke();
             Interlocked.Increment(ref _done);
@@ -111,31 +113,80 @@ internal sealed class Executor(
             File.Delete(full);
         }
 
-        cache.Forget(action);
-        if (remote is not null && await remote.FetchAsync(action, stop.Token).ConfigureAwait(false))
+        // --no-cache writes no record, and so erases none: a later build checks the old one against the files.
+        var writes = policy != CachePolicy.NoCache;
+        if (writes)
+        {
+            cache.Forget(action);
+        }
+        else
+        {
+            cache.ForgetOutputs(action);
+        }
+
+        if (!forced && remote is not null && await remote.FetchAsync(action, stop.Token).ConfigureAwait(false))
         {
             Made(action, total, $"{action.Description} (remote cache)", "", record: true);
             return true;
         }
 
-        var result = action.Work is { } work
-            ? await work(stop.Token).ConfigureAwait(false)
-            : await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, stop.Token)
-                .ConfigureAwait(false);
+        var result = await RunAsync(action, forced, stop.Token).ConfigureAwait(false);
         // Stopped because another action failed: that one is reported, this one did not fail.
         if (result.Canceled || await FailedAsync(action, result, stop).ConfigureAwait(false))
         {
             return false;
         }
 
-        cache.Record(action);
-        if (remote is { Writes: true })
+        if (writes)
+        {
+            cache.Record(action);
+        }
+
+        if (writes && remote is { Writes: true })
         {
             await remote.StoreAsync(action, stop.Token).ConfigureAwait(false);
         }
 
         Made(action, total, action.Description, result.Output, record: false);
         return true;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="action"/> runs whatever the caches say: every action with <c>--no-cache</c>, the
+    /// compilations with <c>--recompile</c>. A link or an archive under <c>--recompile</c> runs only when the objects it
+    /// reads came out different.
+    /// </summary>
+    internal bool Forced(BuildAction action) => policy switch
+    {
+        CachePolicy.NoCache => true,
+        CachePolicy.Recompile => action.Kind is ActionKind.Compile or ActionKind.CompileAndLink,
+        _ => false,
+    };
+
+    // The action's work or command; a forced compilation with a cache of the compiler's own gets a fresh one, which
+    // is removed after.
+    private async Task<ProcessResult> RunAsync(BuildAction action, bool forced, CancellationToken cancel)
+    {
+        if (action.Work is { } work)
+        {
+            return await work(cancel).ConfigureAwait(false);
+        }
+
+        if (!forced || action.WithCompilerCache is not { } withCache || scratch is null)
+        {
+            return await Processes.RunAsync(action.Command, action.Directory, action.Environment, null, cancel).ConfigureAwait(false);
+        }
+
+        var fresh = Path.Combine(scratch, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fresh);
+        try
+        {
+            return await Processes.RunAsync(withCache(fresh), action.Directory, action.Environment, null, cancel).ConfigureAwait(false);
+        }
+        finally
+        {
+            Directory.Delete(fresh, recursive: true);
+        }
     }
 
     /// <summary>Marks <paramref name="action"/> made and says so; with <paramref name="record"/>, the local cache records it.</summary>
